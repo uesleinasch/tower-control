@@ -524,28 +524,4 @@ el.entrada.addEventListener("focus", () => {
   }, 300)
 })
 
-// Medidor de viewport para diagnosticar o teclado no aparelho: /?debug
-if (new URLSearchParams(location.search).has("debug")) {
-  const painel = document.getElementById("depurar")
-  const composer = document.getElementById("composer")
-  painel.hidden = false
-  const medir = () => {
-    const vv = window.visualViewport
-    const fundo = composer.getBoundingClientRect().bottom
-    const visivel = vv ? vv.height : window.innerHeight
-    painel.textContent =
-      `innerHeight ${window.innerHeight} | vv.height ${vv ? Math.round(vv.height) : "-"} | ` +
-      `vv.offsetTop ${vv ? Math.round(vv.offsetTop) : "-"}\n` +
-      `body ${Math.round(document.body.getBoundingClientRect().height)} | ` +
-      `composer.bottom ${Math.round(fundo)} | ` +
-      (fundo > visivel + 1 ? `ESCONDIDO por ${Math.round(fundo - visivel)}px` : "visivel")
-  }
-  medir()
-  window.visualViewport?.addEventListener("resize", medir)
-  window.visualViewport?.addEventListener("scroll", medir)
-  window.addEventListener("resize", medir)
-  el.entrada.addEventListener("focus", () => setTimeout(medir, 400))
-  el.entrada.addEventListener("blur", () => setTimeout(medir, 400))
-}
-
 conectar()
