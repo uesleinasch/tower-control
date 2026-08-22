@@ -17,6 +17,16 @@ O motor das conversas é o Claude Agent SDK, que usa a autenticação do Claude 
 instalado na máquina — não precisa de API key. No startup o servidor imprime os três
 endereços: localhost, IP da rede local e IP do Tailscale (quando houver).
 
+## No celular
+
+Abra um dos endereços impressos no startup. A interface é responsiva: no celular a
+lista de conselheiros e conversas é a primeira tela e a conversa é a segunda, com
+"←" e o botão voltar do sistema voltando para a lista. Toque longo num balão abre
+o menu de responder e copiar.
+
+Pelo menu do navegador, "Adicionar à tela inicial" instala como app e abre sem a
+barra de endereço.
+
 ## Instalar como serviço (sobe no boot)
 
 ```bash

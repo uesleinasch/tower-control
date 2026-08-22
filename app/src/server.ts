@@ -22,6 +22,10 @@ const ESTATICOS: Record<string, string> = {
   "/index.html": "index.html",
   "/app.js": "app.js",
   "/style.css": "style.css",
+  "/manifest.webmanifest": "manifest.webmanifest",
+  "/icone.svg": "icone.svg",
+  "/icone-192.png": "icone-192.png",
+  "/icone-512.png": "icone-512.png",
 }
 
 type Cliente = ServerWebSocket<undefined>
