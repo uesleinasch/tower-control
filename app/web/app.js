@@ -60,12 +60,22 @@ function adicionarMensagem(classe, html) {
   return div
 }
 
-function mensagemDoPerfil(perfil, texto) {
+function mensagemDoPerfil(perfil, texto, comAutor = true) {
+  const autor = comAutor
+    ? `<span class="autor ${perfil}">${NOMES[perfil] ?? perfil}</span>`
+    : ""
   const div = adicionarMensagem(
     "perfil-msg",
-    `<span class="autor ${perfil}">${NOMES[perfil] ?? perfil}</span><span class="corpo">${formatar(texto)}</span>`,
+    `${autor}<span class="corpo">${formatar(texto)}</span>`,
   )
   return div.querySelector(".corpo")
+}
+
+const SEPARADOR_BALAO = /\n\s*-{3,}\s*\n/
+
+function balcoesDoPerfil(perfil, texto) {
+  const partes = texto.split(SEPARADOR_BALAO).map((p) => p.trim()).filter(Boolean)
+  partes.forEach((parte, i) => mensagemDoPerfil(perfil, parte, i === 0))
 }
 
 function limparTela() {
@@ -144,7 +154,7 @@ function submeter() {
 
 // ── recepção ───────────────────────────────────────────────────────
 
-let corpoStreaming = null
+let bolhasStreaming = []
 let textoStreaming = ""
 
 function tratar(msg) {
@@ -175,22 +185,23 @@ function tratar(msg) {
       limparTela()
       for (const m of msg.mensagens) {
         if (m.role === "user") adicionarMensagem("usuario", escapar(m.texto))
-        else mensagemDoPerfil(m.perfil, m.texto)
+        else balcoesDoPerfil(m.perfil, m.texto)
       }
       break
     }
     case "chunk": {
-      if (!corpoStreaming) {
-        textoStreaming = ""
-        corpoStreaming = mensagemDoPerfil(msg.perfil, "")
-      }
+      if (!bolhasStreaming.length) textoStreaming = ""
       textoStreaming += msg.texto
-      corpoStreaming.innerHTML = formatar(textoStreaming)
+      const partes = textoStreaming.split(SEPARADOR_BALAO)
+      partes.forEach((parte, i) => {
+        if (!bolhasStreaming[i]) bolhasStreaming[i] = mensagemDoPerfil(msg.perfil, "", i === 0)
+        bolhasStreaming[i].innerHTML = formatar(parte.trim())
+      })
       el.mensagens.scrollTop = el.mensagens.scrollHeight
       break
     }
     case "fim": {
-      corpoStreaming = null
+      bolhasStreaming = []
       textoStreaming = ""
       estado.respostaEmCurso = null
       el.enviar.disabled = false
@@ -231,7 +242,7 @@ function tratar(msg) {
     }
     case "erro": {
       adicionarMensagem("erro", escapar(msg.mensagem))
-      corpoStreaming = null
+      bolhasStreaming = []
       estado.respostaEmCurso = null
       el.enviar.disabled = false
       break
