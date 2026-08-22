@@ -53,12 +53,20 @@
 
     <section id="mensagens"></section>
 
+    <div id="pendentes" hidden></div>
+
     <div id="citacao" hidden>
       <span id="citacao-texto"></span>
       <button id="citacao-fechar" title="cancelar resposta">×</button>
     </div>
 
     <footer id="composer">
+      <button id="clipe" aria-label="Anexar arquivo">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none"
+             stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M16.5 6.8v8.7a4.5 4.5 0 01-9 0V6.3a3 3 0 016 0v9.2a1.5 1.5 0 01-3 0V7.4" />
+        </svg>
+      </button>
       <textarea id="entrada" rows="1" placeholder="Escreva sua mensagem…"></textarea>
       <button id="enviar" aria-label="Enviar mensagem">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -68,10 +76,21 @@
     </footer>
   </main>
 
-  <div id="menu-balao" hidden>
+  <div id="menu-balao" class="menu" hidden>
     <button data-acao="responder">↩ Responder</button>
     <button data-acao="copiar">⧉ Copiar</button>
   </div>
+
+  <div id="menu-anexo" class="menu" hidden>
+    <button data-fonte="camera">📷 Câmera</button>
+    <button data-fonte="galeria">🖼 Galeria</button>
+    <button data-fonte="arquivo">📄 Arquivo</button>
+  </div>
+
+  <input id="fonte-camera" type="file" accept="image/*" capture="environment" hidden />
+  <input id="fonte-galeria" type="file" accept="image/*" multiple hidden />
+  <input id="fonte-arquivo" type="file" multiple hidden
+         accept="text/*,application/pdf,.log,.md,.txt,.csv,.json,.ts,.js,.py,.sql,.yml,.yaml,.sh" />
 
   <script src="/app.js"></script>
 </body>

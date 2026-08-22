@@ -3,6 +3,10 @@
 const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", board: "Board" }
 const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", board: "B", decisoes: "D" }
 
+const ICONES_ANEXO = { imagem: "🖼", texto: "📄", pdf: "📕" }
+const LADO_MAXIMO = 1600
+const LIMITE_ANEXO = 10 * 1024 * 1024
+
 const estado = {
   ws: null,
   modo: "chat", // chat | board | decisoes
@@ -10,6 +14,7 @@ const estado = {
   conversaId: null,
   respostaEmCurso: null,
   citacao: null,
+  anexos: [],
 }
 
 const el = {
@@ -24,6 +29,8 @@ const el = {
   citacao: document.getElementById("citacao"),
   citacaoTexto: document.getElementById("citacao-texto"),
   modelo: document.getElementById("seletor-modelo"),
+  clipe: document.getElementById("clipe"),
+  pendentes: document.getElementById("pendentes"),
 }
 
 // ── telas ──────────────────────────────────────────────────────────
@@ -52,6 +59,118 @@ function definirCabecalho(perfil, texto) {
 
 function focarEntrada() {
   if (!compacto()) el.entrada.focus()
+}
+
+function ajustarAoModo() {
+  el.clipe.hidden = estado.modo !== "chat"
+  limparAnexos()
+}
+
+// ── anexos ─────────────────────────────────────────────────────────
+
+function formatarBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${Math.round(kb)} kB`
+  return `${(kb / 1024).toFixed(1).replace(/\.0$/, "").replace(".", ",")} MB`
+}
+
+function limparAnexos() {
+  estado.anexos = []
+  renderPendentes()
+}
+
+function renderPendentes() {
+  el.pendentes.innerHTML = ""
+  el.pendentes.hidden = !estado.anexos.length
+  for (const anexo of estado.anexos) {
+    const chip = document.createElement("span")
+    chip.className = "chip"
+    chip.innerHTML =
+      `<b>${ICONES_ANEXO[anexo.tipo] ?? "📄"}</b>` +
+      `<span>${escapar(anexo.nome)}</span>` +
+      `<small>${formatarBytes(anexo.bytes)}</small>` +
+      `<button aria-label="Remover anexo">×</button>`
+    chip.querySelector("button").onclick = () => {
+      estado.anexos = estado.anexos.filter((a) => a.id !== anexo.id)
+      renderPendentes()
+    }
+    el.pendentes.appendChild(chip)
+  }
+}
+
+function trocarExtensao(nome, extensao) {
+  return `${nome.replace(/\.[^.]*$/, "")}.${extensao}`
+}
+
+// Foto de celular sobe com 8-12 MB e custa token à toa na leitura da imagem.
+// GIF fica de fora porque o canvas descartaria a animação.
+async function reduzirImagem(arquivo) {
+  if (!arquivo.type.startsWith("image/") || arquivo.type === "image/gif") return arquivo
+  const bitmap = await createImageBitmap(arquivo).catch(() => null)
+  if (!bitmap) return arquivo
+  const maior = Math.max(bitmap.width, bitmap.height)
+  if (maior <= LADO_MAXIMO) {
+    bitmap.close()
+    return arquivo
+  }
+  const escala = LADO_MAXIMO / maior
+  const tela = document.createElement("canvas")
+  tela.width = Math.round(bitmap.width * escala)
+  tela.height = Math.round(bitmap.height * escala)
+  tela.getContext("2d").drawImage(bitmap, 0, 0, tela.width, tela.height)
+  bitmap.close()
+  const blob = await new Promise((pronto) => tela.toBlob(pronto, "image/jpeg", 0.85))
+  if (!blob) return arquivo
+  return new File([blob], trocarExtensao(arquivo.name, "jpg"), { type: "image/jpeg" })
+}
+
+async function subirAnexo(arquivo) {
+  const form = new FormData()
+  form.set("arquivo", arquivo)
+  const resposta = await fetch("/anexo", { method: "POST", body: form })
+  const corpo = await resposta.json().catch(() => ({}))
+  if (!resposta.ok) throw new Error(corpo.erro ?? `falha no upload (${resposta.status})`)
+  return corpo
+}
+
+async function anexarArquivos(lista) {
+  for (const bruto of lista) {
+    try {
+      const arquivo = await reduzirImagem(bruto)
+      if (arquivo.size > LIMITE_ANEXO) {
+        adicionarMensagem(
+          "erro",
+          escapar(`"${bruto.name}" tem ${formatarBytes(arquivo.size)}; o limite é 10 MB.`),
+        )
+        continue
+      }
+      estado.anexos.push(await subirAnexo(arquivo))
+      renderPendentes()
+    } catch (erro) {
+      adicionarMensagem("erro", escapar(`${bruto.name}: ${erro.message}`))
+    }
+  }
+}
+
+function blocoDeAnexos(anexos) {
+  if (!anexos?.length) return ""
+  return anexos
+    .map((a) => {
+      const url = `/anexo/${encodeURIComponent(a.id)}`
+      if (a.tipo === "imagem") {
+        return (
+          `<a class="anexo-imagem" href="${url}" target="_blank" rel="noopener">` +
+          `<img src="${url}" alt="${escapar(a.nome)}" loading="lazy"></a>`
+        )
+      }
+      return (
+        `<a class="anexo-arquivo" href="${url}" target="_blank" rel="noopener">` +
+        `<b>${ICONES_ANEXO[a.tipo] ?? "📄"}</b><span>${escapar(a.nome)}</span>` +
+        `<small>${formatarBytes(a.bytes)}</small></a>`
+      )
+    })
+    .join("")
 }
 
 function definirCitacao(texto) {
@@ -118,8 +237,8 @@ function adicionarMensagem(classe, html, ts) {
   return div
 }
 
-function mensagemDoUsuario(texto, citacao, ts) {
-  const cabeca = citacao ? blocoCitacao(citacao) : ""
+function mensagemDoUsuario(texto, citacao, ts, anexos) {
+  const cabeca = (citacao ? blocoCitacao(citacao) : "") + blocoDeAnexos(anexos)
   return adicionarMensagem("usuario", `${cabeca}<span class="corpo">${escapar(texto)}</span>`, ts)
 }
 
@@ -158,6 +277,7 @@ function abrirPerfil(perfil) {
   estado.modo = "chat"
   estado.perfil = perfil
   estado.conversaId = null
+  ajustarAoModo()
   selecionarBotao(`[data-perfil="${perfil}"]`)
   definirCabecalho(perfil, `Nova conversa com ${NOMES[perfil]}`)
   limparTela()
@@ -171,6 +291,7 @@ function abrirBoard() {
   estado.modo = "board"
   estado.perfil = null
   estado.conversaId = null
+  ajustarAoModo()
   selecionarBotao("#botao-board")
   definirCabecalho("board", "Board — deliberação em conselho")
   limparTela()
@@ -185,6 +306,7 @@ function abrirBoard() {
 
 function abrirDecisoes() {
   estado.modo = "decisoes"
+  ajustarAoModo()
   selecionarBotao("#botao-decisoes")
   definirCabecalho("decisoes", "Decisões registradas")
   limparTela()
@@ -196,7 +318,10 @@ function abrirDecisoes() {
 
 function submeter() {
   const texto = el.entrada.value.trim()
-  if (!texto || estado.respostaEmCurso) return
+  const anexos = estado.anexos
+  const noChat = estado.modo === "chat"
+  if (estado.respostaEmCurso) return
+  if (!texto && !(noChat && anexos.length)) return
   el.entrada.value = ""
   ajustarEntrada()
 
@@ -209,16 +334,19 @@ function submeter() {
     return
   }
 
-  if (estado.modo === "chat" && estado.perfil) {
+  if (noChat && estado.perfil) {
     const citacao = estado.citacao ?? undefined
-    mensagemDoUsuario(texto, citacao, new Date())
+    const ids = anexos.map((a) => a.id)
+    mensagemDoUsuario(texto, citacao, new Date(), anexos)
     limparCitacao()
+    limparAnexos()
     estado.respostaEmCurso = "chat"
     el.enviar.disabled = true
+    const comum = { texto, citacao, anexos: ids, modelo: el.modelo.value }
     if (estado.conversaId) {
-      enviar({ tipo: "mensagem", conversaId: estado.conversaId, texto, citacao, modelo: el.modelo.value })
+      enviar({ tipo: "mensagem", conversaId: estado.conversaId, ...comum })
     } else {
-      enviar({ tipo: "nova", perfil: estado.perfil, texto, citacao, modelo: el.modelo.value })
+      enviar({ tipo: "nova", perfil: estado.perfil, ...comum })
     }
     mostrarDigitando(estado.perfil)
   }
@@ -290,6 +418,7 @@ function tratar(msg) {
       estado.modo = "chat"
       estado.perfil = msg.meta.perfil
       estado.conversaId = msg.meta.id
+      ajustarAoModo()
       selecionarBotao(`[data-perfil="${msg.meta.perfil}"]`)
       definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
       el.modelo.value = msg.meta.modelo ?? ""
@@ -297,7 +426,7 @@ function tratar(msg) {
       limparTela()
       for (const m of msg.mensagens) {
         if (m.role === "user") {
-          mensagemDoUsuario(m.texto, m.citacao, m.ts)
+          mensagemDoUsuario(m.texto, m.citacao, m.ts, m.anexos)
         } else {
           balcoesDoPerfil(m.perfil, m.texto, m.ts)
         }
@@ -319,8 +448,9 @@ function tratar(msg) {
       el.enviar.disabled = false
       break
     }
-    case "board-status": {
-      adicionarMensagem("aviso", msg.texto)
+    case "board-status":
+    case "aviso": {
+      adicionarMensagem("aviso", escapar(msg.texto))
       break
     }
     case "board-sintese": {
@@ -475,15 +605,61 @@ menu.addEventListener("click", (ev) => {
   if (acao === "copiar") copiar(texto)
 })
 
+// ── menu do clipe ──────────────────────────────────────────────────
+
+const menuAnexo = document.getElementById("menu-anexo")
+const fontes = {
+  camera: document.getElementById("fonte-camera"),
+  galeria: document.getElementById("fonte-galeria"),
+  arquivo: document.getElementById("fonte-arquivo"),
+}
+
+function fecharMenuAnexo() {
+  menuAnexo.hidden = true
+}
+
+function alternarMenuAnexo() {
+  if (!menuAnexo.hidden) {
+    fecharMenuAnexo()
+    return
+  }
+  menuAnexo.hidden = false
+  const alvo = el.clipe.getBoundingClientRect()
+  menuAnexo.style.left = `${Math.max(8, alvo.left)}px`
+  menuAnexo.style.top = `${Math.max(8, alvo.top - menuAnexo.offsetHeight - 8)}px`
+}
+
+el.clipe.onclick = alternarMenuAnexo
+
+menuAnexo.addEventListener("click", (ev) => {
+  const fonte = ev.target.closest("button")?.dataset.fonte
+  fecharMenuAnexo()
+  fontes[fonte]?.click()
+})
+
+for (const entrada of Object.values(fontes)) {
+  // Zerar o value faz o change disparar ao escolher o mesmo arquivo de novo.
+  entrada.addEventListener("change", () => {
+    const escolhidos = [...entrada.files]
+    entrada.value = ""
+    anexarArquivos(escolhidos)
+  })
+}
+
 document.addEventListener(
   "pointerdown",
   (ev) => {
     if (!menu.hidden && !menu.contains(ev.target)) fecharMenu()
+    if (!menuAnexo.hidden && !menuAnexo.contains(ev.target) && !el.clipe.contains(ev.target)) {
+      fecharMenuAnexo()
+    }
   },
   true,
 )
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape") fecharMenu()
+  if (ev.key !== "Escape") return
+  fecharMenu()
+  fecharMenuAnexo()
 })
 
 el.enviar.onclick = submeter
