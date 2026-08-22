@@ -8,6 +8,7 @@ const estado = {
   perfil: null,
   conversaId: null,
   respostaEmCurso: null,
+  citacao: null,
 }
 
 const el = {
@@ -17,6 +18,24 @@ const el = {
   titulo: document.getElementById("titulo-conversa"),
   conexao: document.getElementById("estado-conexao"),
   listaConversas: document.getElementById("lista-conversas"),
+  citacao: document.getElementById("citacao"),
+  citacaoTexto: document.getElementById("citacao-texto"),
+}
+
+function definirCitacao(texto) {
+  estado.citacao = texto.length > 180 ? `${texto.slice(0, 180)}…` : texto
+  el.citacaoTexto.textContent = estado.citacao
+  el.citacao.hidden = false
+  el.entrada.focus()
+}
+
+function limparCitacao() {
+  estado.citacao = null
+  el.citacao.hidden = true
+}
+
+function blocoCitacao(texto) {
+  return `<span class="citacao-bloco">${escapar(texto)}</span>`
 }
 
 function conectar() {
@@ -141,13 +160,16 @@ function submeter() {
   }
 
   if (estado.modo === "chat" && estado.perfil) {
-    adicionarMensagem("usuario", escapar(texto))
+    const citacao = estado.citacao ?? undefined
+    const html = (citacao ? blocoCitacao(citacao) : "") + escapar(texto)
+    adicionarMensagem("usuario", html)
+    limparCitacao()
     estado.respostaEmCurso = "chat"
     el.enviar.disabled = true
     if (estado.conversaId) {
-      enviar({ tipo: "mensagem", conversaId: estado.conversaId, texto })
+      enviar({ tipo: "mensagem", conversaId: estado.conversaId, texto, citacao })
     } else {
-      enviar({ tipo: "nova", perfil: estado.perfil, texto })
+      enviar({ tipo: "nova", perfil: estado.perfil, texto, citacao })
     }
     mostrarDigitando(estado.perfil)
   }
@@ -217,8 +239,11 @@ function tratar(msg) {
       el.titulo.textContent = `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`
       limparTela()
       for (const m of msg.mensagens) {
-        if (m.role === "user") adicionarMensagem("usuario", escapar(m.texto))
-        else balcoesDoPerfil(m.perfil, m.texto)
+        if (m.role === "user") {
+          adicionarMensagem("usuario", (m.citacao ? blocoCitacao(m.citacao) : "") + escapar(m.texto))
+        } else {
+          balcoesDoPerfil(m.perfil, m.texto)
+        }
       }
       break
     }
@@ -287,6 +312,14 @@ document.querySelectorAll(".perfil").forEach((b) => {
 })
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
+document.getElementById("citacao-fechar").onclick = limparCitacao
+
+el.mensagens.addEventListener("click", (ev) => {
+  if (estado.modo !== "chat") return
+  const balao = ev.target.closest(".msg.perfil-msg")
+  const corpo = balao?.querySelector(".corpo")
+  if (corpo?.textContent.trim()) definirCitacao(corpo.textContent.trim())
+})
 
 el.enviar.onclick = submeter
 el.entrada.addEventListener("keydown", (ev) => {

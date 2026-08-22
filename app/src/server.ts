@@ -29,15 +29,24 @@ function mandar(ws: Cliente, msg: Record<string, unknown>): void {
   ws.send(JSON.stringify(msg))
 }
 
-async function responderNaConversa(ws: Cliente, id: string, texto: string): Promise<void> {
+async function responderNaConversa(
+  ws: Cliente,
+  id: string,
+  texto: string,
+  citacao?: string,
+): Promise<void> {
   const meta = await lerMeta(RAIZ, id)
   const agora = new Date().toISOString()
-  await anexarMensagem(RAIZ, id, { role: "user", texto, ts: agora, perfil: meta.perfil })
+  await anexarMensagem(RAIZ, id, { role: "user", texto, ts: agora, perfil: meta.perfil, citacao })
+
+  const textoParaModelo = citacao
+    ? `[Estou respondendo especificamente a este trecho seu: "${citacao}"]\n\n${texto}`
+    : texto
 
   const resposta = await conversar({
     raiz: RAIZ,
     perfil: meta.perfil,
-    texto,
+    texto: textoParaModelo,
     sessionId: meta.sessionId,
     onChunk: (pedaco) => mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco }),
   })
@@ -69,14 +78,14 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const titulo = texto.length > 48 ? `${texto.slice(0, 48)}…` : texto
       const meta = await criarConversa(RAIZ, perfil, titulo)
       mandar(ws, { tipo: "criada", meta })
-      await responderNaConversa(ws, meta.id, texto)
+      await responderNaConversa(ws, meta.id, texto, msg.citacao ? String(msg.citacao) : undefined)
       return
     }
     case "mensagem": {
       const id = String(msg.conversaId ?? "")
       const texto = String(msg.texto ?? "").trim()
       if (!id || !texto) throw new Error("conversa ou mensagem inválidas")
-      await responderNaConversa(ws, id, texto)
+      await responderNaConversa(ws, id, texto, msg.citacao ? String(msg.citacao) : undefined)
       return
     }
     case "abrir": {

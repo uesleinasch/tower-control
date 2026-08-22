@@ -6,6 +6,7 @@ export interface Mensagem {
   texto: string
   ts: string
   perfil: Perfil
+  citacao?: string
 }
 
 export interface MetaConversa {
