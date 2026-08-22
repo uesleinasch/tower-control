@@ -3,6 +3,7 @@ import type { ServerWebSocket } from "bun"
 import { PERFIS, type Perfil } from "./tipos"
 import { conversar } from "./sessions"
 import { convocarBoard } from "./board"
+import { enderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
 import {
   criarConversa,
@@ -153,4 +154,8 @@ const servidor = Bun.serve({
   },
 })
 
-console.log(`control-tower de pé em http://${servidor.hostname}:${servidor.port} (raiz: ${RAIZ})`)
+const rede = enderecos()
+console.log(`control-tower de pé (raiz: ${RAIZ})`)
+console.log(`  local:     http://localhost:${servidor.port}`)
+if (rede.lan) console.log(`  rede:      http://${rede.lan}:${servidor.port}`)
+if (rede.tailscale) console.log(`  tailscale: http://${rede.tailscale}:${servidor.port}`)
