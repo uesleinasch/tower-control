@@ -4,6 +4,7 @@ import { parseFrontmatter, linhaIndice } from "./decisions"
 import { montarPautaParecer, montarSystemPrompt, politicaDeTamanho } from "./prompt"
 import { slug } from "./board"
 import { lerAtalhos } from "./atalhos"
+import { CONSELHEIROS, PERFIS, ehConselheiro } from "./tipos"
 import {
   classificarAnexo,
   extensaoSegura,
@@ -99,6 +100,30 @@ test("montarSystemPrompt injeta a política do perfil", async () => {
   const system = await montarSystemPrompt(raiz, "poe")
   expect(system).toContain("## Tamanho da resposta")
   expect(system).toContain("é sempre o menor")
+})
+
+describe("conselheiro e executor", () => {
+  test("alfred é perfil mas não é conselheiro", () => {
+    expect(PERFIS).toContain("alfred")
+    expect(CONSELHEIROS).not.toContain("alfred")
+    expect(ehConselheiro("alfred")).toBe(false)
+    expect(ehConselheiro("poe")).toBe(true)
+  })
+
+  test("o executor não recebe as instruções de conselheiro", async () => {
+    const raiz = join(import.meta.dir, "..", "..")
+    const alfred = await montarSystemPrompt(raiz, "alfred")
+    expect(alfred).toContain("o executor do control-tower")
+    expect(alfred).not.toContain("decisions/AAAA-MM-DD")
+    expect(alfred).not.toContain("PODE atualizar")
+  })
+
+  test("o conselheiro segue recebendo memória e registro de decisão", async () => {
+    const raiz = join(import.meta.dir, "..", "..")
+    const poe = await montarSystemPrompt(raiz, "poe")
+    expect(poe).toContain("decisions/AAAA-MM-DD")
+    expect(poe).toContain("PODE atualizar")
+  })
 })
 
 describe("classificarAnexo", () => {

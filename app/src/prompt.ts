@@ -1,11 +1,12 @@
 import { join } from "node:path"
-import type { Perfil } from "./tipos"
+import { ehConselheiro, type Conselheiro, type Perfil } from "./tipos"
 
 const NOMES: Record<Perfil, string> = {
   poe: "Poe",
   nati: "Nati",
   lucas: "Lucas",
   pami: "Pami",
+  alfred: "Alfred",
 }
 
 const POLITICA_PADRAO = `Prefira 1 a 3 balões curtos por resposta; só escreva longo quando o Ueslei pedir
@@ -26,11 +27,16 @@ Na dúvida entre dois casos, é sempre o menor.
 Em qualquer caso: não abra resumindo o que ele acabou de dizer, não feche
 oferecendo mais ajuda, e não liste alternativas que ele não pediu.`
 
+const POLITICA_ALFRED = `Uma ou duas linhas dizendo o que você fez ou o que encontrou. Sem preâmbulo, sem
+recapitular o pedido, sem oferecer o próximo passo. Saída de comando só quando ela for
+a resposta; se for longa, resuma e diga onde está o resto.`
+
 const POLITICAS_DE_TAMANHO: Record<Perfil, string> = {
   poe: POLITICA_POE,
   nati: POLITICA_PADRAO,
   lucas: POLITICA_PADRAO,
   pami: POLITICA_PADRAO,
+  alfred: POLITICA_ALFRED,
 }
 
 export function politicaDeTamanho(perfil: Perfil): string {
@@ -64,7 +70,27 @@ Sua personalidade e sua memória estão acima; encarne-as por completo.
 ${politicaDeTamanho(perfil)}`
 }
 
-function instrucoesParecer(perfil: Perfil): string {
+function instrucoesDoExecutor(perfil: Perfil): string {
+  return `# Instruções da casa (control-tower)
+
+Você é ${NOMES[perfil]}, o executor do control-tower. Você não é conselheiro: não opina
+sem ser perguntado, não sugere melhorias, não pergunta se o Ueslei quer mais alguma coisa.
+
+- Responda sempre em português brasileiro.
+- Faça exatamente o que foi pedido, e só isso. Se o pedido for ambíguo de um jeito que
+  mude o resultado, pergunte em uma linha antes de agir.
+- Comando de terminal só roda depois de o Ueslei aprovar na tela. Escreva o comando mais
+  direto que resolve; não encadeie passos que ninguém pediu.
+- Você NUNCA escreve em profiles/, não registra decisão em decisions/ e não mantém
+  memória — isso é trabalho dos conselheiros.
+- Se falhar, diga o erro e pare. Não tente três caminhos alternativos por conta própria.
+
+## Tamanho da resposta
+
+${politicaDeTamanho(perfil)}`
+}
+
+function instrucoesParecer(perfil: Conselheiro): string {
   return `# Instruções da casa (board do control-tower)
 
 Você é ${NOMES[perfil]}, convocado como conselheiro do board. Leia a pauta e emita seu
@@ -81,11 +107,17 @@ async function lerArquivo(caminho: string): Promise<string> {
 
 export async function montarSystemPrompt(raiz: string, perfil: Perfil): Promise<string> {
   const perfilMd = await lerArquivo(join(raiz, "profiles", perfil, "profile.md"))
+  if (!ehConselheiro(perfil)) {
+    return [perfilMd, instrucoesDoExecutor(perfil)].filter(Boolean).join("\n\n---\n\n")
+  }
   const memoriaMd = await lerArquivo(join(raiz, "profiles", perfil, "memory.md"))
   return [perfilMd, memoriaMd, instrucoesDaCasa(perfil)].filter(Boolean).join("\n\n---\n\n")
 }
 
-export async function montarSystemPromptParecer(raiz: string, perfil: Perfil): Promise<string> {
+export async function montarSystemPromptParecer(
+  raiz: string,
+  perfil: Conselheiro,
+): Promise<string> {
   const perfilMd = await lerArquivo(join(raiz, "profiles", perfil, "profile.md"))
   const memoriaMd = await lerArquivo(join(raiz, "profiles", perfil, "memory.md"))
   const charter = await lerArquivo(join(raiz, "board", "charter.md"))

@@ -1,9 +1,17 @@
-export const PERFIS = ["poe", "nati", "lucas", "pami"] as const
+export const CONSELHEIROS = ["poe", "nati", "lucas", "pami"] as const
+export const EXECUTORES = ["alfred"] as const
+export const PERFIS = [...CONSELHEIROS, ...EXECUTORES] as const
 
 // Sem isto o SDK resolve para claude-opus-5[1m] — medido em ~7x o custo do haiku
 // na mesma pergunta.
 export const MODELO_PADRAO = "haiku"
+export type Conselheiro = (typeof CONSELHEIROS)[number]
+export type Executor = (typeof EXECUTORES)[number]
 export type Perfil = (typeof PERFIS)[number]
+
+export function ehConselheiro(perfil: Perfil): perfil is Conselheiro {
+  return (CONSELHEIROS as readonly string[]).includes(perfil)
+}
 
 export type TipoAnexo = "imagem" | "texto" | "pdf"
 

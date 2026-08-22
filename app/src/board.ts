@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { rename } from "node:fs/promises"
-import { PERFIS, type Perfil } from "./tipos"
+import { CONSELHEIROS, type Conselheiro } from "./tipos"
 import { montarSystemPromptParecer, montarPautaParecer, montarPromptSintese } from "./prompt"
 import { perguntarUmaVez } from "./sessions"
 
@@ -28,7 +28,7 @@ export async function convocarBoard(
   const pautaFormatada = montarPautaParecer(pauta, contexto)
 
   const pareceres = await Promise.all(
-    PERFIS.map(async (perfil) => {
+    CONSELHEIROS.map(async (perfil) => {
       const system = await montarSystemPromptParecer(raiz, perfil)
       try {
         const texto = await perguntarUmaVez({ raiz, system, prompt: pautaFormatada, permitirLeitura: true })
@@ -41,7 +41,7 @@ export async function convocarBoard(
 
   const validos = pareceres.filter((p) => !p.texto.startsWith("_(parecer indisponível"))
   if (!validos.length) throw new Error("nenhum perfil conseguiu emitir parecer")
-  onStatus(`Pareceres recebidos (${validos.length}/${PERFIS.length}) — sintetizando…`)
+  onStatus(`Pareceres recebidos (${validos.length}/${CONSELHEIROS.length}) — sintetizando…`)
 
   const { system, prompt } = montarPromptSintese(pauta, pareceres)
   const sintese = await perguntarUmaVez({ raiz, system, prompt })
@@ -53,7 +53,7 @@ export async function convocarBoard(
 async function gravarAta(
   raiz: string,
   pauta: string,
-  pareceres: { perfil: Perfil; texto: string }[],
+  pareceres: { perfil: Conselheiro; texto: string }[],
   sintese: string,
 ): Promise<string> {
   const data = new Date().toISOString().slice(0, 10)
