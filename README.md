@@ -1,47 +1,59 @@
-# Tower Control
+# Control Tower
 
-Esse projeto será usado para ser minha sala de decisões, aqui irei centralizar
-algumas decisões, dicussões com modelos de ia entre outras conversas
-relacionados ao meus projetos e trabalhos.
+Minha sala de decisões: um chat na rede local para conversar com quatro perfis de
+conselheiros, convocar um board que delibera em conjunto, e registrar decisões num
+formato leve e pesquisável. O design completo está em
+[docs/superpowers/specs/2026-08-22-control-tower-design.md](docs/superpowers/specs/2026-08-22-control-tower-design.md).
 
-o tower control tem como principal objetivo servi de base para tomada de
-decisões e orientação técnica sobre diversos temas.
+## Como rodar
 
-## profiles:
+```bash
+cd app
+bun install
+bun run dev        # sobe em http://0.0.0.0:7878 (rede local)
+```
 
-- Amigo (Poe), devemos literalmente construir uma personalidade que possa evoluir com
-  o tempo.
-- Engenheiro Sênior (Nati), um engenheiro de software sẽnio e com bastante experiência
-  em desenvolvimento e arquitetura em:
-  - Haskell
-  - Domain-driven desing
-  - Data-driven design
-  - Fullstack
-- Gestor (Lucas), um perfil focado em saber como gerir empresas e visão de negócio
-- Projetista (Pami), um perfil focado em ser expert em gestão e criação de projetos
-  além de téncnias de mercado para gestão.
+O motor das conversas é o Claude Agent SDK, que usa a autenticação do Claude Code já
+instalado na máquina — não precisa de API key.
 
-Cada perfil deve ter uma personalidade bem criada e desenvolvida.
+## Perfis
 
-## board
+- **Poe** — o Amigo. Personalidade que evolui com o tempo; franqueza acima de conforto.
+- **Nati** — Engenheira de Software Sênior: Haskell, DDD, data-driven design, fullstack.
+- **Lucas** — o Gestor: gestão de empresas, visão de negócio, valor × custo × risco.
+- **Pami** — a Projetista: criação e gestão de projetos, técnicas de mercado.
 
-Devemos ter uma especie de perfis conselho de discussão, decisões são discutidas
-entre esses perfil antes de ser apresentadas em alguns momentos críticos ou
-quando solicitado diretamten. A ideia é que sejam os perfis que
-já criados em profiles, mas que algumas decisões precisem ser tomadas entre
-eles.
+Cada perfil vive em `profiles/<nome>/`: `profile.md` é o núcleo fixo da personalidade;
+`memory.md` é a memória evolutiva que o próprio perfil atualiza quando aprende algo
+durável.
 
-## decisions
+## Board
 
-Decisões que tomamos vão sendo registradas nesse nesse diretório, e ai talvez o
-grande deafio, precismos de um formato de arquivo que seja leve e que o claude
-code tnha desempenho para localizar futuramente.
+Pela interface, o botão "Convocar board" envia uma pauta aos quatro perfis em paralelo.
+Cada um emite um parecer independente (regras em `board/charter.md`), um moderador
+neutro sintetiza consenso, divergências e recomendação, e a ata completa fica em
+`board/minutes/`. Você recebe só a síntese.
 
-## Ideia central
+## Decisões
 
-Minha ideia central é poder conversar com esses perfis para tomada de deciçoes e
-criar uma interface como se fosse um chat na rede local apenas. temos um projeto
-iteressante (~/ueslei/repositories/claude-local-session) que já usa essa abordagem de rede local. Aqui será
-onde venho para discussões ou concelhos técnicos.
+Uma decisão = um arquivo Markdown em `decisions/` com frontmatter YAML (id, date,
+title, status, tags, projeto, participantes) e corpo ADR enxuto. O `decisions/INDEX.md`
+tem uma linha por decisão para lookup barato.
 
-Este projeto será versionado em um repositório privado no git
+### Consultar de outras sessões Claude Code
+
+O MCP server em `app/mcp/server.ts` expõe `buscar_decisoes` e `ler_decisao`:
+
+```bash
+claude mcp add --scope user control-tower -- bun run <caminho>/control-tower/app/mcp/server.ts
+```
+
+## Estrutura
+
+```
+app/           servidor Bun + Agent SDK, UI web e MCP server
+profiles/      personalidade fixa + memória evolutiva de cada perfil
+board/         charter do conselho e atas das deliberações
+decisions/     decisões registradas + índice
+conversations/ histórico das conversas (runtime, fora do git)
+```
