@@ -41,11 +41,19 @@ export function formatarTamanho(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   const kb = bytes / 1024
   if (kb < 1024) return `${Math.round(kb)} kB`
-  return `${(kb / 1024).toFixed(1).replace(".", ",")} MB`
+  return `${(kb / 1024).toFixed(1).replace(/\.0$/, "").replace(".", ",")} MB`
 }
 
 export function idValido(id: string): boolean {
   return PADRAO_ID.test(id)
+}
+
+// Nunca devolver o mime do cliente: text/* aceita text/html, e servi-lo como HTML
+// na origem do app seria XSS armazenado.
+export function mimeDeEntrega(anexo: Anexo): string {
+  if (anexo.tipo === "imagem") return MIMES_IMAGEM.has(anexo.mime) ? anexo.mime : "image/png"
+  if (anexo.tipo === "pdf") return "application/pdf"
+  return "text/plain; charset=utf-8"
 }
 
 export function montarBlocoDeAnexos(anexos: Anexo[], raiz: string): string {
@@ -91,7 +99,9 @@ export async function lerAnexo(raiz: string, id: string): Promise<Anexo | null> 
   if (!idValido(id)) return null
   const sidecar = Bun.file(join(dirAnexos(raiz), `${id}.json`))
   if (!(await sidecar.exists())) return null
-  return sidecar.json()
+  const anexo: Anexo = await sidecar.json()
+  if (!(await Bun.file(join(raiz, anexo.arquivo)).exists())) return null
+  return anexo
 }
 
 export async function lerAnexos(raiz: string, ids: string[]): Promise<Anexo[]> {

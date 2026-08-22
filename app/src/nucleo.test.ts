@@ -5,6 +5,8 @@ import { slug } from "./board"
 import {
   classificarAnexo,
   extensaoSegura,
+  formatarTamanho,
+  mimeDeEntrega,
   montarBlocoDeAnexos,
   nomeExibivel,
 } from "./anexos"
@@ -82,6 +84,20 @@ test("nomeExibivel tira quebra de linha e limita o tamanho", () => {
   expect(nomeExibivel("a\nb\tc ")).toBe("a b c")
   expect(nomeExibivel("x".repeat(200))).toHaveLength(120)
   expect(nomeExibivel("   ")).toBe("arquivo")
+})
+
+test("formatarTamanho usa vírgula e não deixa decimal zerado", () => {
+  expect(formatarTamanho(512)).toBe("512 B")
+  expect(formatarTamanho(2048)).toBe("2 kB")
+  expect(formatarTamanho(10 * 1024 * 1024)).toBe("10 MB")
+  expect(formatarTamanho(2_202_010)).toBe("2,1 MB")
+})
+
+test("mimeDeEntrega nunca devolve html do cliente", () => {
+  const base = { id: "x", nome: "x", bytes: 1, arquivo: "a" }
+  expect(mimeDeEntrega({ ...base, tipo: "texto", mime: "text/html" })).toBe("text/plain; charset=utf-8")
+  expect(mimeDeEntrega({ ...base, tipo: "imagem", mime: "image/webp" })).toBe("image/webp")
+  expect(mimeDeEntrega({ ...base, tipo: "pdf", mime: "text/html" })).toBe("application/pdf")
 })
 
 describe("montarBlocoDeAnexos", () => {

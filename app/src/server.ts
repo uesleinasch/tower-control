@@ -1,6 +1,7 @@
 import { join, resolve } from "node:path"
 import type { ServerWebSocket } from "bun"
-import { PERFIS, type Perfil } from "./tipos"
+import { PERFIS, type Anexo, type Perfil } from "./tipos"
+import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { conversar } from "./sessions"
 import { convocarBoard } from "./board"
 import { enderecos } from "./rede"
@@ -40,17 +41,29 @@ async function responderNaConversa(
   texto: string,
   citacao?: string,
   modelo?: string,
+  anexos: Anexo[] = [],
 ): Promise<void> {
   let meta = await lerMeta(RAIZ, id)
   if (modelo !== undefined && modelo !== (meta.modelo ?? "")) {
     meta = await atualizarMeta(RAIZ, id, { modelo: modelo || undefined })
   }
   const agora = new Date().toISOString()
-  await anexarMensagem(RAIZ, id, { role: "user", texto, ts: agora, perfil: meta.perfil, citacao })
+  await anexarMensagem(RAIZ, id, {
+    role: "user",
+    texto,
+    ts: agora,
+    perfil: meta.perfil,
+    citacao,
+    anexos: anexos.length ? anexos : undefined,
+  })
 
-  const textoParaModelo = citacao
-    ? `[Estou respondendo especificamente a este trecho seu: "${citacao}"]\n\n${texto}`
-    : texto
+  const textoParaModelo = [
+    montarBlocoDeAnexos(anexos, RAIZ),
+    citacao ? `[Estou respondendo especificamente a este trecho seu: "${citacao}"]` : "",
+    texto,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 
   const resposta = await conversar({
     raiz: RAIZ,
@@ -73,6 +86,17 @@ async function responderNaConversa(
   mandar(ws, { tipo: "fim", conversaId: id })
 }
 
+async function resolverAnexos(ws: Cliente, ids: unknown): Promise<Anexo[]> {
+  if (!Array.isArray(ids) || !ids.length) return []
+  const pedidos = ids.map(String)
+  const achados = await lerAnexos(RAIZ, pedidos)
+  const perdidos = pedidos.length - achados.length
+  if (perdidos > 0) {
+    mandar(ws, { tipo: "aviso", texto: `${perdidos} anexo(s) não encontrado(s) e ignorado(s).` })
+  }
+  return achados
+}
+
 async function tratar(ws: Cliente, bruto: string): Promise<void> {
   const msg = JSON.parse(bruto) as Record<string, unknown>
 
@@ -84,24 +108,37 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     case "nova": {
       const perfil = msg.perfil as Perfil
       const texto = String(msg.texto ?? "").trim()
-      if (!PERFIS.includes(perfil) || !texto) throw new Error("perfil ou mensagem inválidos")
-      const titulo = texto.length > 48 ? `${texto.slice(0, 48)}…` : texto
+      const anexos = await resolverAnexos(ws, msg.anexos)
+      if (!PERFIS.includes(perfil)) throw new Error("perfil inválido")
+      if (!texto && !anexos.length) throw new Error("mensagem vazia")
+      const base = texto || anexos[0]!.nome
+      const titulo = base.length > 48 ? `${base.slice(0, 48)}…` : base
       const modelo = msg.modelo ? String(msg.modelo) : undefined
       const meta = await criarConversa(RAIZ, perfil, titulo, modelo)
       mandar(ws, { tipo: "criada", meta })
-      await responderNaConversa(ws, meta.id, texto, msg.citacao ? String(msg.citacao) : undefined)
+      await responderNaConversa(
+        ws,
+        meta.id,
+        texto,
+        msg.citacao ? String(msg.citacao) : undefined,
+        undefined,
+        anexos,
+      )
       return
     }
     case "mensagem": {
       const id = String(msg.conversaId ?? "")
       const texto = String(msg.texto ?? "").trim()
-      if (!id || !texto) throw new Error("conversa ou mensagem inválidas")
+      const anexos = await resolverAnexos(ws, msg.anexos)
+      if (!id) throw new Error("conversa inválida")
+      if (!texto && !anexos.length) throw new Error("mensagem vazia")
       await responderNaConversa(
         ws,
         id,
         texto,
         msg.citacao ? String(msg.citacao) : undefined,
         msg.modelo !== undefined ? String(msg.modelo) : undefined,
+        anexos,
       )
       return
     }
@@ -137,13 +174,48 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
   }
 }
 
+async function receberAnexo(req: Request): Promise<Response> {
+  let arquivo: FormDataEntryValue | null
+  try {
+    arquivo = (await req.formData()).get("arquivo")
+  } catch {
+    return Response.json({ erro: "corpo inválido" }, { status: 400 })
+  }
+  if (!(arquivo instanceof File)) {
+    return Response.json({ erro: 'mande o arquivo no campo "arquivo"' }, { status: 400 })
+  }
+  try {
+    const anexo = await gravarAnexo(RAIZ, arquivo.name, arquivo.type, await arquivo.arrayBuffer())
+    return Response.json(anexo)
+  } catch (erro) {
+    return Response.json({ erro: (erro as Error).message }, { status: 400 })
+  }
+}
+
+async function entregarAnexo(id: string): Promise<Response> {
+  const anexo = await lerAnexo(RAIZ, id)
+  if (!anexo) return new Response("anexo não encontrado", { status: 404 })
+  return new Response(Bun.file(join(RAIZ, anexo.arquivo)), {
+    headers: {
+      "content-type": mimeDeEntrega(anexo),
+      "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(anexo.nome)}`,
+      "x-content-type-options": "nosniff",
+      "cache-control": "no-store",
+    },
+  })
+}
+
 const servidor = Bun.serve({
   hostname: "0.0.0.0",
   port: PORTA,
-  fetch(req, server) {
+  async fetch(req, server) {
     const url = new URL(req.url)
     if (url.pathname === "/ws") {
       return server.upgrade(req) ? undefined : new Response("upgrade falhou", { status: 400 })
+    }
+    if (url.pathname === "/anexo" && req.method === "POST") return receberAnexo(req)
+    if (url.pathname.startsWith("/anexo/")) {
+      return entregarAnexo(decodeURIComponent(url.pathname.slice("/anexo/".length)))
     }
     const nome = ESTATICOS[url.pathname]
     if (nome) {
