@@ -316,6 +316,20 @@ function hora(ts) {
   return data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+
+function quando(ts) {
+  const data = new Date(ts)
+  if (Number.isNaN(data.getTime())) return ""
+  const dia = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+  const hoje = new Date()
+  if (dia(data) === dia(hoje)) return hora(data)
+  const ontem = new Date(hoje)
+  ontem.setDate(hoje.getDate() - 1)
+  if (dia(data) === dia(ontem)) return "ontem"
+  return `${data.getDate()}/${MESES[data.getMonth()]}`
+}
+
 function adicionarMensagem(classe, html, ts) {
   const div = document.createElement("div")
   const marca = ts ? hora(ts) : ""
@@ -513,7 +527,11 @@ function tratar(msg) {
       el.listaConversas.innerHTML = ""
       for (const meta of msg.lista) {
         const li = document.createElement("li")
-        li.innerHTML = `<span class="ponto" style="background: var(--${meta.perfil})"></span>${escapar(meta.titulo)}`
+        const chave = meta.foco === "ticktask" ? "ticktask" : meta.perfil
+        li.innerHTML =
+          `<span class="avatar ${chave}">${INICIAIS[chave] ?? "?"}</span>` +
+          `<span class="linha"><span class="titulo">${escapar(meta.titulo)}</span>` +
+          `<time>${quando(meta.criadaEm)}</time></span>`
         li.onclick = () => {
           irParaConversa()
           enviar({ tipo: "abrir", conversaId: meta.id })

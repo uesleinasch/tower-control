@@ -91,17 +91,20 @@ body {
 #conversas h2 { font-size: 11px; text-transform: uppercase; color: var(--texto-2); padding: 0 8px 6px; }
 #lista-conversas { list-style: none; }
 #lista-conversas li {
-  padding: 12px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
   color: var(--texto-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 #lista-conversas li:hover, #lista-conversas li.ativo { background: var(--painel-2); color: var(--texto); }
-#lista-conversas li .ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+#lista-conversas li .avatar { width: 30px; height: 30px; font-size: 13px; }
+#lista-conversas .linha { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+#lista-conversas .titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lista-conversas time { flex-shrink: 0; font-size: 11px; color: var(--texto-2); }
 
 #veu,
 #nova-conversa,
@@ -554,6 +557,18 @@ body {
 
   #conversas { padding: 0; }
   #conversas h2 { display: none; }
+
+  #lista-conversas li {
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--borda);
+    font-size: 15px;
+    color: var(--texto);
+  }
+  #lista-conversas li:last-child { border-bottom: 0; }
+  #lista-conversas li .avatar { width: 46px; height: 46px; font-size: 17px; }
+  #lista-conversas .titulo { font-size: 15px; }
 
   #perfis {
     position: absolute;
