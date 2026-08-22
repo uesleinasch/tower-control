@@ -16,10 +16,11 @@ export async function criarConversa(
   raiz: string,
   perfil: Perfil,
   titulo: string,
+  modelo?: string,
 ): Promise<MetaConversa> {
   const agora = new Date()
   const id = `${agora.toISOString().slice(0, 10)}-${perfil}-${agora.getTime().toString(36)}`
-  const meta: MetaConversa = { id, perfil, titulo, criadaEm: agora.toISOString() }
+  const meta: MetaConversa = { id, perfil, titulo, criadaEm: agora.toISOString(), modelo }
   await mkdir(dirConversas(raiz), { recursive: true })
   await escreverAtomico(join(dirConversas(raiz), `${id}.meta.json`), JSON.stringify(meta, null, 2))
   return meta

@@ -7,6 +7,7 @@ interface OpcoesConversa {
   perfil: Perfil
   texto: string
   sessionId?: string
+  modelo?: string
   onChunk: (texto: string) => void
 }
 
@@ -20,6 +21,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     options: {
       cwd: opcoes.raiz,
       resume: opcoes.sessionId,
+      model: opcoes.modelo,
       systemPrompt: system,
       allowedTools: ["Read", "Write", "Edit", "Grep", "Glob"],
       permissionMode: "acceptEdits",

@@ -34,8 +34,12 @@ async function responderNaConversa(
   id: string,
   texto: string,
   citacao?: string,
+  modelo?: string,
 ): Promise<void> {
-  const meta = await lerMeta(RAIZ, id)
+  let meta = await lerMeta(RAIZ, id)
+  if (modelo !== undefined && modelo !== (meta.modelo ?? "")) {
+    meta = await atualizarMeta(RAIZ, id, { modelo: modelo || undefined })
+  }
   const agora = new Date().toISOString()
   await anexarMensagem(RAIZ, id, { role: "user", texto, ts: agora, perfil: meta.perfil, citacao })
 
@@ -48,6 +52,7 @@ async function responderNaConversa(
     perfil: meta.perfil,
     texto: textoParaModelo,
     sessionId: meta.sessionId,
+    modelo: meta.modelo,
     onChunk: (pedaco) => mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco }),
   })
 
@@ -76,7 +81,8 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const texto = String(msg.texto ?? "").trim()
       if (!PERFIS.includes(perfil) || !texto) throw new Error("perfil ou mensagem inválidos")
       const titulo = texto.length > 48 ? `${texto.slice(0, 48)}…` : texto
-      const meta = await criarConversa(RAIZ, perfil, titulo)
+      const modelo = msg.modelo ? String(msg.modelo) : undefined
+      const meta = await criarConversa(RAIZ, perfil, titulo, modelo)
       mandar(ws, { tipo: "criada", meta })
       await responderNaConversa(ws, meta.id, texto, msg.citacao ? String(msg.citacao) : undefined)
       return
@@ -85,7 +91,13 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const id = String(msg.conversaId ?? "")
       const texto = String(msg.texto ?? "").trim()
       if (!id || !texto) throw new Error("conversa ou mensagem inválidas")
-      await responderNaConversa(ws, id, texto, msg.citacao ? String(msg.citacao) : undefined)
+      await responderNaConversa(
+        ws,
+        id,
+        texto,
+        msg.citacao ? String(msg.citacao) : undefined,
+        msg.modelo !== undefined ? String(msg.modelo) : undefined,
+      )
       return
     }
     case "abrir": {

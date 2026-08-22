@@ -101,6 +101,16 @@ body {
   background: var(--painel);
   font-weight: 600;
 }
+#controles { display: flex; align-items: center; gap: 12px; }
+#seletor-modelo {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  background: var(--painel-2);
+  color: var(--texto-2);
+  padding: 5px 8px;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+}
 #estado-conexao { color: #e05a5a; font-size: 12px; }
 #estado-conexao.ok { color: #4fae7c; }
 

@@ -31,7 +31,15 @@
   <main id="principal">
     <header id="cabecalho">
       <span id="titulo-conversa">Escolha um perfil para começar</span>
-      <span id="estado-conexao" title="conexão">●</span>
+      <span id="controles">
+        <select id="seletor-modelo" title="modelo usado nas respostas desta conversa">
+          <option value="">modelo padrão</option>
+          <option value="haiku">Haiku — rápido</option>
+          <option value="sonnet">Sonnet — equilíbrio</option>
+          <option value="opus">Opus — profundo</option>
+        </select>
+        <span id="estado-conexao" title="conexão">●</span>
+      </span>
     </header>
 
     <section id="mensagens"></section>

@@ -15,6 +15,7 @@ export interface MetaConversa {
   titulo: string
   criadaEm: string
   sessionId?: string
+  modelo?: string
 }
 
 export interface Decisao {

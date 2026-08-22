@@ -20,6 +20,7 @@ const el = {
   listaConversas: document.getElementById("lista-conversas"),
   citacao: document.getElementById("citacao"),
   citacaoTexto: document.getElementById("citacao-texto"),
+  modelo: document.getElementById("seletor-modelo"),
 }
 
 function definirCitacao(texto) {
@@ -167,9 +168,9 @@ function submeter() {
     estado.respostaEmCurso = "chat"
     el.enviar.disabled = true
     if (estado.conversaId) {
-      enviar({ tipo: "mensagem", conversaId: estado.conversaId, texto, citacao })
+      enviar({ tipo: "mensagem", conversaId: estado.conversaId, texto, citacao, modelo: el.modelo.value })
     } else {
-      enviar({ tipo: "nova", perfil: estado.perfil, texto, citacao })
+      enviar({ tipo: "nova", perfil: estado.perfil, texto, citacao, modelo: el.modelo.value })
     }
     mostrarDigitando(estado.perfil)
   }
@@ -237,6 +238,7 @@ function tratar(msg) {
       estado.conversaId = msg.meta.id
       selecionarBotao(`[data-perfil="${msg.meta.perfil}"]`)
       el.titulo.textContent = `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`
+      el.modelo.value = msg.meta.modelo ?? ""
       limparTela()
       for (const m of msg.mensagens) {
         if (m.role === "user") {
