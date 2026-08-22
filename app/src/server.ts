@@ -146,7 +146,13 @@ const servidor = Bun.serve({
       return server.upgrade(req) ? undefined : new Response("upgrade falhou", { status: 400 })
     }
     const nome = ESTATICOS[url.pathname]
-    if (nome) return new Response(Bun.file(join(import.meta.dir, "..", "web", nome)))
+    if (nome) {
+      // Sem isto o navegador do celular serve UI velha do cache e a edição
+      // parece não ter surtido efeito.
+      return new Response(Bun.file(join(import.meta.dir, "..", "web", nome)), {
+        headers: { "cache-control": "no-store" },
+      })
+    }
     return new Response("não encontrado", { status: 404 })
   },
   websocket: {
