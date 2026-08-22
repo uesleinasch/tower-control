@@ -23,6 +23,15 @@
   :root { --altura-app: 100dvh; }
 }
 
+/* Enquanto o html for visible, o overflow do body é propagado para o viewport e
+   o body deixa de recortar: as telas em translateX/translateY vazam e o celular
+   arrasta até elas. Travar o html devolve o recorte ao body. */
+html {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   position: relative;
   display: flex;
