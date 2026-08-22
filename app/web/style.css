@@ -13,6 +13,7 @@
   --lucas: #4fae7c;
   --pami: #e06a8a;
   --alfred: #a9b0bf;
+  --ticktask: #f43f5e;
   --board: #5b8def;
   --decisoes: #58b7c9;
   --altura-app: 100vh;
@@ -78,6 +79,7 @@ body {
 .avatar.lucas { background: var(--lucas); }
 .avatar.pami { background: var(--pami); }
 .avatar.alfred { background: var(--alfred); }
+.avatar.ticktask { background: var(--ticktask); }
 .avatar.board { background: var(--board); }
 .avatar.decisoes { background: var(--decisoes); }
 .avatar[hidden] { display: none; }
@@ -142,6 +144,23 @@ body {
   font: 12px system-ui, sans-serif;
   cursor: pointer;
 }
+#auto {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  background: var(--painel-2);
+  color: var(--texto-2);
+  padding: 5px 10px;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+#auto[hidden] { display: none; }
+#auto[aria-pressed="true"] {
+  background: var(--alfred);
+  border-color: var(--alfred);
+  color: #10131a;
+  font-weight: 600;
+}
+
 #estado-conexao { color: #e05a5a; font-size: 12px; }
 #estado-conexao.ok { color: #4fae7c; }
 
@@ -232,6 +251,21 @@ body {
 .msg.permissao .acoes button[data-ok="1"] { background: var(--lucas); color: #10131a; }
 .msg.permissao .acoes button[data-ok="0"] { background: var(--painel); color: var(--texto-2); }
 .msg.permissao .acoes small { color: var(--texto-2); font-size: 12px; }
+
+.msg.comando {
+  align-self: flex-start;
+  margin-left: 38px;
+  max-width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--borda);
+  border-radius: 8px;
+  color: var(--texto-2);
+  font: 12px/1.5 ui-monospace, monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+.msg.comando::before { display: none; }
 
 .msg.erro { align-self: center; background: #3a1f24; color: #e08585; font-size: 13px; }
 .msg.aviso { align-self: center; background: var(--painel-2); color: var(--texto-2); font-size: 13px; text-align: center; }

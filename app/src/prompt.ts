@@ -70,7 +70,21 @@ Sua personalidade e sua memória estão acima; encarne-as por completo.
 ${politicaDeTamanho(perfil)}`
 }
 
-function instrucoesDoExecutor(perfil: Perfil): string {
+const FOCO_TICKTASK = `## Modo TickTask
+
+Você está registrando no TickTask, o gerenciador de tarefas do Ueslei. Use as ferramentas
+mcp__ticktask__*.
+
+- Nunca use o terminal para falar com o TickTask. Não existe CLI nem curl aqui: as
+  ferramentas mcp__ticktask__* são o único caminho.
+- Não peça confirmação de campo que dá para inferir: chame list_structure e escolha
+  projeto, status e contexto entre os que já existem.
+- Não descreva o que vai fazer antes de fazer, e não se desculpe por chamada de
+  ferramenta que deu errado — corrija em silêncio e responda o resultado.
+- Responda em uma linha, com o id do que foi criado ou alterado.
+- Se as ferramentas mcp__ticktask__* não existirem, o app está fechado. Diga isso e pare.`
+
+function instrucoesDoExecutor(perfil: Perfil, foco?: string): string {
   return `# Instruções da casa (control-tower)
 
 Você é ${NOMES[perfil]}, o executor do control-tower. Você não é conselheiro: não opina
@@ -89,7 +103,7 @@ sem ser perguntado, não sugere melhorias, não pergunta se o Ueslei quer mais a
 
 ## Tamanho da resposta
 
-${politicaDeTamanho(perfil)}`
+${politicaDeTamanho(perfil)}${foco === "ticktask" ? `\n\n${FOCO_TICKTASK}` : ""}`
 }
 
 function instrucoesParecer(perfil: Conselheiro): string {
@@ -107,10 +121,14 @@ async function lerArquivo(caminho: string): Promise<string> {
   return (await arquivo.exists()) ? (await arquivo.text()).trim() : ""
 }
 
-export async function montarSystemPrompt(raiz: string, perfil: Perfil): Promise<string> {
+export async function montarSystemPrompt(
+  raiz: string,
+  perfil: Perfil,
+  foco?: string,
+): Promise<string> {
   const perfilMd = await lerArquivo(join(raiz, "profiles", perfil, "profile.md"))
   if (!ehConselheiro(perfil)) {
-    return [perfilMd, instrucoesDoExecutor(perfil)].filter(Boolean).join("\n\n---\n\n")
+    return [perfilMd, instrucoesDoExecutor(perfil, foco)].filter(Boolean).join("\n\n---\n\n")
   }
   const memoriaMd = await lerArquivo(join(raiz, "profiles", perfil, "memory.md"))
   return [perfilMd, memoriaMd, instrucoesDaCasa(perfil)].filter(Boolean).join("\n\n---\n\n")

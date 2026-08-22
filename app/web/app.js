@@ -1,8 +1,9 @@
 "use strict"
 
 const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", alfred: "Alfred", board: "Board" }
-const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", board: "B", decisoes: "D" }
+const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", ticktask: "T", board: "B", decisoes: "D" }
 
+const EXECUTORES = ["alfred"]
 const ICONES_ANEXO = { imagem: "🖼", texto: "📄", pdf: "📕" }
 const LADO_MAXIMO = 1600
 const LIMITE_ANEXO = 10 * 1024 * 1024
@@ -16,6 +17,8 @@ const estado = {
   citacao: null,
   anexos: [],
   atalhos: [],
+  auto: false,
+  foco: null,
 }
 
 const el = {
@@ -30,6 +33,7 @@ const el = {
   citacao: document.getElementById("citacao"),
   citacaoTexto: document.getElementById("citacao-texto"),
   modelo: document.getElementById("seletor-modelo"),
+  auto: document.getElementById("auto"),
   clipe: document.getElementById("clipe"),
   pendentes: document.getElementById("pendentes"),
   atalhos: document.getElementById("atalhos"),
@@ -65,6 +69,8 @@ function focarEntrada() {
 
 function ajustarAoModo() {
   el.clipe.hidden = estado.modo !== "chat"
+  el.auto.hidden = !(estado.modo === "chat" && EXECUTORES.includes(estado.perfil))
+  el.auto.setAttribute("aria-pressed", String(estado.auto))
   limparAnexos()
   renderAtalhos()
 }
@@ -331,16 +337,24 @@ function selecionarBotao(seletor) {
 
 // ── modos ──────────────────────────────────────────────────────────
 
-function abrirPerfil(perfil) {
+function abrirPerfil(perfil, foco) {
   estado.modo = "chat"
   estado.perfil = perfil
   estado.conversaId = null
+  estado.foco = foco ?? null
+  estado.auto = false
   ajustarAoModo()
-  selecionarBotao(`[data-perfil="${perfil}"]`)
-  definirCabecalho(perfil, `Nova conversa com ${NOMES[perfil]}`)
+  selecionarBotao(foco ? `[data-foco="${foco}"]` : `[data-perfil="${perfil}"]:not([data-foco])`)
+  const rotulo = foco === "ticktask" ? "TickTask — registro direto" : `Nova conversa com ${NOMES[perfil]}`
+  definirCabecalho(foco === "ticktask" ? "ticktask" : perfil, rotulo)
   limparTela()
-  adicionarMensagem("aviso", `Você está falando com ${NOMES[perfil]}. A conversa é criada na primeira mensagem.`)
-  el.entrada.placeholder = `Mensagem para ${NOMES[perfil]}…`
+  adicionarMensagem(
+    "aviso",
+    foco === "ticktask"
+      ? "Registro direto no TickTask. Diga o que registrar; o Alfred usa as ferramentas do app."
+      : `Você está falando com ${NOMES[perfil]}. A conversa é criada na primeira mensagem.`,
+  )
+  el.entrada.placeholder = foco === "ticktask" ? "O que registrar…" : `Mensagem para ${NOMES[perfil]}…`
   irParaConversa()
   focarEntrada()
 }
@@ -398,7 +412,14 @@ function submeter() {
     limparCitacao()
     limparAnexos()
     definirEmCurso("chat")
-    const comum = { texto, citacao, anexos: ids, modelo: el.modelo.value }
+    const comum = {
+      texto,
+      citacao,
+      anexos: ids,
+      modelo: el.modelo.value,
+      auto: estado.auto,
+      foco: estado.foco ?? undefined,
+    }
     if (estado.conversaId) {
       enviar({ tipo: "mensagem", conversaId: estado.conversaId, ...comum })
     } else {
@@ -454,6 +475,10 @@ function tratar(msg) {
       cartaoDePermissao(msg)
       break
     }
+    case "comando": {
+      adicionarMensagem("comando", `▸ ${escapar(msg.comando)}`)
+      break
+    }
     case "atalhos": {
       estado.atalhos = msg.lista
       renderAtalhos()
@@ -483,9 +508,18 @@ function tratar(msg) {
       estado.modo = "chat"
       estado.perfil = msg.meta.perfil
       estado.conversaId = msg.meta.id
+      estado.auto = msg.meta.auto === true
+      estado.foco = msg.meta.foco ?? null
       ajustarAoModo()
-      selecionarBotao(`[data-perfil="${msg.meta.perfil}"]`)
-      definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
+      selecionarBotao(
+        estado.foco
+          ? `[data-foco="${estado.foco}"]`
+          : `[data-perfil="${msg.meta.perfil}"]:not([data-foco])`,
+      )
+      definirCabecalho(
+        estado.foco === "ticktask" ? "ticktask" : msg.meta.perfil,
+        `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`,
+      )
       el.modelo.value = msg.meta.modelo ?? "haiku"
       irParaConversa()
       limparTela()
@@ -557,8 +591,13 @@ function tratar(msg) {
 // ── ligação da UI ──────────────────────────────────────────────────
 
 document.querySelectorAll(".perfil").forEach((b) => {
-  b.onclick = () => abrirPerfil(b.dataset.perfil)
+  b.onclick = () => abrirPerfil(b.dataset.perfil, b.dataset.foco)
 })
+
+el.auto.onclick = () => {
+  estado.auto = !estado.auto
+  el.auto.setAttribute("aria-pressed", String(estado.auto))
+}
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
 document.getElementById("citacao-fechar").onclick = limparCitacao

@@ -4,7 +4,7 @@ import type { ServerWebSocket } from "bun"
 import { PERFIS, type Anexo, type Perfil } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
-import { conversar, type PedidoDePermissao } from "./sessions"
+import { conversar } from "./sessions"
 import { convocarBoard } from "./board"
 import { enderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
@@ -57,13 +57,19 @@ function resolverPermissao(id: string, permitido: boolean): void {
   pendente.resolver(permitido)
 }
 
-function pedirPermissao(ws: Cliente, pedido: PedidoDePermissao): Promise<boolean> {
+// Em modo auto o comando não é barrado, mas aparece no chat: senão o auto seria caixa
+// preta e o Ueslei descobriria o que rodou pelo efeito colateral.
+function tratarComando(ws: Cliente, comando: string, aprovar: boolean): Promise<boolean> {
+  if (!aprovar) {
+    mandar(ws, { tipo: "comando", comando })
+    return Promise.resolve(true)
+  }
   const id = randomUUID()
   return new Promise((resolver) => {
     // Sem prazo, uma aba fechada deixaria o executor esperando para sempre.
     const prazo = setTimeout(() => resolverPermissao(id, false), PRAZO_PERMISSAO)
     pendentes.set(id, { ws, resolver, prazo })
-    mandar(ws, { tipo: "permissao", id, ferramenta: pedido.ferramenta, comando: pedido.comando })
+    mandar(ws, { tipo: "permissao", id, comando })
   })
 }
 
@@ -74,10 +80,14 @@ async function responderNaConversa(
   citacao?: string,
   modelo?: string,
   anexos: Anexo[] = [],
+  auto?: boolean,
 ): Promise<void> {
   let meta = await lerMeta(RAIZ, id)
   if (modelo !== undefined && modelo !== (meta.modelo ?? "")) {
     meta = await atualizarMeta(RAIZ, id, { modelo: modelo || undefined })
+  }
+  if (auto !== undefined && auto !== (meta.auto ?? false)) {
+    meta = await atualizarMeta(RAIZ, id, { auto })
   }
   const agora = new Date().toISOString()
   await anexarMensagem(RAIZ, id, {
@@ -103,8 +113,10 @@ async function responderNaConversa(
     texto: textoParaModelo,
     sessionId: meta.sessionId,
     modelo: meta.modelo,
+    auto: meta.auto,
+    foco: meta.foco,
     onChunk: (pedaco) => mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco }),
-    onPermissao: (pedido) => pedirPermissao(ws, pedido),
+    onComando: (comando, aprovar) => tratarComando(ws, comando, aprovar),
   })
 
   await anexarMensagem(RAIZ, id, {
@@ -147,7 +159,10 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const base = texto || anexos[0]!.nome
       const titulo = base.length > 48 ? `${base.slice(0, 48)}…` : base
       const modelo = msg.modelo ? String(msg.modelo) : undefined
-      const meta = await criarConversa(RAIZ, perfil, titulo, modelo)
+      const meta = await criarConversa(RAIZ, perfil, titulo, modelo, {
+        auto: msg.auto === true ? true : undefined,
+        foco: msg.foco === "ticktask" ? "ticktask" : undefined,
+      })
       mandar(ws, { tipo: "criada", meta })
       await responderNaConversa(
         ws,
@@ -172,6 +187,7 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
         msg.citacao ? String(msg.citacao) : undefined,
         msg.modelo !== undefined ? String(msg.modelo) : undefined,
         anexos,
+        msg.auto !== undefined ? msg.auto === true : undefined,
       )
       return
     }

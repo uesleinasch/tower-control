@@ -1,15 +1,33 @@
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
 import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
+import { servidorTickTask } from "./ticktask"
 
 // allowedTools é lista de AUTO-APROVADAS, não de disponíveis. Pôr "Bash" aqui faria o
 // canUseTool ser pulado e o comando rodar sem ninguém aprovar.
 const AUTO_APROVADAS = ["Read", "Write", "Edit", "Grep", "Glob"]
 
-export interface PedidoDePermissao {
-  ferramenta: string
-  comando: string
-}
+// Nomeadas uma a uma porque não se sabe se allowedTools casa prefixo de MCP.
+const FERRAMENTAS_TICKTASK = [
+  "mcp__ticktask",
+  "mcp__ticktask__server_info",
+  "mcp__ticktask__list_structure",
+  "mcp__ticktask__manage_structure",
+  "mcp__ticktask__search_tasks",
+  "mcp__ticktask__get_task",
+  "mcp__ticktask__create_task",
+  "mcp__ticktask__update_task",
+  "mcp__ticktask__bulk_update_tasks",
+  "mcp__ticktask__delete_tasks",
+  "mcp__ticktask__read_notes",
+  "mcp__ticktask__write_notes",
+  "mcp__ticktask__organize_overview",
+  "mcp__ticktask__agenda",
+  "mcp__ticktask__plan_day",
+  "mcp__ticktask__timer",
+  "mcp__ticktask__time_report",
+  "mcp__ticktask__weekly_review",
+]
 
 interface OpcoesConversa {
   raiz: string
@@ -17,8 +35,10 @@ interface OpcoesConversa {
   texto: string
   sessionId?: string
   modelo?: string
+  auto?: boolean
+  foco?: "ticktask"
   onChunk: (texto: string) => void
-  onPermissao?: (pedido: PedidoDePermissao) => Promise<boolean>
+  onComando?: (comando: string, aprovar: boolean) => Promise<boolean>
 }
 
 // O canUseTool chega como control request, e control request só existe em modo de
@@ -34,8 +54,11 @@ async function* comoStream(texto: string): AsyncIterable<SDKUserMessage> {
 // Hook, e não canUseTool: um PreToolUse vindo de settings (o rtk casa "Bash") sombreia
 // o callback, e o próprio SDK avisa que para barrar toda chamada o caminho é o hook.
 // Comando sem canal de aprovação é negado — nunca liberado por omissão.
+// Em modo auto o hook continua registrado e responde allow: sem hook nenhum, o Bash fica
+// bloqueado em vez de liberado.
 function hookDeComando(
-  onPermissao?: (pedido: PedidoDePermissao) => Promise<boolean>,
+  auto: boolean,
+  onComando?: (comando: string, aprovar: boolean) => Promise<boolean>,
 ): NonNullable<Parameters<typeof query>[0]["options"]>["hooks"] {
   return {
     PreToolUse: [
@@ -45,9 +68,7 @@ function hookDeComando(
           async (entrada) => {
             const bruto = entrada as { tool_input?: { command?: unknown } }
             const comando = String(bruto.tool_input?.command ?? "")
-            const liberado = onPermissao
-              ? await onPermissao({ ferramenta: "Bash", comando })
-              : false
+            const liberado = onComando ? await onComando(comando, !auto) : false
             return {
               hookSpecificOutput: {
                 hookEventName: "PreToolUse" as const,
@@ -68,8 +89,9 @@ function hookDeComando(
 }
 
 export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string; sessionId?: string }> {
-  const system = await montarSystemPrompt(opcoes.raiz, opcoes.perfil)
+  const system = await montarSystemPrompt(opcoes.raiz, opcoes.perfil, opcoes.foco)
   const conselheiro = ehConselheiro(opcoes.perfil)
+  const mcp = conselheiro ? undefined : await servidorTickTask()
   let acumulado = ""
   let sessionId = opcoes.sessionId
 
@@ -80,11 +102,12 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       resume: opcoes.sessionId,
       model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
-      allowedTools: AUTO_APROVADAS,
+      allowedTools: mcp ? [...AUTO_APROVADAS, ...FERRAMENTAS_TICKTASK] : AUTO_APROVADAS,
+      mcpServers: mcp,
       // Executor fica em "default" para o canUseTool decidir tudo explicitamente, em vez
       // de depender de como acceptEdits e canUseTool interagem entre si.
       permissionMode: conselheiro ? "acceptEdits" : "default",
-      hooks: conselheiro ? undefined : hookDeComando(opcoes.onPermissao),
+      hooks: conselheiro ? undefined : hookDeComando(opcoes.auto === true, opcoes.onComando),
       includePartialMessages: true,
     },
   })) {

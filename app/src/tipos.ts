@@ -40,6 +40,8 @@ export interface MetaConversa {
   criadaEm: string
   sessionId?: string
   modelo?: string
+  auto?: boolean
+  foco?: "ticktask"
 }
 
 export interface Decisao {
