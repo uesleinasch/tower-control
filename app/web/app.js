@@ -102,31 +102,45 @@ function formatar(texto) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
 }
 
-function adicionarMensagem(classe, html) {
+function hora(ts) {
+  const data = ts instanceof Date ? ts : new Date(ts)
+  if (Number.isNaN(data.getTime())) return ""
+  return data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+}
+
+function adicionarMensagem(classe, html, ts) {
   const div = document.createElement("div")
-  div.className = `msg ${classe}`
-  div.innerHTML = html
+  const marca = ts ? hora(ts) : ""
+  div.className = marca ? `msg ${classe} com-hora` : `msg ${classe}`
+  div.innerHTML = marca ? `${html}<time class="hora">${marca}</time>` : html
   el.mensagens.appendChild(div)
   el.mensagens.scrollTop = el.mensagens.scrollHeight
   return div
 }
 
-function mensagemDoPerfil(perfil, texto, comAutor = true) {
-  const autor = comAutor
-    ? `<span class="autor ${perfil}">${NOMES[perfil] ?? perfil}</span>`
+function mensagemDoUsuario(texto, citacao, ts) {
+  const cabeca = citacao ? blocoCitacao(citacao) : ""
+  return adicionarMensagem("usuario", `${cabeca}<span class="corpo">${escapar(texto)}</span>`, ts)
+}
+
+function mensagemDoPerfil(perfil, texto, comAutor = true, ts = new Date()) {
+  const cabeca = comAutor
+    ? `<span class="avatar avatar-balao ${perfil}">${INICIAIS[perfil] ?? "?"}</span>` +
+      `<span class="autor ${perfil}">${NOMES[perfil] ?? perfil}</span>`
     : ""
   const div = adicionarMensagem(
-    "perfil-msg",
-    `${autor}<span class="corpo">${formatar(texto)}</span>`,
+    comAutor ? "perfil-msg inicio-grupo" : "perfil-msg",
+    `${cabeca}<span class="corpo">${formatar(texto)}</span>`,
+    ts,
   )
   return div.querySelector(".corpo")
 }
 
 const SEPARADOR_BALAO = /\n\s*-{3,}\s*\n/
 
-function balcoesDoPerfil(perfil, texto) {
+function balcoesDoPerfil(perfil, texto, ts) {
   const partes = texto.split(SEPARADOR_BALAO).map((p) => p.trim()).filter(Boolean)
-  partes.forEach((parte, i) => mensagemDoPerfil(perfil, parte, i === 0))
+  partes.forEach((parte, i) => mensagemDoPerfil(perfil, parte, i === 0, ts))
 }
 
 function limparTela() {
@@ -186,7 +200,7 @@ function submeter() {
   el.entrada.value = ""
 
   if (estado.modo === "board") {
-    adicionarMensagem("usuario", escapar(texto))
+    mensagemDoUsuario(texto, null, new Date())
     estado.respostaEmCurso = "board"
     el.enviar.disabled = true
     adicionarMensagem("aviso", "Board convocado — colhendo pareceres…")
@@ -196,8 +210,7 @@ function submeter() {
 
   if (estado.modo === "chat" && estado.perfil) {
     const citacao = estado.citacao ?? undefined
-    const html = (citacao ? blocoCitacao(citacao) : "") + escapar(texto)
-    adicionarMensagem("usuario", html)
+    mensagemDoUsuario(texto, citacao, new Date())
     limparCitacao()
     estado.respostaEmCurso = "chat"
     el.enviar.disabled = true
@@ -221,7 +234,10 @@ function mostrarDigitando(perfil) {
   if (!indicadorDigitando) {
     indicadorDigitando = document.createElement("div")
     indicadorDigitando.className = "msg digitando"
-    indicadorDigitando.innerHTML = `<span class="autor ${perfil}">${NOMES[perfil] ?? ""}</span><span class="pontos"><i></i><i></i><i></i></span>`
+    indicadorDigitando.innerHTML =
+      `<span class="avatar avatar-balao ${perfil}">${INICIAIS[perfil] ?? "?"}</span>` +
+      `<span class="autor ${perfil}">${NOMES[perfil] ?? ""}</span>` +
+      `<span class="pontos"><i></i><i></i><i></i></span>`
   }
   el.mensagens.appendChild(indicadorDigitando)
   el.mensagens.scrollTop = el.mensagens.scrollHeight
@@ -280,9 +296,9 @@ function tratar(msg) {
       limparTela()
       for (const m of msg.mensagens) {
         if (m.role === "user") {
-          adicionarMensagem("usuario", (m.citacao ? blocoCitacao(m.citacao) : "") + escapar(m.texto))
+          mensagemDoUsuario(m.texto, m.citacao, m.ts)
         } else {
-          balcoesDoPerfil(m.perfil, m.texto)
+          balcoesDoPerfil(m.perfil, m.texto, m.ts)
         }
       }
       break
@@ -329,7 +345,7 @@ function tratar(msg) {
     }
     case "decisao": {
       limparTela()
-      adicionarMensagem("perfil-msg", formatar(msg.conteudo))
+      adicionarMensagem("perfil-msg documento", formatar(msg.conteudo))
       const voltar = adicionarMensagem("aviso", "← voltar para a lista")
       voltar.style.cursor = "pointer"
       voltar.onclick = () => enviar({ tipo: "decisoes" })
