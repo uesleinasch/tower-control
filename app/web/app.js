@@ -552,6 +552,18 @@ function tratar(msg) {
       }
       break
     }
+    case "excluida": {
+      if (estado.conversaId === msg.id) {
+        estado.conversaId = null
+        estado.perfil = null
+        estado.foco = null
+        limparTela()
+        selecionarBotao(null)
+        definirCabecalho(null, "Escolha um perfil para começar")
+        irParaLista()
+      }
+      break
+    }
     case "criada": {
       estado.conversaId = msg.meta.id
       definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
@@ -669,9 +681,9 @@ window.addEventListener("popstate", () => {
 // ── menu do balão: toque longo no celular, clique direito no desktop ──
 
 const menu = document.getElementById("menu-balao")
+const menuConversa = document.getElementById("menu-conversa")
 let balaoDoMenu = null
-let toqueLongo = null
-let inicioToque = null
+let conversaDoMenu = null
 
 const textoDoBalao = (balao) => balao?.querySelector(".corpo")?.textContent.trim() ?? ""
 
@@ -682,9 +694,7 @@ function abrirMenu(balao, x, y) {
   balao.classList.add("pressionado")
   menu.querySelector('[data-acao="responder"]').hidden = estado.modo !== "chat"
   menu.hidden = false
-  const limite = (v, tamanho, total) => Math.min(Math.max(8, v), total - tamanho - 8)
-  menu.style.left = `${limite(x, menu.offsetWidth, window.innerWidth)}px`
-  menu.style.top = `${limite(y, menu.offsetHeight, window.innerHeight)}px`
+  posicionarMenu(menu, x, y)
 }
 
 function fecharMenu() {
@@ -693,10 +703,59 @@ function fecharMenu() {
   menu.hidden = true
 }
 
-function cancelarToque() {
-  clearTimeout(toqueLongo)
-  toqueLongo = null
-  inicioToque = null
+function fecharMenuConversa() {
+  document.querySelector("#lista-conversas li.pressionado")?.classList.remove("pressionado")
+  conversaDoMenu = null
+  menuConversa.hidden = true
+}
+
+function fecharMenus() {
+  fecharMenu()
+  fecharMenuConversa()
+}
+
+function posicionarMenu(alvo, x, y) {
+  const limite = (v, tamanho, total) => Math.min(Math.max(8, v), total - tamanho - 8)
+  alvo.style.left = `${limite(x, alvo.offsetWidth, window.innerWidth)}px`
+  alvo.style.top = `${limite(y, alvo.offsetHeight, window.innerHeight)}px`
+}
+
+// Mesmo gesto do balão servindo a lista: toque longo no celular, clique direito
+// no desktop.
+function ligarToqueLongo(container, achar, aoAbrir) {
+  let timer = null
+  let inicio = null
+  const cancelar = () => {
+    clearTimeout(timer)
+    timer = null
+    inicio = null
+  }
+  container.addEventListener("pointerdown", (ev) => {
+    if (ev.pointerType === "mouse" && ev.button !== 0) return
+    const alvo = achar(ev)
+    if (!alvo) return
+    inicio = { x: ev.clientX, y: ev.clientY }
+    timer = setTimeout(() => {
+      timer = null
+      aoAbrir(alvo, ev.clientX, ev.clientY)
+    }, 450)
+  })
+  container.addEventListener("pointermove", (ev) => {
+    if (!timer || !inicio) return
+    if (Math.hypot(ev.clientX - inicio.x, ev.clientY - inicio.y) > 10) cancelar()
+  })
+  container.addEventListener("pointerup", cancelar)
+  container.addEventListener("pointercancel", cancelar)
+  container.addEventListener("scroll", () => {
+    cancelar()
+    fecharMenus()
+  })
+  container.addEventListener("contextmenu", (ev) => {
+    const alvo = achar(ev)
+    if (!alvo) return
+    ev.preventDefault()
+    aoAbrir(alvo, ev.clientX, ev.clientY)
+  })
 }
 
 // Fora de contexto seguro navigator.clipboard não existe, e este app roda em
@@ -722,37 +781,11 @@ async function copiar(texto) {
   if (!copiou) adicionarMensagem("aviso", "Não consegui copiar para a área de transferência.")
 }
 
-const balaoAlvo = (ev) => ev.target.closest(".msg.perfil-msg:not(.documento)")
-
-el.mensagens.addEventListener("pointerdown", (ev) => {
-  if (ev.pointerType === "mouse" && ev.button !== 0) return
-  const balao = balaoAlvo(ev)
-  if (!balao) return
-  inicioToque = { x: ev.clientX, y: ev.clientY }
-  toqueLongo = setTimeout(() => {
-    toqueLongo = null
-    abrirMenu(balao, ev.clientX, ev.clientY)
-  }, 450)
-})
-
-el.mensagens.addEventListener("pointermove", (ev) => {
-  if (!toqueLongo || !inicioToque) return
-  if (Math.hypot(ev.clientX - inicioToque.x, ev.clientY - inicioToque.y) > 10) cancelarToque()
-})
-
-el.mensagens.addEventListener("pointerup", cancelarToque)
-el.mensagens.addEventListener("pointercancel", cancelarToque)
-el.mensagens.addEventListener("scroll", () => {
-  cancelarToque()
-  fecharMenu()
-})
-
-el.mensagens.addEventListener("contextmenu", (ev) => {
-  const balao = balaoAlvo(ev)
-  if (!balao) return
-  ev.preventDefault()
-  abrirMenu(balao, ev.clientX, ev.clientY)
-})
+ligarToqueLongo(
+  el.mensagens,
+  (ev) => ev.target.closest(".msg.perfil-msg:not(.documento)"),
+  abrirMenu,
+)
 
 menu.addEventListener("click", (ev) => {
   const acao = ev.target.closest("button")?.dataset.acao
@@ -761,6 +794,62 @@ menu.addEventListener("click", (ev) => {
   if (!texto) return
   if (acao === "responder") definirCitacao(texto)
   if (acao === "copiar") copiar(texto)
+})
+
+// ── menu da conversa e confirmação ─────────────────────────────────
+
+const confirmacao = document.getElementById("confirmacao")
+const confirmacaoTexto = document.getElementById("confirmacao-texto")
+let responderConfirmacao = null
+
+function fecharConfirmacao(resposta) {
+  if (!responderConfirmacao) return
+  const responder = responderConfirmacao
+  responderConfirmacao = null
+  confirmacao.hidden = true
+  responder(resposta)
+}
+
+function confirmar(texto) {
+  fecharConfirmacao(false)
+  confirmacaoTexto.textContent = texto
+  confirmacao.hidden = false
+  return new Promise((resolve) => {
+    responderConfirmacao = resolve
+  })
+}
+
+document.getElementById("confirmacao-sim").onclick = () => fecharConfirmacao(true)
+document.getElementById("confirmacao-nao").onclick = () => fecharConfirmacao(false)
+confirmacao.addEventListener("click", (ev) => {
+  if (ev.target === confirmacao) fecharConfirmacao(false)
+})
+
+function abrirMenuConversa(li, x, y) {
+  if (!li.dataset.id) return
+  fecharMenus()
+  conversaDoMenu = { id: li.dataset.id, titulo: li.querySelector(".titulo")?.textContent ?? "" }
+  li.classList.add("pressionado")
+  menuConversa.hidden = false
+  posicionarMenu(menuConversa, x, y)
+}
+
+ligarToqueLongo(
+  document.getElementById("conversas"),
+  (ev) => ev.target.closest("#lista-conversas li"),
+  abrirMenuConversa,
+)
+
+menuConversa.addEventListener("click", async (ev) => {
+  const acao = ev.target.closest("button")?.dataset.acao
+  const alvo = conversaDoMenu
+  fecharMenuConversa()
+  if (acao !== "excluir" || !alvo) return
+  const apagar = await confirmar(
+    `Excluir "${alvo.titulo}"? Somem a transcrição e os anexos desta conversa. ` +
+      "A memória do perfil não é afetada.",
+  )
+  if (apagar) enviar({ tipo: "excluir", conversaId: alvo.id })
 })
 
 // ── menu do clipe ──────────────────────────────────────────────────
@@ -808,6 +897,7 @@ document.addEventListener(
   "pointerdown",
   (ev) => {
     if (!menu.hidden && !menu.contains(ev.target)) fecharMenu()
+    if (!menuConversa.hidden && !menuConversa.contains(ev.target)) fecharMenuConversa()
     if (!menuAnexo.hidden && !menuAnexo.contains(ev.target) && !el.clipe.contains(ev.target)) {
       fecharMenuAnexo()
     }
@@ -816,8 +906,9 @@ document.addEventListener(
 )
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return
-  fecharMenu()
+  fecharMenus()
   fecharMenuAnexo()
+  fecharConfirmacao(false)
   fecharFolha()
 })
 

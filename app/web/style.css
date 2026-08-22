@@ -16,6 +16,7 @@
   --ticktask: #f43f5e;
   --board: #5b8def;
   --decisoes: #58b7c9;
+  --perigo: #e05a5a;
   --altura-app: 100vh;
 }
 
@@ -326,6 +327,43 @@ body {
 .menu button:hover,
 .menu button:active { background: var(--painel); }
 .menu button[hidden] { display: none; }
+.menu button.perigo { color: var(--perigo); }
+
+#lista-conversas li.pressionado { background: var(--painel-2); color: var(--texto); }
+
+#confirmacao {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+}
+#confirmacao[hidden] { display: none; }
+#confirmacao .caixa {
+  width: 100%;
+  max-width: 360px;
+  padding: 18px;
+  border: 1px solid var(--borda);
+  border-radius: 14px;
+  background: var(--painel-2);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+#confirmacao p { margin-bottom: 16px; font-size: 14px; }
+#confirmacao .acoes { display: flex; justify-content: flex-end; gap: 8px; }
+#confirmacao button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  cursor: pointer;
+}
+#confirmacao button:hover { background: var(--painel); }
+#confirmacao button.perigo { border-color: var(--perigo); color: var(--perigo); }
 
 #citacao {
   display: flex;
