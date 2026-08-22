@@ -21,12 +21,14 @@
     </header>
 
     <nav id="perfis">
+      <h2 class="folha-titulo">Nova conversa</h2>
       <button class="perfil" data-perfil="poe"><span class="avatar poe">P</span><span class="nome">Poe<small>o amigo</small></span></button>
       <button class="perfil" data-perfil="nati"><span class="avatar nati">N</span><span class="nome">Nati<small>engenheira sênior</small></span></button>
       <button class="perfil" data-perfil="lucas"><span class="avatar lucas">L</span><span class="nome">Lucas<small>o gestor</small></span></button>
       <button class="perfil" data-perfil="pami"><span class="avatar pami">P</span><span class="nome">Pami<small>a projetista</small></span></button>
       <button class="perfil" data-perfil="alfred"><span class="avatar alfred">A</span><span class="nome">Alfred<small>executor de tarefas</small></span></button>
       <button class="perfil" data-perfil="alfred" data-foco="ticktask"><span class="avatar ticktask">T</span><span class="nome">TickTask<small>registro direto</small></span></button>
+      <span class="divisor-perfis" role="separator"></span>
       <button id="botao-board"><span class="avatar board">B</span><span class="nome">Convocar board<small>deliberação em conselho</small></span></button>
       <button id="botao-decisoes"><span class="avatar decisoes">D</span><span class="nome">Decisões<small>registro e consulta</small></span></button>
     </nav>
@@ -35,6 +37,16 @@
       <h2>Conversas</h2>
       <ul id="lista-conversas"></ul>
     </section>
+
+    <div id="veu"></div>
+
+    <button id="nova-conversa" aria-label="Nova conversa" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none"
+           stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 20h4L19 9a2.5 2.5 0 00-3.5-3.5L4.5 16.5 4 20z" />
+        <path d="M14.5 6.5l3 3" />
+      </svg>
+    </button>
   </aside>
 
   <main id="principal">

@@ -37,16 +37,41 @@ const el = {
   clipe: document.getElementById("clipe"),
   pendentes: document.getElementById("pendentes"),
   atalhos: document.getElementById("atalhos"),
+  veu: document.getElementById("veu"),
+  fab: document.getElementById("nova-conversa"),
 }
 
 // ── telas ──────────────────────────────────────────────────────────
 
 const compacto = () => window.matchMedia("(max-width: 899px)").matches
 
+function ocultarFolha() {
+  delete document.body.dataset.folha
+  el.fab.setAttribute("aria-expanded", "false")
+}
+
+function abrirFolha() {
+  if (document.body.dataset.folha === "aberta") return
+  document.body.dataset.folha = "aberta"
+  el.fab.setAttribute("aria-expanded", "true")
+  if (compacto()) history.pushState({ tela: "lista", folha: true }, "")
+}
+
+function fecharFolha() {
+  if (document.body.dataset.folha !== "aberta") return
+  ocultarFolha()
+  if (history.state?.folha) history.back()
+}
+
 function irParaConversa() {
+  ocultarFolha()
   if (document.body.dataset.tela === "conversa") return
   document.body.dataset.tela = "conversa"
-  if (compacto()) history.pushState({ tela: "conversa" }, "")
+  if (!compacto()) return
+  // Trocar a entrada da folha pela da conversa deixa um único "voltar" entre
+  // a conversa e a lista; um history.back() aqui correria com o pushState.
+  if (history.state?.folha) history.replaceState({ tela: "conversa" }, "")
+  else history.pushState({ tela: "conversa" }, "")
 }
 
 function irParaLista() {
@@ -602,10 +627,13 @@ document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
 document.getElementById("citacao-fechar").onclick = limparCitacao
 el.voltar.onclick = irParaLista
+el.fab.onclick = () => (document.body.dataset.folha === "aberta" ? fecharFolha() : abrirFolha())
+el.veu.onclick = fecharFolha
 
 document.body.dataset.tela = "lista"
 history.replaceState({ tela: "lista" }, "")
 window.addEventListener("popstate", () => {
+  if (!history.state?.folha) ocultarFolha()
   document.body.dataset.tela = history.state?.tela === "conversa" ? "conversa" : "lista"
 })
 
@@ -761,6 +789,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape") return
   fecharMenu()
   fecharMenuAnexo()
+  fecharFolha()
 })
 
 el.enviar.onclick = submeter

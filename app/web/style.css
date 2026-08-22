@@ -103,6 +103,12 @@ body {
 #lista-conversas li:hover, #lista-conversas li.ativo { background: var(--painel-2); color: var(--texto); }
 #lista-conversas li .ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
 
+#veu,
+#nova-conversa,
+.folha-titulo { display: none; }
+
+.divisor-perfis { display: block; height: 1px; margin: 6px 8px; background: var(--borda); }
+
 #principal { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--fundo); }
 
 #cabecalho {
@@ -546,6 +552,70 @@ body {
   body[data-tela="lista"] #principal { transform: translateX(100%); }
   body[data-tela="conversa"] #lateral { transform: translateX(-25%); }
 
+  #conversas { padding: 0; }
+  #conversas h2 { display: none; }
+
+  #perfis {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    max-height: 72%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px 8px calc(12px + env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 18px 18px 0 0;
+    background: var(--painel-2);
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
+    transform: translateY(110%);
+    transition: transform 0.22s ease;
+  }
+  body[data-folha="aberta"] #perfis { transform: none; }
+
+  #perfis button { min-height: 56px; }
+  #perfis button:hover { background: transparent; }
+
+  .folha-titulo {
+    display: block;
+    padding: 10px 10px 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--texto-2);
+  }
+
+  #veu {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  body[data-folha="aberta"] #veu { opacity: 1; pointer-events: auto; }
+
+  #nova-conversa {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    right: 18px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    z-index: 4;
+    width: 56px;
+    height: 56px;
+    border: 0;
+    border-radius: 18px;
+    background: var(--acento);
+    color: #10131a;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+  }
+  #nova-conversa:active { transform: scale(0.94); }
+
   #voltar { display: grid; place-items: center; }
 
   #cabecalho {
@@ -567,5 +637,5 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #lateral, #principal { transition: none; }
+  #lateral, #principal, #perfis, #veu { transition: none; }
 }
