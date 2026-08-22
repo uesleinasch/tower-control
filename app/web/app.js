@@ -149,13 +149,46 @@ function submeter() {
     } else {
       enviar({ tipo: "nova", perfil: estado.perfil, texto })
     }
+    mostrarDigitando(estado.perfil)
   }
 }
 
 // ── recepção ───────────────────────────────────────────────────────
 
-let bolhasStreaming = []
 let textoStreaming = ""
+let partesRenderizadas = 0
+let perfilStreaming = null
+let indicadorDigitando = null
+
+function mostrarDigitando(perfil) {
+  if (!indicadorDigitando) {
+    indicadorDigitando = document.createElement("div")
+    indicadorDigitando.className = "msg digitando"
+    indicadorDigitando.innerHTML = `<span class="autor ${perfil}">${NOMES[perfil] ?? ""}</span><span class="pontos"><i></i><i></i><i></i></span>`
+  }
+  el.mensagens.appendChild(indicadorDigitando)
+  el.mensagens.scrollTop = el.mensagens.scrollHeight
+}
+
+function esconderDigitando() {
+  indicadorDigitando?.remove()
+  indicadorDigitando = null
+}
+
+function renderizarBlocosFechados(partes) {
+  while (partesRenderizadas < partes.length) {
+    const parte = partes[partesRenderizadas].trim()
+    if (parte) mensagemDoPerfil(perfilStreaming, parte, partesRenderizadas === 0)
+    partesRenderizadas++
+  }
+}
+
+function encerrarStreaming() {
+  esconderDigitando()
+  textoStreaming = ""
+  partesRenderizadas = 0
+  perfilStreaming = null
+}
 
 function tratar(msg) {
   switch (msg.tipo) {
@@ -190,19 +223,16 @@ function tratar(msg) {
       break
     }
     case "chunk": {
-      if (!bolhasStreaming.length) textoStreaming = ""
+      perfilStreaming = msg.perfil
       textoStreaming += msg.texto
       const partes = textoStreaming.split(SEPARADOR_BALAO)
-      partes.forEach((parte, i) => {
-        if (!bolhasStreaming[i]) bolhasStreaming[i] = mensagemDoPerfil(msg.perfil, "", i === 0)
-        bolhasStreaming[i].innerHTML = formatar(parte.trim())
-      })
-      el.mensagens.scrollTop = el.mensagens.scrollHeight
+      renderizarBlocosFechados(partes.slice(0, -1))
+      mostrarDigitando(msg.perfil)
       break
     }
     case "fim": {
-      bolhasStreaming = []
-      textoStreaming = ""
+      if (perfilStreaming) renderizarBlocosFechados(textoStreaming.split(SEPARADOR_BALAO))
+      encerrarStreaming()
       estado.respostaEmCurso = null
       el.enviar.disabled = false
       break
@@ -242,7 +272,7 @@ function tratar(msg) {
     }
     case "erro": {
       adicionarMensagem("erro", escapar(msg.mensagem))
-      bolhasStreaming = []
+      encerrarStreaming()
       estado.respostaEmCurso = null
       el.enviar.disabled = false
       break
