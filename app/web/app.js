@@ -378,11 +378,112 @@ window.addEventListener("popstate", () => {
   document.body.dataset.tela = history.state?.tela === "conversa" ? "conversa" : "lista"
 })
 
-el.mensagens.addEventListener("click", (ev) => {
-  if (estado.modo !== "chat") return
-  const balao = ev.target.closest(".msg.perfil-msg")
-  const corpo = balao?.querySelector(".corpo")
-  if (corpo?.textContent.trim()) definirCitacao(corpo.textContent.trim())
+// ── menu do balão: toque longo no celular, clique direito no desktop ──
+
+const menu = document.getElementById("menu-balao")
+let balaoDoMenu = null
+let toqueLongo = null
+let inicioToque = null
+
+const textoDoBalao = (balao) => balao?.querySelector(".corpo")?.textContent.trim() ?? ""
+
+function abrirMenu(balao, x, y) {
+  if (!textoDoBalao(balao)) return
+  fecharMenu()
+  balaoDoMenu = balao
+  balao.classList.add("pressionado")
+  menu.querySelector('[data-acao="responder"]').hidden = estado.modo !== "chat"
+  menu.hidden = false
+  const limite = (v, tamanho, total) => Math.min(Math.max(8, v), total - tamanho - 8)
+  menu.style.left = `${limite(x, menu.offsetWidth, window.innerWidth)}px`
+  menu.style.top = `${limite(y, menu.offsetHeight, window.innerHeight)}px`
+}
+
+function fecharMenu() {
+  balaoDoMenu?.classList.remove("pressionado")
+  balaoDoMenu = null
+  menu.hidden = true
+}
+
+function cancelarToque() {
+  clearTimeout(toqueLongo)
+  toqueLongo = null
+  inicioToque = null
+}
+
+// Fora de contexto seguro navigator.clipboard não existe, e este app roda em
+// http na rede local — daí o caminho pelo textarea.
+async function copiar(texto) {
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(texto)
+      return
+    } catch {
+      /* cai no caminho abaixo */
+    }
+  }
+  const area = document.createElement("textarea")
+  area.value = texto
+  area.setAttribute("readonly", "")
+  area.style.cssText = "position: fixed; top: 0; opacity: 0;"
+  document.body.appendChild(area)
+  area.select()
+  area.setSelectionRange(0, texto.length)
+  const copiou = document.execCommand("copy")
+  area.remove()
+  if (!copiou) adicionarMensagem("aviso", "Não consegui copiar para a área de transferência.")
+}
+
+const balaoAlvo = (ev) => ev.target.closest(".msg.perfil-msg:not(.documento)")
+
+el.mensagens.addEventListener("pointerdown", (ev) => {
+  if (ev.pointerType === "mouse" && ev.button !== 0) return
+  const balao = balaoAlvo(ev)
+  if (!balao) return
+  inicioToque = { x: ev.clientX, y: ev.clientY }
+  toqueLongo = setTimeout(() => {
+    toqueLongo = null
+    abrirMenu(balao, ev.clientX, ev.clientY)
+  }, 450)
+})
+
+el.mensagens.addEventListener("pointermove", (ev) => {
+  if (!toqueLongo || !inicioToque) return
+  if (Math.hypot(ev.clientX - inicioToque.x, ev.clientY - inicioToque.y) > 10) cancelarToque()
+})
+
+el.mensagens.addEventListener("pointerup", cancelarToque)
+el.mensagens.addEventListener("pointercancel", cancelarToque)
+el.mensagens.addEventListener("scroll", () => {
+  cancelarToque()
+  fecharMenu()
+})
+
+el.mensagens.addEventListener("contextmenu", (ev) => {
+  const balao = balaoAlvo(ev)
+  if (!balao) return
+  ev.preventDefault()
+  abrirMenu(balao, ev.clientX, ev.clientY)
+})
+
+menu.addEventListener("click", (ev) => {
+  const acao = ev.target.closest("button")?.dataset.acao
+  const texto = textoDoBalao(balaoDoMenu)
+  fecharMenu()
+  if (!texto) return
+  if (acao === "responder") definirCitacao(texto)
+  if (acao === "copiar") copiar(texto)
+})
+
+document.addEventListener(
+  "pointerdown",
+  (ev) => {
+    if (!menu.hidden && !menu.contains(ev.target)) fecharMenu()
+  },
+  true,
+)
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") fecharMenu()
 })
 
 el.enviar.onclick = submeter

@@ -214,7 +214,43 @@ body {
 .msg code { background: #0c0f15; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
 .msg strong { font-weight: 700; }
 
-.msg.perfil-msg { cursor: pointer; }
+.msg.perfil-msg { cursor: context-menu; -webkit-touch-callout: none; }
+.msg.pressionado { outline: 2px solid var(--acento); outline-offset: 1px; }
+
+/* No touch a seleção nativa competiria com o toque longo; no desktop ela fica. */
+@media (hover: none) {
+  .msg.perfil-msg { -webkit-user-select: none; user-select: none; }
+}
+
+#menu-balao {
+  position: fixed;
+  z-index: 20;
+  min-width: 170px;
+  padding: 6px;
+  background: var(--painel-2);
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+#menu-balao[hidden] { display: none; }
+#menu-balao button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#menu-balao button:hover,
+#menu-balao button:active { background: var(--painel); }
+#menu-balao button[hidden] { display: none; }
 
 #citacao {
   display: flex;
@@ -230,7 +266,17 @@ body {
 }
 #citacao[hidden] { display: none; }
 #citacao-texto { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#citacao-fechar { border: 0; background: transparent; color: var(--texto-2); font-size: 16px; cursor: pointer; }
+#citacao-fechar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--texto-2);
+  font-size: 18px;
+  cursor: pointer;
+}
 
 .citacao-bloco {
   display: block;
