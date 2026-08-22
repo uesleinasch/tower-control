@@ -8,6 +8,7 @@ import { conversar } from "./sessions"
 import { convocarBoard } from "./board"
 import { enderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
+import { apagarSessao } from "./sessao-sdk"
 import {
   criarConversa,
   atualizarMeta,
@@ -15,6 +16,7 @@ import {
   anexarMensagem,
   lerMensagens,
   listarConversas,
+  excluirConversa,
 } from "./store"
 
 const RAIZ = resolve(import.meta.dir, "..", "..")
@@ -193,6 +195,14 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "permissao-resposta": {
       resolverPermissao(String(msg.id ?? ""), Boolean(msg.permitido))
+      return
+    }
+    case "excluir": {
+      const id = String(msg.conversaId ?? "")
+      const sessionId = await excluirConversa(RAIZ, id)
+      await apagarSessao(RAIZ, sessionId)
+      mandar(ws, { tipo: "excluida", id })
+      mandar(ws, { tipo: "conversas", lista: await listarConversas(RAIZ) })
       return
     }
     case "abrir": {
