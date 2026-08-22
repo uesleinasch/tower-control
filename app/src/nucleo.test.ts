@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { parseFrontmatter, linhaIndice } from "./decisions"
 import { montarPautaParecer, montarSystemPrompt, politicaDeTamanho } from "./prompt"
 import { slug } from "./board"
+import { lerAtalhos } from "./atalhos"
 import {
   classificarAnexo,
   extensaoSegura,
@@ -48,6 +49,36 @@ test("slug remove acentos e caracteres inválidos", () => {
 test("montarPautaParecer inclui contexto só quando existe", () => {
   expect(montarPautaParecer("Pauta A")).not.toContain("Contexto fornecido")
   expect(montarPautaParecer("Pauta A", "ctx")).toContain("## Contexto fornecido\n\nctx")
+})
+
+describe("lerAtalhos", () => {
+  test("separa rótulo do texto no ::", () => {
+    expect(lerAtalhos("- breve :: seja breve, só a conclusão")).toEqual([
+      { rotulo: "breve", texto: "seja breve, só a conclusão" },
+    ])
+  })
+
+  test("sem :: o texto serve de rótulo", () => {
+    expect(lerAtalhos("- valeu")).toEqual([{ rotulo: "valeu", texto: "valeu" }])
+  })
+
+  test("ignora prosa, título e linha sem texto", () => {
+    const md = [
+      "# Atalhos",
+      "",
+      "Um por linha, no formato `- rótulo :: texto`.",
+      "- breve :: seja breve",
+      "- vazio ::",
+      "",
+    ].join("\n")
+    expect(lerAtalhos(md)).toEqual([{ rotulo: "breve", texto: "seja breve" }])
+  })
+
+  test("rótulo vazio cai para o texto", () => {
+    expect(lerAtalhos("-  :: qual o risco?")).toEqual([
+      { rotulo: "qual o risco?", texto: "qual o risco?" },
+    ])
+  })
 })
 
 describe("politicaDeTamanho", () => {

@@ -2,6 +2,7 @@ import { join, resolve } from "node:path"
 import type { ServerWebSocket } from "bun"
 import { PERFIS, type Anexo, type Perfil } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
+import { carregarAtalhos } from "./atalhos"
 import { conversar } from "./sessions"
 import { convocarBoard } from "./board"
 import { enderecos } from "./rede"
@@ -228,6 +229,10 @@ const servidor = Bun.serve({
     return new Response("não encontrado", { status: 404 })
   },
   websocket: {
+    // Relido a cada conexão: editar atalhos.md e recarregar a página basta.
+    open(ws: Cliente) {
+      void carregarAtalhos(RAIZ).then((lista) => mandar(ws, { tipo: "atalhos", lista }))
+    },
     message(ws: Cliente, dados) {
       void tratar(ws, String(dados)).catch((erro: Error) => {
         mandar(ws, { tipo: "erro", mensagem: erro.message })

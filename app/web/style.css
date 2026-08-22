@@ -286,6 +286,33 @@ body {
   opacity: 0.9;
 }
 
+#atalhos {
+  display: flex;
+  gap: 8px;
+  padding: 10px 20px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#atalhos::-webkit-scrollbar { display: none; }
+#atalhos[hidden] { display: none; }
+
+#atalhos button {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--borda);
+  border-radius: 17px;
+  background: var(--painel-2);
+  color: var(--texto-2);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+#atalhos button:hover,
+#atalhos button:active { background: var(--painel); color: var(--texto); }
+#atalhos button:disabled { opacity: 0.4; cursor: default; }
+
 #pendentes {
   display: flex;
   flex-wrap: wrap;
@@ -460,6 +487,7 @@ body {
   .msg { max-width: calc(100% - 56px); }
   #citacao { margin: 0 12px; }
   #pendentes { padding: 8px 12px 0; }
+  #atalhos { padding: 8px 12px 0; }
   #composer {
     padding: 10px 12px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom));

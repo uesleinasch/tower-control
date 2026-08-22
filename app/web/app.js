@@ -15,6 +15,7 @@ const estado = {
   respostaEmCurso: null,
   citacao: null,
   anexos: [],
+  atalhos: [],
 }
 
 const el = {
@@ -31,6 +32,7 @@ const el = {
   modelo: document.getElementById("seletor-modelo"),
   clipe: document.getElementById("clipe"),
   pendentes: document.getElementById("pendentes"),
+  atalhos: document.getElementById("atalhos"),
 }
 
 // ── telas ──────────────────────────────────────────────────────────
@@ -64,6 +66,43 @@ function focarEntrada() {
 function ajustarAoModo() {
   el.clipe.hidden = estado.modo !== "chat"
   limparAnexos()
+  renderAtalhos()
+}
+
+// respostaEmCurso, o botão de enviar e os chips de atalho são o mesmo sinal; separar
+// os três deixava eles saírem de sincronia.
+function definirEmCurso(modo) {
+  estado.respostaEmCurso = modo
+  el.enviar.disabled = Boolean(modo)
+  renderAtalhos()
+}
+
+// ── atalhos ────────────────────────────────────────────────────────
+
+function usarAtalho(atalho) {
+  if (estado.respostaEmCurso) return
+  el.entrada.value = atalho.texto
+  ajustarEntrada()
+  submeter()
+}
+
+function renderAtalhos() {
+  const mostrar =
+    estado.modo === "chat" && estado.atalhos.length > 0 && !el.entrada.value.trim()
+  el.atalhos.hidden = !mostrar
+  if (!mostrar) return
+  // Reconstruir a cada tecla perderia a rolagem horizontal da faixa.
+  if (el.atalhos.childElementCount !== estado.atalhos.length) {
+    el.atalhos.innerHTML = ""
+    for (const atalho of estado.atalhos) {
+      const botao = document.createElement("button")
+      botao.textContent = atalho.rotulo
+      botao.title = atalho.texto
+      botao.onclick = () => usarAtalho(atalho)
+      el.atalhos.appendChild(botao)
+    }
+  }
+  for (const botao of el.atalhos.children) botao.disabled = Boolean(estado.respostaEmCurso)
 }
 
 // ── anexos ─────────────────────────────────────────────────────────
@@ -327,8 +366,7 @@ function submeter() {
 
   if (estado.modo === "board") {
     mensagemDoUsuario(texto, null, new Date())
-    estado.respostaEmCurso = "board"
-    el.enviar.disabled = true
+    definirEmCurso("board")
     adicionarMensagem("aviso", "Board convocado — colhendo pareceres…")
     enviar({ tipo: "board", pauta: texto })
     return
@@ -340,8 +378,7 @@ function submeter() {
     mensagemDoUsuario(texto, citacao, new Date(), anexos)
     limparCitacao()
     limparAnexos()
-    estado.respostaEmCurso = "chat"
-    el.enviar.disabled = true
+    definirEmCurso("chat")
     const comum = { texto, citacao, anexos: ids, modelo: el.modelo.value }
     if (estado.conversaId) {
       enviar({ tipo: "mensagem", conversaId: estado.conversaId, ...comum })
@@ -394,6 +431,11 @@ function encerrarStreaming() {
 
 function tratar(msg) {
   switch (msg.tipo) {
+    case "atalhos": {
+      estado.atalhos = msg.lista
+      renderAtalhos()
+      break
+    }
     case "conversas": {
       el.listaConversas.innerHTML = ""
       for (const meta of msg.lista) {
@@ -444,8 +486,7 @@ function tratar(msg) {
     case "fim": {
       if (perfilStreaming) renderizarBlocosFechados(textoStreaming.split(SEPARADOR_BALAO))
       encerrarStreaming()
-      estado.respostaEmCurso = null
-      el.enviar.disabled = false
+      definirEmCurso(null)
       break
     }
     case "board-status":
@@ -456,8 +497,7 @@ function tratar(msg) {
     case "board-sintese": {
       mensagemDoPerfil("board", msg.texto)
       adicionarMensagem("aviso", `Ata completa: ${msg.ata}`)
-      estado.respostaEmCurso = null
-      el.enviar.disabled = false
+      definirEmCurso(null)
       break
     }
     case "decisoes": {
@@ -485,8 +525,7 @@ function tratar(msg) {
     case "erro": {
       adicionarMensagem("erro", escapar(msg.mensagem))
       encerrarStreaming()
-      estado.respostaEmCurso = null
-      el.enviar.disabled = false
+      definirEmCurso(null)
       break
     }
   }
@@ -669,6 +708,7 @@ el.enviar.onclick = submeter
 function ajustarEntrada() {
   el.entrada.style.height = "auto"
   el.entrada.style.height = `${el.entrada.scrollHeight + 2}px`
+  renderAtalhos()
 }
 
 el.entrada.addEventListener("input", ajustarEntrada)
