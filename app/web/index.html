@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Control Tower</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <aside id="lateral">
+    <header id="marca">
+      <h1>Control Tower</h1>
+      <p>sala de decisões</p>
+    </header>
+
+    <nav id="perfis">
+      <button class="perfil" data-perfil="poe"><span class="avatar poe">P</span><span class="nome">Poe<small>o amigo</small></span></button>
+      <button class="perfil" data-perfil="nati"><span class="avatar nati">N</span><span class="nome">Nati<small>engenheira sênior</small></span></button>
+      <button class="perfil" data-perfil="lucas"><span class="avatar lucas">L</span><span class="nome">Lucas<small>o gestor</small></span></button>
+      <button class="perfil" data-perfil="pami"><span class="avatar pami">P</span><span class="nome">Pami<small>a projetista</small></span></button>
+      <button id="botao-board"><span class="avatar board">B</span><span class="nome">Convocar board<small>deliberação em conselho</small></span></button>
+      <button id="botao-decisoes"><span class="avatar decisoes">D</span><span class="nome">Decisões<small>registro e consulta</small></span></button>
+    </nav>
+
+    <section id="conversas">
+      <h2>Conversas</h2>
+      <ul id="lista-conversas"></ul>
+    </section>
+  </aside>
+
+  <main id="principal">
+    <header id="cabecalho">
+      <span id="titulo-conversa">Escolha um perfil para começar</span>
+      <span id="estado-conexao" title="conexão">●</span>
+    </header>
+
+    <section id="mensagens"></section>
+
+    <footer id="composer">
+      <textarea id="entrada" rows="2" placeholder="Escreva sua mensagem…"></textarea>
+      <button id="enviar">Enviar</button>
+    </footer>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
