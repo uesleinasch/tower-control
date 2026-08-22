@@ -1,7 +1,7 @@
 "use strict"
 
-const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", board: "Board" }
-const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", board: "B", decisoes: "D" }
+const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", alfred: "Alfred", board: "Board" }
+const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", board: "B", decisoes: "D" }
 
 const ICONES_ANEXO = { imagem: "🖼", texto: "📄", pdf: "📕" }
 const LADO_MAXIMO = 1600
@@ -190,6 +190,25 @@ async function anexarArquivos(lista) {
       adicionarMensagem("erro", escapar(`${bruto.name}: ${erro.message}`))
     }
   }
+}
+
+function cartaoDePermissao(msg) {
+  const cartao = adicionarMensagem(
+    "permissao",
+    `<span class="autor alfred">Alfred quer rodar um comando</span>` +
+      `<pre>${escapar(msg.comando)}</pre>` +
+      `<div class="acoes">` +
+      `<button data-ok="1">Permitir</button><button data-ok="0">Negar</button>` +
+      `</div>`,
+  )
+  const acoes = cartao.querySelector(".acoes")
+  acoes.addEventListener("click", (ev) => {
+    const botao = ev.target.closest("button")
+    if (!botao) return
+    const permitido = botao.dataset.ok === "1"
+    enviar({ tipo: "permissao-resposta", id: msg.id, permitido })
+    acoes.innerHTML = `<small>${permitido ? "permitido" : "negado"}</small>`
+  })
 }
 
 function blocoDeAnexos(anexos) {
@@ -431,6 +450,10 @@ function encerrarStreaming() {
 
 function tratar(msg) {
   switch (msg.tipo) {
+    case "permissao": {
+      cartaoDePermissao(msg)
+      break
+    }
     case "atalhos": {
       estado.atalhos = msg.lista
       renderAtalhos()

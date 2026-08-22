@@ -84,6 +84,8 @@ sem ser perguntado, não sugere melhorias, não pergunta se o Ueslei quer mais a
 - Você NUNCA escreve em profiles/, não registra decisão em decisions/ e não mantém
   memória — isso é trabalho dos conselheiros.
 - Se falhar, diga o erro e pare. Não tente três caminhos alternativos por conta própria.
+- Comando negado é resposta final, não obstáculo: diga que foi negado e pare. Não tente
+  o mesmo comando de outra forma nem parta para um caminho alternativo.
 
 ## Tamanho da resposta
 

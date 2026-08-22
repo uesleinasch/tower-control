@@ -1,9 +1,10 @@
 import { join, resolve } from "node:path"
+import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
 import { PERFIS, type Anexo, type Perfil } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
-import { conversar } from "./sessions"
+import { conversar, type PedidoDePermissao } from "./sessions"
 import { convocarBoard } from "./board"
 import { enderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
@@ -34,6 +35,36 @@ type Cliente = ServerWebSocket<undefined>
 
 function mandar(ws: Cliente, msg: Record<string, unknown>): void {
   ws.send(JSON.stringify(msg))
+}
+
+// ── permissão de comando do executor ───────────────────────────────
+
+const PRAZO_PERMISSAO = 120_000
+
+interface Pendente {
+  ws: Cliente
+  resolver: (permitido: boolean) => void
+  prazo: ReturnType<typeof setTimeout>
+}
+
+const pendentes = new Map<string, Pendente>()
+
+function resolverPermissao(id: string, permitido: boolean): void {
+  const pendente = pendentes.get(id)
+  if (!pendente) return
+  clearTimeout(pendente.prazo)
+  pendentes.delete(id)
+  pendente.resolver(permitido)
+}
+
+function pedirPermissao(ws: Cliente, pedido: PedidoDePermissao): Promise<boolean> {
+  const id = randomUUID()
+  return new Promise((resolver) => {
+    // Sem prazo, uma aba fechada deixaria o executor esperando para sempre.
+    const prazo = setTimeout(() => resolverPermissao(id, false), PRAZO_PERMISSAO)
+    pendentes.set(id, { ws, resolver, prazo })
+    mandar(ws, { tipo: "permissao", id, ferramenta: pedido.ferramenta, comando: pedido.comando })
+  })
 }
 
 async function responderNaConversa(
@@ -73,6 +104,7 @@ async function responderNaConversa(
     sessionId: meta.sessionId,
     modelo: meta.modelo,
     onChunk: (pedaco) => mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco }),
+    onPermissao: (pedido) => pedirPermissao(ws, pedido),
   })
 
   await anexarMensagem(RAIZ, id, {
@@ -141,6 +173,10 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
         msg.modelo !== undefined ? String(msg.modelo) : undefined,
         anexos,
       )
+      return
+    }
+    case "permissao-resposta": {
+      resolverPermissao(String(msg.id ?? ""), Boolean(msg.permitido))
       return
     }
     case "abrir": {
@@ -237,6 +273,11 @@ const servidor = Bun.serve({
       void tratar(ws, String(dados)).catch((erro: Error) => {
         mandar(ws, { tipo: "erro", mensagem: erro.message })
       })
+    },
+    close(ws: Cliente) {
+      for (const [id, pendente] of pendentes) {
+        if (pendente.ws === ws) resolverPermissao(id, false)
+      }
     },
   },
 })

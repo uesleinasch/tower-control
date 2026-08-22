@@ -1,6 +1,15 @@
-import { query } from "@anthropic-ai/claude-agent-sdk"
+import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
-import { MODELO_PADRAO, type Perfil } from "./tipos"
+import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
+
+// allowedTools é lista de AUTO-APROVADAS, não de disponíveis. Pôr "Bash" aqui faria o
+// canUseTool ser pulado e o comando rodar sem ninguém aprovar.
+const AUTO_APROVADAS = ["Read", "Write", "Edit", "Grep", "Glob"]
+
+export interface PedidoDePermissao {
+  ferramenta: string
+  comando: string
+}
 
 interface OpcoesConversa {
   raiz: string
@@ -9,22 +18,73 @@ interface OpcoesConversa {
   sessionId?: string
   modelo?: string
   onChunk: (texto: string) => void
+  onPermissao?: (pedido: PedidoDePermissao) => Promise<boolean>
+}
+
+// O canUseTool chega como control request, e control request só existe em modo de
+// entrada em streaming. Com prompt: string ele nunca dispara.
+async function* comoStream(texto: string): AsyncIterable<SDKUserMessage> {
+  yield {
+    type: "user",
+    message: { role: "user", content: texto },
+    parent_tool_use_id: null,
+  }
+}
+
+// Hook, e não canUseTool: um PreToolUse vindo de settings (o rtk casa "Bash") sombreia
+// o callback, e o próprio SDK avisa que para barrar toda chamada o caminho é o hook.
+// Comando sem canal de aprovação é negado — nunca liberado por omissão.
+function hookDeComando(
+  onPermissao?: (pedido: PedidoDePermissao) => Promise<boolean>,
+): NonNullable<Parameters<typeof query>[0]["options"]>["hooks"] {
+  return {
+    PreToolUse: [
+      {
+        matcher: "Bash",
+        hooks: [
+          async (entrada) => {
+            const bruto = entrada as { tool_input?: { command?: unknown } }
+            const comando = String(bruto.tool_input?.command ?? "")
+            const liberado = onPermissao
+              ? await onPermissao({ ferramenta: "Bash", comando })
+              : false
+            return {
+              hookSpecificOutput: {
+                hookEventName: "PreToolUse" as const,
+                permissionDecision: liberado ? ("allow" as const) : ("deny" as const),
+                // O texto da recusa é o que o modelo lê. Sem deixar claro que é
+                // definitivo, ele tenta variações do comando e gera vários cartões.
+                permissionDecisionReason: liberado
+                  ? "aprovado na tela"
+                  : "O Ueslei negou este comando. Não tente outro comando nem variação " +
+                    "deste: responda a ele dizendo que a execução foi negada, e pare.",
+              },
+            }
+          },
+        ],
+      },
+    ],
+  }
 }
 
 export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string; sessionId?: string }> {
   const system = await montarSystemPrompt(opcoes.raiz, opcoes.perfil)
+  const conselheiro = ehConselheiro(opcoes.perfil)
   let acumulado = ""
   let sessionId = opcoes.sessionId
 
   for await (const msg of query({
-    prompt: opcoes.texto,
+    prompt: conselheiro ? opcoes.texto : comoStream(opcoes.texto),
     options: {
       cwd: opcoes.raiz,
       resume: opcoes.sessionId,
       model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
-      allowedTools: ["Read", "Write", "Edit", "Grep", "Glob"],
-      permissionMode: "acceptEdits",
+      allowedTools: AUTO_APROVADAS,
+      // Executor fica em "default" para o canUseTool decidir tudo explicitamente, em vez
+      // de depender de como acceptEdits e canUseTool interagem entre si.
+      permissionMode: conselheiro ? "acceptEdits" : "default",
+      hooks: conselheiro ? undefined : hookDeComando(opcoes.onPermissao),
       includePartialMessages: true,
     },
   })) {
