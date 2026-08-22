@@ -35,10 +35,10 @@
       <span id="titulo-conversa">Escolha um perfil para começar</span>
       <span id="controles">
         <select id="seletor-modelo" title="modelo usado nas respostas desta conversa">
-          <option value="">modelo padrão</option>
-          <option value="haiku">Haiku — rápido</option>
-          <option value="sonnet">Sonnet — equilíbrio</option>
-          <option value="opus">Opus — profundo</option>
+          <option value="">Padrão</option>
+          <option value="haiku">Haiku</option>
+          <option value="sonnet">Sonnet</option>
+          <option value="opus">Opus</option>
         </select>
         <span id="estado-conexao" title="conexão">●</span>
       </span>
@@ -52,8 +52,12 @@
     </div>
 
     <footer id="composer">
-      <textarea id="entrada" rows="2" placeholder="Escreva sua mensagem…"></textarea>
-      <button id="enviar">Enviar</button>
+      <textarea id="entrada" rows="1" placeholder="Escreva sua mensagem…"></textarea>
+      <button id="enviar" aria-label="Enviar mensagem">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" fill="currentColor" />
+        </svg>
+      </button>
     </footer>
   </main>
 

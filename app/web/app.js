@@ -198,6 +198,7 @@ function submeter() {
   const texto = el.entrada.value.trim()
   if (!texto || estado.respostaEmCurso) return
   el.entrada.value = ""
+  ajustarEntrada()
 
   if (estado.modo === "board") {
     mensagemDoUsuario(texto, null, new Date())
@@ -385,8 +386,21 @@ el.mensagens.addEventListener("click", (ev) => {
 })
 
 el.enviar.onclick = submeter
+
+// O scrollHeight de uma caixa border-box não conta a borda; sem os 2px o campo
+// cresce um pixel a cada tecla.
+function ajustarEntrada() {
+  el.entrada.style.height = "auto"
+  el.entrada.style.height = `${el.entrada.scrollHeight + 2}px`
+}
+
+el.entrada.addEventListener("input", ajustarEntrada)
+ajustarEntrada()
+
+// No celular não existe Shift+Enter, então Enter quebra linha e o envio é só
+// pelo botão.
 el.entrada.addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter" && !ev.shiftKey) {
+  if (ev.key === "Enter" && !ev.shiftKey && !compacto()) {
     ev.preventDefault()
     submeter()
   }
