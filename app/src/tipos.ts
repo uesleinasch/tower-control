@@ -1,12 +1,24 @@
 export const PERFIS = ["poe", "nati", "lucas", "pami"] as const
 export type Perfil = (typeof PERFIS)[number]
 
+export type TipoAnexo = "imagem" | "texto" | "pdf"
+
+export interface Anexo {
+  id: string
+  nome: string
+  tipo: TipoAnexo
+  mime: string
+  bytes: number
+  arquivo: string
+}
+
 export interface Mensagem {
   role: "user" | "assistant"
   texto: string
   ts: string
   perfil: Perfil
   citacao?: string
+  anexos?: Anexo[]
 }
 
 export interface MetaConversa {
