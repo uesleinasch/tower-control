@@ -63,10 +63,21 @@ function fecharFolha() {
   if (history.state?.folha) history.back()
 }
 
+// Fora de cena a tela de conversa não é renderizada, e o scrollTop de #mensagens
+// zera quando ela volta.
+const rolarAoFim = () => {
+  el.mensagens.scrollTop = el.mensagens.scrollHeight
+}
+
+function mostrarTela(tela) {
+  document.body.dataset.tela = tela
+  if (tela === "conversa") requestAnimationFrame(rolarAoFim)
+}
+
 function irParaConversa() {
   ocultarFolha()
   if (document.body.dataset.tela === "conversa") return
-  document.body.dataset.tela = "conversa"
+  mostrarTela("conversa")
   if (!compacto()) return
   // Trocar a entrada da folha pela da conversa deixa um único "voltar" entre
   // a conversa e a lista; um history.back() aqui correria com o pushState.
@@ -75,7 +86,7 @@ function irParaConversa() {
 }
 
 function irParaLista() {
-  document.body.dataset.tela = "lista"
+  mostrarTela("lista")
   if (history.state?.tela === "conversa") history.back()
 }
 
@@ -652,7 +663,7 @@ document.body.dataset.tela = "lista"
 history.replaceState({ tela: "lista" }, "")
 window.addEventListener("popstate", () => {
   if (!history.state?.folha) ocultarFolha()
-  document.body.dataset.tela = history.state?.tela === "conversa" ? "conversa" : "lista"
+  mostrarTela(history.state?.tela === "conversa" ? "conversa" : "lista")
 })
 
 // ── menu do balão: toque longo no celular, clique direito no desktop ──

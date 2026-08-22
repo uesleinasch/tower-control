@@ -24,8 +24,6 @@ const ESTATICOS: Record<string, string> = {
   "/": "index.html",
   "/index.html": "index.html",
   "/app.js": "app.js",
-  // TEMPORÁRIO: diagnóstico do scroll horizontal (TickTask #317, item 5)
-  "/probe-largura.js": "probe-largura.js",
   "/style.css": "style.css",
   "/manifest.webmanifest": "manifest.webmanifest",
   "/icone.svg": "icone.svg",
