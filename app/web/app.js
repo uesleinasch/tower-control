@@ -1,6 +1,7 @@
 "use strict"
 
 const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", board: "Board" }
+const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", board: "B", decisoes: "D" }
 
 const estado = {
   ws: null,
@@ -16,11 +17,41 @@ const el = {
   entrada: document.getElementById("entrada"),
   enviar: document.getElementById("enviar"),
   titulo: document.getElementById("titulo-conversa"),
+  avatar: document.getElementById("avatar-conversa"),
+  voltar: document.getElementById("voltar"),
   conexao: document.getElementById("estado-conexao"),
   listaConversas: document.getElementById("lista-conversas"),
   citacao: document.getElementById("citacao"),
   citacaoTexto: document.getElementById("citacao-texto"),
   modelo: document.getElementById("seletor-modelo"),
+}
+
+// ── telas ──────────────────────────────────────────────────────────
+
+const compacto = () => window.matchMedia("(max-width: 899px)").matches
+
+function irParaConversa() {
+  if (document.body.dataset.tela === "conversa") return
+  document.body.dataset.tela = "conversa"
+  if (compacto()) history.pushState({ tela: "conversa" }, "")
+}
+
+function irParaLista() {
+  document.body.dataset.tela = "lista"
+  if (history.state?.tela === "conversa") history.back()
+}
+
+function definirCabecalho(perfil, texto) {
+  el.titulo.textContent = texto
+  el.avatar.hidden = !perfil
+  if (perfil) {
+    el.avatar.className = `avatar ${perfil}`
+    el.avatar.textContent = INICIAIS[perfil] ?? "?"
+  }
+}
+
+function focarEntrada() {
+  if (!compacto()) el.entrada.focus()
 }
 
 function definirCitacao(texto) {
@@ -114,11 +145,12 @@ function abrirPerfil(perfil) {
   estado.perfil = perfil
   estado.conversaId = null
   selecionarBotao(`[data-perfil="${perfil}"]`)
-  el.titulo.textContent = `Nova conversa com ${NOMES[perfil]}`
+  definirCabecalho(perfil, `Nova conversa com ${NOMES[perfil]}`)
   limparTela()
   adicionarMensagem("aviso", `Você está falando com ${NOMES[perfil]}. A conversa é criada na primeira mensagem.`)
   el.entrada.placeholder = `Mensagem para ${NOMES[perfil]}…`
-  el.entrada.focus()
+  irParaConversa()
+  focarEntrada()
 }
 
 function abrirBoard() {
@@ -126,21 +158,23 @@ function abrirBoard() {
   estado.perfil = null
   estado.conversaId = null
   selecionarBotao("#botao-board")
-  el.titulo.textContent = "Board — deliberação em conselho"
+  definirCabecalho("board", "Board — deliberação em conselho")
   limparTela()
   adicionarMensagem(
     "aviso",
     "Apresente a pauta. Os quatro perfis vão deliberar em paralelo e você recebe a síntese; a ata completa fica em board/minutes/.",
   )
   el.entrada.placeholder = "Pauta para o board…"
-  el.entrada.focus()
+  irParaConversa()
+  focarEntrada()
 }
 
 function abrirDecisoes() {
   estado.modo = "decisoes"
   selecionarBotao("#botao-decisoes")
-  el.titulo.textContent = "Decisões registradas"
+  definirCabecalho("decisoes", "Decisões registradas")
   limparTela()
+  irParaConversa()
   enviar({ tipo: "decisoes" })
 }
 
@@ -220,7 +254,10 @@ function tratar(msg) {
       for (const meta of msg.lista) {
         const li = document.createElement("li")
         li.innerHTML = `<span class="ponto" style="background: var(--${meta.perfil})"></span>${escapar(meta.titulo)}`
-        li.onclick = () => enviar({ tipo: "abrir", conversaId: meta.id })
+        li.onclick = () => {
+          irParaConversa()
+          enviar({ tipo: "abrir", conversaId: meta.id })
+        }
         li.dataset.id = meta.id
         el.listaConversas.appendChild(li)
       }
@@ -228,7 +265,7 @@ function tratar(msg) {
     }
     case "criada": {
       estado.conversaId = msg.meta.id
-      el.titulo.textContent = `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`
+      definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
       enviar({ tipo: "listar" })
       break
     }
@@ -237,8 +274,9 @@ function tratar(msg) {
       estado.perfil = msg.meta.perfil
       estado.conversaId = msg.meta.id
       selecionarBotao(`[data-perfil="${msg.meta.perfil}"]`)
-      el.titulo.textContent = `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`
+      definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
       el.modelo.value = msg.meta.modelo ?? ""
+      irParaConversa()
       limparTela()
       for (const m of msg.mensagens) {
         if (m.role === "user") {
@@ -315,6 +353,13 @@ document.querySelectorAll(".perfil").forEach((b) => {
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
 document.getElementById("citacao-fechar").onclick = limparCitacao
+el.voltar.onclick = irParaLista
+
+document.body.dataset.tela = "lista"
+history.replaceState({ tela: "lista" }, "")
+window.addEventListener("popstate", () => {
+  document.body.dataset.tela = history.state?.tela === "conversa" ? "conversa" : "lista"
+})
 
 el.mensagens.addEventListener("click", (ev) => {
   if (estado.modo !== "chat") return
@@ -329,6 +374,25 @@ el.entrada.addEventListener("keydown", (ev) => {
     ev.preventDefault()
     submeter()
   }
+})
+
+// O teclado do celular encolhe a viewport visual sem mexer na de layout: sem
+// acompanhar isso, o composer fica atrás do teclado.
+const viewport = window.visualViewport
+if (viewport) {
+  const ajustarAltura = () => {
+    document.documentElement.style.setProperty("--altura-app", `${viewport.height}px`)
+    document.body.style.top = `${viewport.offsetTop}px`
+  }
+  viewport.addEventListener("resize", ajustarAltura)
+  viewport.addEventListener("scroll", ajustarAltura)
+  ajustarAltura()
+}
+
+el.entrada.addEventListener("focus", () => {
+  setTimeout(() => {
+    el.mensagens.scrollTop = el.mensagens.scrollHeight
+  }, 300)
 })
 
 conectar()

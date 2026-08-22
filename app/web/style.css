@@ -14,11 +14,21 @@
   --pami: #e06a8a;
   --board: #5b8def;
   --decisoes: #58b7c9;
+  --altura-app: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root { --altura-app: 100dvh; }
 }
 
 body {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
-  height: 100vh;
+  height: var(--altura-app);
+  overflow: hidden;
   background: var(--fundo);
   color: var(--texto);
   font: 15px/1.5 system-ui, -apple-system, sans-serif;
@@ -33,7 +43,7 @@ body {
   border-right: 1px solid var(--borda);
 }
 
-#marca { padding: 18px 16px 12px; }
+#marca { padding: calc(18px + env(safe-area-inset-top)) 16px 12px; }
 #marca h1 { font-size: 17px; letter-spacing: 0.4px; }
 #marca p { color: var(--texto-2); font-size: 12px; }
 
@@ -43,6 +53,7 @@ body {
   align-items: center;
   gap: 10px;
   width: 100%;
+  min-height: 48px;
   padding: 8px 10px;
   border: 0;
   border-radius: 8px;
@@ -70,6 +81,7 @@ body {
 .avatar.pami { background: var(--pami); }
 .avatar.board { background: var(--board); }
 .avatar.decisoes { background: var(--decisoes); }
+.avatar[hidden] { display: none; }
 
 .nome { display: flex; flex-direction: column; font-size: 14px; }
 .nome small { color: var(--texto-2); font-size: 11px; }
@@ -78,7 +90,7 @@ body {
 #conversas h2 { font-size: 11px; text-transform: uppercase; color: var(--texto-2); padding: 0 8px 6px; }
 #lista-conversas { list-style: none; }
 #lista-conversas li {
-  padding: 7px 10px;
+  padding: 12px 10px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -90,18 +102,38 @@ body {
 #lista-conversas li:hover, #lista-conversas li.ativo { background: var(--painel-2); color: var(--texto); }
 #lista-conversas li .ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
 
-#principal { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#principal { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--fundo); }
 
 #cabecalho {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
   padding: 14px 20px;
+  padding-top: calc(14px + env(safe-area-inset-top));
   border-bottom: 1px solid var(--borda);
   background: var(--painel);
   font-weight: 600;
 }
-#controles { display: flex; align-items: center; gap: 12px; }
+#titulo-conversa { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#controles { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+#voltar {
+  display: none;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  margin-left: -8px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--texto);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+#voltar:active { background: var(--painel-2); }
+
+#avatar-conversa { width: 30px; height: 30px; font-size: 13px; }
 #seletor-modelo {
   border: 1px solid var(--borda);
   border-radius: 8px;
@@ -162,7 +194,14 @@ body {
   opacity: 0.9;
 }
 
-#composer { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--borda); background: var(--painel); }
+#composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--borda);
+  background: var(--painel);
+}
 #entrada {
   flex: 1;
   resize: none;
@@ -207,3 +246,39 @@ body {
 .status.aceita { color: #4fae7c; }
 .status.proposta { color: #e0a458; }
 .status.revogada { color: #e05a5a; }
+
+/* ── celular: lista e conversa como duas telas que deslizam ── */
+
+@media (max-width: 899px) {
+  body { display: block; }
+
+  #lateral,
+  #principal {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    transition: transform 0.25s ease;
+  }
+
+  #lateral { border-right: 0; }
+
+  body[data-tela="lista"] #principal { transform: translateX(100%); }
+  body[data-tela="conversa"] #lateral { transform: translateX(-25%); }
+
+  #voltar { display: grid; place-items: center; }
+
+  #cabecalho {
+    padding: 10px 12px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+  #mensagens { padding: 12px; }
+  #citacao { margin: 0 12px; }
+  #composer {
+    padding: 10px 12px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #lateral, #principal { transition: none; }
+}

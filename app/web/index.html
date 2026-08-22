@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Control Tower</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
@@ -30,6 +30,8 @@
 
   <main id="principal">
     <header id="cabecalho">
+      <button id="voltar" aria-label="Voltar para a lista">←</button>
+      <span class="avatar" id="avatar-conversa" hidden></span>
       <span id="titulo-conversa">Escolha um perfil para começar</span>
       <span id="controles">
         <select id="seletor-modelo" title="modelo usado nas respostas desta conversa">
