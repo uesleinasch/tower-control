@@ -14,9 +14,10 @@
 
   const painel = document.createElement("pre")
   painel.style.cssText =
-    "position:fixed;left:0;right:0;top:0;z-index:9999;margin:0;padding:8px 10px;" +
-    "max-height:55vh;overflow:auto;background:#12233b;color:#cfe3ff;" +
-    "font:11px/1.45 ui-monospace,monospace;white-space:pre-wrap"
+    "position:fixed;right:6px;bottom:6px;z-index:9999;margin:0;padding:8px 10px;" +
+    "max-width:min(94vw,420px);max-height:42vh;overflow:auto;border-radius:8px;" +
+    "background:#12233bee;color:#cfe3ff;font:10px/1.4 ui-monospace,monospace;" +
+    "white-space:pre-wrap;box-shadow:0 4px 16px #0008"
   painel.onclick = () => medir()
 
   function medir() {
