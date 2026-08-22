@@ -56,6 +56,8 @@ export async function perguntarUmaVez(opcoes: {
   permitirLeitura?: boolean
 }): Promise<string> {
   let resposta = ""
+  // Sem "model" de propósito: o board delibera no padrão do SDK (Opus), e não no
+  // MODELO_PADRAO do chat. Deliberação é onde o modelo forte se paga.
   for await (const msg of query({
     prompt: opcoes.prompt,
     options: {

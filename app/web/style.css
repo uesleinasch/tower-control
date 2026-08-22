@@ -289,7 +289,7 @@ body {
 #atalhos {
   display: flex;
   gap: 8px;
-  padding: 10px 20px 0;
+  padding: 10px 20px 12px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -317,7 +317,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 10px 20px 0;
+  padding: 10px 20px 12px;
 }
 #pendentes[hidden] { display: none; }
 
@@ -486,8 +486,8 @@ body {
   #mensagens { padding: 12px; }
   .msg { max-width: calc(100% - 56px); }
   #citacao { margin: 0 12px; }
-  #pendentes { padding: 8px 12px 0; }
-  #atalhos { padding: 8px 12px 0; }
+  #pendentes { padding: 8px 12px 10px; }
+  #atalhos { padding: 8px 12px 10px; }
   #composer {
     padding: 10px 12px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
