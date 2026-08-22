@@ -1,10 +1,15 @@
 import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
 import { parseFrontmatter, linhaIndice } from "./decisions"
 import { montarPautaParecer, montarSystemPrompt, politicaDeTamanho } from "./prompt"
 import { slug } from "./board"
 import { lerAtalhos } from "./atalhos"
 import { CONSELHEIROS, PERFIS, ehConselheiro } from "./tipos"
+import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, idValido } from "./store"
+import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
+import type { Anexo } from "./tipos"
 import {
   classificarAnexo,
   extensaoSegura,
@@ -195,5 +200,78 @@ describe("montarBlocoDeAnexos", () => {
 
   test("sem anexo devolve vazio", () => {
     expect(montarBlocoDeAnexos([], "/raiz")).toBe("")
+  })
+})
+
+describe("excluirConversa", () => {
+  const anexo: Anexo = {
+    id: "abc12345",
+    nome: "log.txt",
+    tipo: "texto",
+    mime: "text/plain",
+    bytes: 1,
+    arquivo: join("conversations", "anexos", "abc12345.txt"),
+  }
+
+  async function conversaComAnexo() {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-"))
+    const meta = await criarConversa(raiz, "poe", "conversa de teste")
+    await atualizarMeta(raiz, meta.id, { sessionId: "11111111-2222-3333-4444-555555555555" })
+    await mkdir(join(raiz, "conversations", "anexos"), { recursive: true })
+    await Bun.write(join(raiz, anexo.arquivo), "conteúdo")
+    await Bun.write(join(raiz, "conversations", "anexos", "abc12345.json"), JSON.stringify(anexo))
+    await anexarMensagem(raiz, meta.id, {
+      role: "user",
+      texto: "olha o log",
+      ts: new Date().toISOString(),
+      perfil: "poe",
+      anexos: [anexo],
+    })
+    return { raiz, id: meta.id }
+  }
+
+  const existe = (caminho: string) => Bun.file(caminho).exists()
+
+  test("apaga transcrição, meta e anexos, e devolve o sessionId", async () => {
+    const { raiz, id } = await conversaComAnexo()
+    const sessionId = await excluirConversa(raiz, id)
+    expect(sessionId).toBe("11111111-2222-3333-4444-555555555555")
+    expect(await existe(join(raiz, "conversations", `${id}.jsonl`))).toBe(false)
+    expect(await existe(join(raiz, "conversations", `${id}.meta.json`))).toBe(false)
+    expect(await existe(join(raiz, anexo.arquivo))).toBe(false)
+    expect(await existe(join(raiz, "conversations", "anexos", "abc12345.json"))).toBe(false)
+    await rm(raiz, { recursive: true, force: true })
+  })
+
+  test("não encosta na memória do perfil", async () => {
+    const { raiz, id } = await conversaComAnexo()
+    await mkdir(join(raiz, "profiles", "poe"), { recursive: true })
+    await Bun.write(join(raiz, "profiles", "poe", "memory.md"), "o que o Poe aprendeu")
+    await excluirConversa(raiz, id)
+    expect(await Bun.file(join(raiz, "profiles", "poe", "memory.md")).text()).toBe(
+      "o que o Poe aprendeu",
+    )
+    await rm(raiz, { recursive: true, force: true })
+  })
+
+  test("id fora do formato não vira caminho de arquivo", async () => {
+    expect(idValido("2026-08-22-poe-mt49tr4j")).toBe(true)
+    expect(idValido("../../etc/passwd")).toBe(false)
+    expect(idValido("2026-08-22-poe-mt4/../x")).toBe(false)
+    await expect(excluirConversa("/tmp", "../../etc/passwd")).rejects.toThrow("conversa inválida")
+  })
+})
+
+describe("apagarSessao", () => {
+  test("o slug do diretório troca não-alfanuméricos por hífen", () => {
+    expect(diretorioDeSessoes("/home/ana/meu.projeto")).toEndWith(
+      join(".claude", "projects", "-home-ana-meu-projeto"),
+    )
+  })
+
+  test("sessionId fora do formato UUID não apaga nada", async () => {
+    expect(await apagarSessao("/tmp", undefined)).toBe(false)
+    expect(await apagarSessao("/tmp", "../../../etc/passwd")).toBe(false)
+    expect(await apagarSessao("/tmp", "nao-e-uuid")).toBe(false)
   })
 })

@@ -1,5 +1,5 @@
-import { join } from "node:path"
-import { mkdir } from "node:fs/promises"
+import { join, resolve, sep } from "node:path"
+import { mkdir, rm } from "node:fs/promises"
 import { randomUUID } from "node:crypto"
 import type { Anexo, TipoAnexo } from "./tipos"
 
@@ -102,6 +102,18 @@ export async function lerAnexo(raiz: string, id: string): Promise<Anexo | null> 
   const anexo: Anexo = await sidecar.json()
   if (!(await Bun.file(join(raiz, anexo.arquivo)).exists())) return null
   return anexo
+}
+
+export async function excluirAnexos(raiz: string, anexos: Anexo[]): Promise<void> {
+  const dir = dirAnexos(raiz)
+  for (const anexo of anexos) {
+    // O caminho vem do .jsonl da conversa: um arquivo adulterado não pode
+    // apontar para fora da pasta de anexos.
+    const alvo = resolve(raiz, anexo.arquivo)
+    if (!alvo.startsWith(dir + sep)) continue
+    await rm(alvo, { force: true })
+    if (idValido(anexo.id)) await rm(join(dir, `${anexo.id}.json`), { force: true })
+  }
 }
 
 export async function lerAnexos(raiz: string, ids: string[]): Promise<Anexo[]> {
