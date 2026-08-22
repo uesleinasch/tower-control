@@ -15,38 +15,53 @@
   const painel = document.createElement("pre")
   painel.style.cssText =
     "position:fixed;left:0;right:0;top:0;z-index:9999;margin:0;padding:8px 10px;" +
-    "max-height:45vh;overflow:auto;background:#3b0d16;color:#ffd9df;" +
-    "font:11px/1.45 ui-monospace,monospace;white-space:pre-wrap;display:none"
-  painel.onclick = () => (painel.style.display = "none")
+    "max-height:55vh;overflow:auto;background:#12233b;color:#cfe3ff;" +
+    "font:11px/1.45 ui-monospace,monospace;white-space:pre-wrap"
+  painel.onclick = () => medir()
 
   function medir() {
-    const linhas = []
-    const todos = [document.documentElement, document.body, ...document.querySelectorAll("body *")]
+    const raiz = document.documentElement
+    const vv = window.visualViewport
+    const mobile = window.matchMedia("(max-width: 899px)").matches
+    const grosso = window.matchMedia("(hover: none) and (pointer: coarse)").matches
+    const fab = document.getElementById("nova-conversa")
 
-    for (const nodo of todos) {
+    const cab = [
+      `layout ${raiz.clientWidth} · innerWidth ${window.innerWidth} · screen ${screen.width}`,
+      vv ? `visual ${Math.round(vv.width)} · escala ${vv.scale.toFixed(2)} · offsetLeft ${Math.round(vv.offsetLeft)}` : "sem visualViewport",
+      `dpr ${window.devicePixelRatio} · media899 ${mobile ? "SIM" : "NAO"} · toque ${grosso ? "SIM" : "NAO"}`,
+      `fab ${fab ? getComputedStyle(fab).display : "ausente"} · tela ${document.body.dataset.tela ?? "?"}`,
+      `html ${raiz.scrollWidth}/${raiz.clientWidth} overflow-x ${getComputedStyle(raiz).overflowX}`,
+      `body ${document.body.scrollWidth}/${document.body.clientWidth} overflow-x ${getComputedStyle(document.body).overflowX}`,
+    ]
+
+    // Só interessa quem de fato rola: overflow-x hidden com ellipsis tem
+    // excedente e não é culpado de nada.
+    const rolaveis = []
+    for (const nodo of [raiz, document.body, ...document.querySelectorAll("body *")]) {
       const excedente = nodo.scrollWidth - nodo.clientWidth
       if (excedente <= 1) continue
       const overflowX = getComputedStyle(nodo).overflowX
-      linhas.push(`ROLA ${identificar(nodo)} +${excedente}px (overflow-x: ${overflowX})`)
-      const borda = nodo.getBoundingClientRect().right
-      const passantes = [...nodo.querySelectorAll("*")]
-        .filter((f) => f.getBoundingClientRect().right > borda + 1)
-        .slice(0, 3)
-      for (const f of passantes) {
-        const r = f.getBoundingClientRect()
-        linhas.push(`   └ ${identificar(f)} vai até ${Math.round(r.right)} (borda ${Math.round(borda)})`)
-      }
+      const roladoPeloViewport = nodo === raiz || nodo === document.body
+      if (!roladoPeloViewport && overflowX !== "auto" && overflowX !== "scroll") continue
+      rolaveis.push(`ROLA ${identificar(nodo)} +${excedente}px (${overflowX})`)
     }
 
-    if (!linhas.length) {
-      painel.style.display = "none"
-      return
+    // Quem passa da borda direita da tela, role ou não.
+    const limite = raiz.clientWidth
+    const passantes = []
+    for (const nodo of document.querySelectorAll("body *")) {
+      const r = nodo.getBoundingClientRect()
+      if (r.width === 0 || r.right <= limite + 1) continue
+      passantes.push(`PASSA ${identificar(nodo)} ${Math.round(r.left)}→${Math.round(r.right)}`)
+      if (passantes.length >= 6) break
     }
-    const largura = document.documentElement.clientWidth
+
     painel.textContent =
-      `viewport ${largura}px · tela=${document.body.dataset.tela ?? "?"}\n` +
-      `${linhas.join("\n")}\n(toque para fechar)`
-    painel.style.display = "block"
+      `${cab.join("\n")}\n` +
+      `${rolaveis.length ? rolaveis.join("\n") : "nenhum elemento rola na horizontal"}\n` +
+      `${passantes.length ? passantes.join("\n") : "ninguém passa da borda direita"}\n` +
+      `(toque para medir de novo)`
   }
 
   const agendar = () => setTimeout(medir, 350)
