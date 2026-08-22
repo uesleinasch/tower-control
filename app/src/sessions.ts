@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
-import type { Perfil } from "./tipos"
+import { MODELO_PADRAO, type Perfil } from "./tipos"
 
 interface OpcoesConversa {
   raiz: string
@@ -21,7 +21,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     options: {
       cwd: opcoes.raiz,
       resume: opcoes.sessionId,
-      model: opcoes.modelo,
+      model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
       allowedTools: ["Read", "Write", "Edit", "Grep", "Glob"],
       permissionMode: "acceptEdits",

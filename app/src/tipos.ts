@@ -1,4 +1,8 @@
 export const PERFIS = ["poe", "nati", "lucas", "pami"] as const
+
+// Sem isto o SDK resolve para claude-opus-5[1m] — medido em ~7x o custo do haiku
+// na mesma pergunta.
+export const MODELO_PADRAO = "haiku"
 export type Perfil = (typeof PERFIS)[number]
 
 export type TipoAnexo = "imagem" | "texto" | "pdf"

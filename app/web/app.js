@@ -421,7 +421,7 @@ function tratar(msg) {
       ajustarAoModo()
       selecionarBotao(`[data-perfil="${msg.meta.perfil}"]`)
       definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
-      el.modelo.value = msg.meta.modelo ?? ""
+      el.modelo.value = msg.meta.modelo ?? "haiku"
       irParaConversa()
       limparTela()
       for (const m of msg.mensagens) {
