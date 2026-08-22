@@ -22,10 +22,7 @@
 }
 
 body {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
   display: flex;
   height: var(--altura-app);
   overflow: hidden;
@@ -251,6 +248,21 @@ body {
 #menu-balao button:hover,
 #menu-balao button:active { background: var(--painel); }
 #menu-balao button[hidden] { display: none; }
+
+#depurar {
+  position: fixed;
+  z-index: 30;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #7fe3a0;
+  font: 10px/1.35 ui-monospace, monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+#depurar[hidden] { display: none; }
 
 #citacao {
   display: flex;

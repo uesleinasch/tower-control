@@ -507,16 +507,14 @@ el.entrada.addEventListener("keydown", (ev) => {
   }
 })
 
-// O teclado do celular encolhe a viewport visual sem mexer na de layout: sem
-// acompanhar isso, o composer fica atrás do teclado.
+// interactive-widget=resizes-content resolve o teclado no Chrome do Android; isto
+// cobre navegador que ignora a chave e só encolhe a viewport visual.
 const viewport = window.visualViewport
 if (viewport) {
   const ajustarAltura = () => {
     document.documentElement.style.setProperty("--altura-app", `${viewport.height}px`)
-    document.body.style.top = `${viewport.offsetTop}px`
   }
   viewport.addEventListener("resize", ajustarAltura)
-  viewport.addEventListener("scroll", ajustarAltura)
   ajustarAltura()
 }
 
@@ -525,5 +523,29 @@ el.entrada.addEventListener("focus", () => {
     el.mensagens.scrollTop = el.mensagens.scrollHeight
   }, 300)
 })
+
+// Medidor de viewport para diagnosticar o teclado no aparelho: /?debug
+if (new URLSearchParams(location.search).has("debug")) {
+  const painel = document.getElementById("depurar")
+  const composer = document.getElementById("composer")
+  painel.hidden = false
+  const medir = () => {
+    const vv = window.visualViewport
+    const fundo = composer.getBoundingClientRect().bottom
+    const visivel = vv ? vv.height : window.innerHeight
+    painel.textContent =
+      `innerHeight ${window.innerHeight} | vv.height ${vv ? Math.round(vv.height) : "-"} | ` +
+      `vv.offsetTop ${vv ? Math.round(vv.offsetTop) : "-"}\n` +
+      `body ${Math.round(document.body.getBoundingClientRect().height)} | ` +
+      `composer.bottom ${Math.round(fundo)} | ` +
+      (fundo > visivel + 1 ? `ESCONDIDO por ${Math.round(fundo - visivel)}px` : "visivel")
+  }
+  medir()
+  window.visualViewport?.addEventListener("resize", medir)
+  window.visualViewport?.addEventListener("scroll", medir)
+  window.addEventListener("resize", medir)
+  el.entrada.addEventListener("focus", () => setTimeout(medir, 400))
+  el.entrada.addEventListener("blur", () => setTimeout(medir, 400))
+}
 
 conectar()
