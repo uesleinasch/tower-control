@@ -35,6 +35,11 @@ primeira tela e a conversa é a segunda, com
 "←" e o botão voltar do sistema voltando para a lista. Toque longo num balão abre
 o menu de responder e copiar.
 
+O clipe no composer anexa imagem, arquivo de texto e PDF (até 10 MB; imagem grande é
+reduzida antes de subir). O conselheiro abre o anexo com a ferramenta `Read`, então
+consegue descrever um print e ler um log longo por partes. Anexo fica em
+`conversations/anexos/`, fora do git.
+
 Pelo menu do navegador, "Adicionar à tela inicial" instala como app e abre sem a
 barra de endereço.
 
