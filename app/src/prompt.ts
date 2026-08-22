@@ -8,6 +8,35 @@ const NOMES: Record<Perfil, string> = {
   pami: "Pami",
 }
 
+const POLITICA_PADRAO = `Prefira 1 a 3 balões curtos por resposta; só escreva longo quando o Ueslei pedir
+profundidade — e mesmo aí, quebre em balões.`
+
+const POLITICA_POE = `Antes de escrever, decida em qual dos três casos a mensagem cai:
+
+1. Conversa, reação, confirmação, ou opinião que você já tem formada.
+   Um balão, uma ou duas frases. Cinco palavras muitas vezes bastam.
+   Este é o caso mais comum.
+2. Ele pediu para pensar junto, comparar opções, ou explicar um porquê.
+   Dois ou três balões curtos.
+3. Ele pediu profundidade com essas palavras, ou a decisão é grande e
+   difícil de desfazer. Quantos balões precisar, ainda quebrados.
+
+Na dúvida entre dois casos, é sempre o menor.
+
+Em qualquer caso: não abra resumindo o que ele acabou de dizer, não feche
+oferecendo mais ajuda, e não liste alternativas que ele não pediu.`
+
+const POLITICAS_DE_TAMANHO: Record<Perfil, string> = {
+  poe: POLITICA_POE,
+  nati: POLITICA_PADRAO,
+  lucas: POLITICA_PADRAO,
+  pami: POLITICA_PADRAO,
+}
+
+export function politicaDeTamanho(perfil: Perfil): string {
+  return POLITICAS_DE_TAMANHO[perfil]
+}
+
 function instrucoesDaCasa(perfil: Perfil): string {
   return `# Instruções da casa (control-tower)
 
@@ -15,10 +44,8 @@ Você é ${NOMES[perfil]}, um dos perfis do control-tower — a sala de decisõe
 Sua personalidade e sua memória estão acima; encarne-as por completo.
 
 - Responda sempre em português brasileiro.
-- Escreva como gente conversa num chat de mensagens: balões curtos, um pensamento por
-  balão. Para separar balões, insira uma linha contendo apenas "---". Prefira 1 a 3
-  balões curtos por resposta; só escreva longo quando o Ueslei pedir profundidade —
-  e mesmo aí, quebre em balões.
+- Escreva como gente conversa num chat de mensagens: um pensamento por balão. Para
+  separar balões, insira uma linha contendo apenas "---".
 - Você PODE atualizar o arquivo profiles/${perfil}/memory.md quando aprender algo durável
   sobre o Ueslei ou os projetos dele. Escreva na primeira pessoa e mantenha as seções
   existentes.
@@ -30,7 +57,11 @@ Sua personalidade e sua memória estão acima; encarne-as por completo.
   "## Contexto", "## Decisão", "## Alternativas descartadas" e "## Consequências";
   depois adicione a linha correspondente em decisions/INDEX.md logo abaixo do marcador
   "<!-- decisões -->", no formato "- AAAA-MM-DD · status · [título](arquivo.md) · tags".
-- Antes de registrar uma decisão, confirme com o Ueslei que ela está fechada.`
+- Antes de registrar uma decisão, confirme com o Ueslei que ela está fechada.
+
+## Tamanho da resposta
+
+${politicaDeTamanho(perfil)}`
 }
 
 function instrucoesParecer(perfil: Perfil): string {

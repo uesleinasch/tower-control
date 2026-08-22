@@ -1,6 +1,7 @@
+import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { parseFrontmatter, linhaIndice } from "./decisions"
-import { montarPautaParecer } from "./prompt"
+import { montarPautaParecer, montarSystemPrompt, politicaDeTamanho } from "./prompt"
 import { slug } from "./board"
 import {
   classificarAnexo,
@@ -47,6 +48,26 @@ test("slug remove acentos e caracteres inválidos", () => {
 test("montarPautaParecer inclui contexto só quando existe", () => {
   expect(montarPautaParecer("Pauta A")).not.toContain("Contexto fornecido")
   expect(montarPautaParecer("Pauta A", "ctx")).toContain("## Contexto fornecido\n\nctx")
+})
+
+describe("politicaDeTamanho", () => {
+  test("o Poe ganha piso curto; os outros seguem a regra antiga", () => {
+    expect(politicaDeTamanho("poe")).toContain("é sempre o menor")
+    expect(politicaDeTamanho("poe")).toContain("Cinco palavras")
+    expect(politicaDeTamanho("nati")).not.toContain("é sempre o menor")
+  })
+
+  test("os três perfis sem política própria compartilham a mesma", () => {
+    expect(politicaDeTamanho("nati")).toBe(politicaDeTamanho("lucas"))
+    expect(politicaDeTamanho("nati")).toBe(politicaDeTamanho("pami"))
+  })
+})
+
+test("montarSystemPrompt injeta a política do perfil", async () => {
+  const raiz = join(import.meta.dir, "..", "..")
+  const system = await montarSystemPrompt(raiz, "poe")
+  expect(system).toContain("## Tamanho da resposta")
+  expect(system).toContain("é sempre o menor")
 })
 
 describe("classificarAnexo", () => {
