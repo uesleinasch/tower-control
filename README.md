@@ -88,7 +88,13 @@ a pedido direto, sem opinar. Não emite parecer no board, não tem `memory.md` e
 registra ADR.
 
 Comando de terminal não roda direto: aparece na tela com o comando exato e dois botões.
-Negar é resposta final — ele diz que foi negado e para.
+Negar é resposta final — ele diz que foi negado e para. O botão **auto** no header dispensa
+a aprovação naquela conversa (a escolha fica gravada no meta); o comando continua aparecendo
+no chat, para o modo não ser caixa preta.
+
+O botão **TickTask** abre uma conversa em registro direto: o Alfred fala com o servidor MCP
+do app TickTask, lendo porta e token de `~/.config/ticktask/mcp-config.json`. Com o app
+fechado as ferramentas não existem e ele avisa em vez de quebrar.
 
 ## Board
 
