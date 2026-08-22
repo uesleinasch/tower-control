@@ -13,14 +13,25 @@ bun install
 bun run dev        # sobe em http://0.0.0.0:7878 (rede local e Tailscale)
 ```
 
+Se o serviço systemd estiver rodando, ele já está com a porta 7878 e o `bun run dev`
+morre com `EADDRINUSE` — pare o serviço antes (`systemctl --user stop control-tower`).
+
 O motor das conversas é o Claude Agent SDK, que usa a autenticação do Claude Code já
 instalado na máquina — não precisa de API key. No startup o servidor imprime os três
 endereços: localhost, IP da rede local e IP do Tailscale (quando houver).
 
 ## No celular
 
-Abra um dos endereços impressos no startup. A interface é responsiva: no celular a
-lista de conselheiros e conversas é a primeira tela e a conversa é a segunda, com
+Abra um dos endereços impressos no startup. O IP da rede local só funciona se o
+celular estiver na mesma Wi-Fi; o IP do Tailscale funciona de qualquer lugar, desde
+que o celular esteja no tailnet. Para saber qual usar:
+
+```bash
+tailscale ping <nome-do-celular>   # "direct" = mesma rede; "via DERP" = use o IP do Tailscale
+```
+
+A interface é responsiva: no celular a lista de conselheiros e conversas é a
+primeira tela e a conversa é a segunda, com
 "←" e o botão voltar do sistema voltando para a lista. Toque longo num balão abre
 o menu de responder e copiar.
 
