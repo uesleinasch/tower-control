@@ -80,6 +80,16 @@ Cada perfil vive em `profiles/<nome>/`: `profile.md` é o núcleo fixo da person
 `memory.md` é a memória evolutiva que o próprio perfil atualiza quando aprende algo
 durável.
 
+## Alfred
+
+Os quatro perfis são conselheiros: conversam, guardam memória e registram decisão. O
+**Alfred** é de outro tipo — executor. Ele verifica arquivo, edita coisa e roda comando,
+a pedido direto, sem opinar. Não emite parecer no board, não tem `memory.md` e não
+registra ADR.
+
+Comando de terminal não roda direto: aparece na tela com o comando exato e dois botões.
+Negar é resposta final — ele diz que foi negado e para.
+
 ## Board
 
 Pela interface, o botão "Convocar board" envia uma pauta aos quatro perfis em paralelo.
