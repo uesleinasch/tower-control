@@ -10,11 +10,34 @@ formato leve e pesquisável. O design completo está em
 ```bash
 cd app
 bun install
-bun run dev        # sobe em http://0.0.0.0:7878 (rede local)
+bun run dev        # sobe em http://0.0.0.0:7878 (rede local e Tailscale)
 ```
 
 O motor das conversas é o Claude Agent SDK, que usa a autenticação do Claude Code já
-instalado na máquina — não precisa de API key.
+instalado na máquina — não precisa de API key. No startup o servidor imprime os três
+endereços: localhost, IP da rede local e IP do Tailscale (quando houver).
+
+## Instalar como serviço (sobe no boot)
+
+```bash
+./install.sh                 # de dentro do clone: deps + serviço systemd de usuário
+```
+
+Em uma máquina nova, um comando só (clona, instala deps e registra o serviço):
+
+```bash
+git clone <url-do-repo> && cd control-tower && ./install.sh
+# ou direto: ./install.sh <url-do-repo>   (clona em ~/control-tower)
+```
+
+O serviço (`control-tower.service`) reinicia sozinho em caso de falha e, com linger
+ativo (o instalador tenta ativar), sobe no boot mesmo sem login. Comandos úteis:
+
+```bash
+systemctl --user status control-tower.service
+journalctl --user -u control-tower.service -f
+bash scripts/servico.sh      # reinstala/atualiza a unit
+```
 
 ## Perfis
 
