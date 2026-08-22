@@ -35,6 +35,28 @@
       `body ${document.body.scrollWidth}/${document.body.clientWidth} overflow-x ${getComputedStyle(document.body).overflowX}`,
     ]
 
+    const caixa = (sel) => {
+      const nodo = document.querySelector(sel)
+      if (!nodo) return `${sel}: ausente`
+      const e = getComputedStyle(nodo)
+      const r = nodo.getBoundingClientRect()
+      return (
+        `${sel} ${e.display}/${e.position} ` +
+        `x${Math.round(r.left)} y${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} ` +
+        `t:${e.transform === "none" ? "-" : e.transform.slice(0, 22)}`
+      )
+    }
+    const geo = [
+      `body ${getComputedStyle(document.body).display} h${document.body.clientHeight}/${document.body.scrollHeight} ` +
+        `--altura-app ${getComputedStyle(raiz).getPropertyValue("--altura-app").trim()}`,
+      `html h${raiz.clientHeight}/${raiz.scrollHeight}`,
+      caixa("#lateral"),
+      caixa("#principal"),
+      caixa("#perfis"),
+      caixa("#conversas"),
+      caixa("#mensagens"),
+    ]
+
     // Só interessa quem de fato rola: overflow-x hidden com ellipsis tem
     // excedente e não é culpado de nada.
     const rolaveis = []
@@ -58,7 +80,7 @@
     }
 
     painel.textContent =
-      `${cab.join("\n")}\n` +
+      `${cab.join("\n")}\n${geo.join("\n")}\n` +
       `${rolaveis.length ? rolaveis.join("\n") : "nenhum elemento rola na horizontal"}\n` +
       `${passantes.length ? passantes.join("\n") : "ninguém passa da borda direita"}\n` +
       `(toque para medir de novo)`
