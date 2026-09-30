@@ -53,6 +53,22 @@ emulator-5554          unauthorized transport_id:2
     });
   });
 
+  group('apk', () {
+    test('procura o instalado e, rodando do build, as saídas do projeto', () {
+      expect(candidatosApk(home: '/h', executavel: '/h/.local/share/control-tower-cliente/control-tower'),
+          ['/h/.local/share/control-tower-cliente/control-tower.apk']);
+      expect(
+        candidatosApk(home: '/h', executavel: '/r/cliente/build/linux/x64/release/bundle/control-tower', forcado: '/x.apk'),
+        [
+          '/x.apk',
+          '/h/.local/share/control-tower-cliente/control-tower.apk',
+          '/r/cliente/build/app/outputs/flutter-apk/app-release.apk',
+          '/r/cliente/build/app/outputs/flutter-apk/app-debug.apk',
+        ],
+      );
+    });
+  });
+
   group('autostart', () {
     test('entrada de autostart sobe na bandeja', () {
       final t = entradaDesktop('/home/a b/ct', bandeja: true, icone: 'control-tower');

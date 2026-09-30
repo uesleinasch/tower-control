@@ -33,10 +33,17 @@ class _RaizState extends State<Raiz> {
   void initState() {
     super.initState();
     _avisos = sala.avisos.listen((texto) => _mensageiro.currentState?.showSnackBar(SnackBar(content: Text(texto))));
+    sala.pedidosDeNova.addListener(_abrirNova);
+  }
+
+  void _abrirNova() {
+    final contexto = _mensageiro.currentContext;
+    if (contexto != null && mounted) abrirNovaConversa(contexto, sala);
   }
 
   @override
   void dispose() {
+    sala.pedidosDeNova.removeListener(_abrirNova);
     _avisos.cancel();
     super.dispose();
   }

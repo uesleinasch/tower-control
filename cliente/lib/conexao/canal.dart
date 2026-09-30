@@ -81,7 +81,7 @@ class Canal extends ChangeNotifier {
         cancelOnError: true,
       );
     } catch (_) {
-      _definir(EstadoConexao.reconectando);
+      _definir(_tentativas >= 2 ? EstadoConexao.semServidor : EstadoConexao.reconectando);
       _agendar();
     }
   }

@@ -33,6 +33,9 @@ class Sala extends ChangeNotifier {
   var _primeiraConexao = true;
 
   Tela tela = Tela.conversas;
+  final pedidosDeNova = ValueNotifier(0);
+
+  void pedirNovaConversa() => pedidosDeNova.value++;
 
   Stream<String> get avisos => _avisos.stream;
 
@@ -102,6 +105,7 @@ class Sala extends ChangeNotifier {
       a.cancel();
     }
     _avisos.close();
+    pedidosDeNova.dispose();
     chat.dispose();
     conversas.dispose();
     board.dispose();
