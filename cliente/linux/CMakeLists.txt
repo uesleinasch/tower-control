@@ -72,6 +72,12 @@ set_target_properties(${BINARY_NAME}
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
+# O cnativeapi (tray_manager) usa G_APPLICATION_DEFAULT_FLAGS, que só existe na GLib 2.74+;
+# o Ubuntu 22.04 traz a 2.72, onde o mesmo valor se chama G_APPLICATION_FLAGS_NONE.
+pkg_check_modules(GLIB_VERSAO REQUIRED glib-2.0)
+if(GLIB_VERSAO_VERSION VERSION_LESS "2.74")
+  add_compile_definitions(G_APPLICATION_DEFAULT_FLAGS=G_APPLICATION_FLAGS_NONE)
+endif()
 include(flutter/generated_plugins.cmake)
 
 

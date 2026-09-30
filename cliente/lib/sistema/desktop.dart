@@ -18,15 +18,16 @@ String get _soquete {
 
 Future<bool> assumirInstanciaUnica(void Function() aoChamar) async {
   final endereco = InternetAddress(_soquete, type: InternetAddressType.unix);
+  Socket? outro;
   try {
-    final outro = await Socket.connect(endereco, 0).timeout(const Duration(seconds: 1));
-    outro.write('mostrar');
-    await outro.flush();
-    await outro.close();
-    return false;
+    outro = await Socket.connect(endereco, 0).timeout(const Duration(seconds: 1));
   } catch (_) {
     final arquivo = File(_soquete);
     if (arquivo.existsSync()) arquivo.deleteSync();
+  }
+  if (outro != null) {
+    outro.destroy();
+    return false;
   }
   final servidor = await ServerSocket.bind(endereco, 0);
   servidor.listen((conexao) {
