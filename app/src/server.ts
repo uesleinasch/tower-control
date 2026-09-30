@@ -1,7 +1,7 @@
 import { join, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
-import { PERFIS, type Anexo, type Perfil } from "./tipos"
+import { PERFIS, ehConselheiro, type Anexo, type Perfil } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
 import { conversar } from "./sessions"
@@ -9,6 +9,11 @@ import { convocarBoard } from "./board"
 import { enderecos, respostaEnderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
 import { apagarSessao } from "./sessao-sdk"
+import { memoriaHttp } from "./memoria/cliente"
+import { espelharColetivo } from "./memoria/coletivo"
+import { iniciarAgenda } from "./memoria/agenda"
+import { consolidarConversa, conversasPendentes } from "./memoria/consolidacao"
+import { sonhar } from "./memoria/sonho"
 import {
   criarConversa,
   atualizarMeta,
@@ -21,6 +26,13 @@ import {
 
 const RAIZ = resolve(import.meta.dir, "..", "..")
 const PORTA = Number(process.env.TOWER_PORTA ?? 7878)
+const MEMORIA = memoriaHttp()
+
+function espelharEmSegundoPlano(): void {
+  void espelharColetivo(RAIZ, MEMORIA).catch((erro: Error) =>
+    console.warn(`[memoria] espelho do coletivo falhou — ${erro.message}`),
+  )
+}
 
 const ESTATICOS: Record<string, string> = {
   "/": "index.html",
@@ -117,6 +129,9 @@ async function responderNaConversa(
     modelo: meta.modelo,
     auto: meta.auto,
     foco: meta.foco,
+    memoria: MEMORIA,
+    conversaId: id,
+    consulta: texto,
     onChunk: (pedaco) => mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco }),
     onComando: (comando, aprovar) => tratarComando(ws, comando, aprovar),
   })
@@ -131,6 +146,7 @@ async function responderNaConversa(
     await atualizarMeta(RAIZ, id, { sessionId: resposta.sessionId })
   }
   mandar(ws, { tipo: "fim", conversaId: id })
+  if (ehConselheiro(meta.perfil)) espelharEmSegundoPlano()
 }
 
 async function resolverAnexos(ws: Cliente, ids: unknown): Promise<Anexo[]> {
@@ -217,7 +233,9 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const contexto = msg.contexto ? String(msg.contexto) : undefined
       const resultado = await convocarBoard(RAIZ, pauta, contexto, (texto) =>
         mandar(ws, { tipo: "board-status", texto }),
+        MEMORIA,
       )
+      espelharEmSegundoPlano()
       mandar(ws, { tipo: "board-sintese", texto: resultado.sintese, ata: resultado.ata })
       return
     }
@@ -307,6 +325,13 @@ const servidor = Bun.serve({
       }
     },
   },
+})
+
+espelharEmSegundoPlano()
+iniciarAgenda(RAIZ, {
+  pendentes: (agora) => conversasPendentes(RAIZ, agora),
+  consolidar: (meta) => consolidarConversa(RAIZ, MEMORIA, meta),
+  sonhar: (persona) => sonhar(RAIZ, MEMORIA, persona),
 })
 
 const rede = enderecos()

@@ -33,6 +33,13 @@ import {
 import { limparTrecho } from "./memoria/cliente"
 import { LIMITE_BRIEF, LIMITE_JEITO, comporBrief, montarBrief } from "./memoria/recuperacao"
 import { acoesDaPersona, caminhoNovo } from "./memoria/ferramentas"
+import { consolidacaoPendente, sonhoDevido } from "./memoria/agenda"
+import { montarPedidoSonho, precisaSonhar } from "./memoria/sonho"
+import { montarPedidoConsolidacao } from "./memoria/consolidacao"
+import { espelharColetivo, paginaDoColetivo } from "./memoria/coletivo"
+import { itensDaMemoria, itensNaoCobertos } from "./memoria/migracao"
+import type { Mensagem, MetaConversa } from "./tipos"
+import type { Pagina } from "./memoria/tipos"
 
 describe("parseFrontmatter", () => {
   test("extrai campos simples e listas", () => {
@@ -548,5 +555,227 @@ describe("tools de memória", () => {
   test("daemon fora vira resposta para o modelo, não exceção", async () => {
     const texto = await acoesDaPersona(fora, "poe", "t").lembrar({ titulo: "x", texto: "y", tipo: "fato" })
     expect(texto).toContain("Memória indisponível")
+  })
+})
+
+describe("fundir lembranças", () => {
+  test("grava o destino e transforma as origens em aviso que expira", async () => {
+    const { memoria, gravacoes } = memoriaFalsa({
+      poe: [
+        pagina("episodios/2026-09-01-transito.md", "# Trânsito\n\nreclamou da BR", "episodic"),
+        pagina("episodios/2026-09-08-transito-de-novo.md", "# Trânsito de novo\n\nBR de novo", "episodic"),
+      ],
+    })
+    const texto = await acoesDaPersona(memoria, "poe", "sonho:2026-09-30").fundirLembrancas({
+      destino: "fatos/transito-na-br.md",
+      titulo: "Trânsito na BR",
+      texto: "Toda semana ele pega trânsito na BR e isso o irrita.",
+      origens: ["episodios/2026-09-01-transito.md", "episodios/2026-09-08-transito-de-novo.md"],
+    })
+    expect(texto).toContain("Fundidas 2")
+    expect(gravacoes.map((g) => g.pagina.path)).toEqual([
+      "fatos/transito-na-br.md",
+      "episodios/2026-09-01-transito.md",
+      "episodios/2026-09-08-transito-de-novo.md",
+    ])
+    expect(gravacoes[1]!.pagina.expiraEm).toBeTruthy()
+    expect(gravacoes[0]!.pagina.expiraEm).toBeUndefined()
+    expect(gravacoes.every((g) => g.projeto === "poe")).toBe(true)
+  })
+
+  test("recusa fundir o que não é da persona", async () => {
+    const { memoria, gravacoes } = memoriaFalsa({ nati: [pagina("fatos/x.md", "# X\n\nx")] })
+    const texto = await acoesDaPersona(memoria, "poe", "t").fundirLembrancas({
+      destino: "fatos/y.md",
+      titulo: "Y",
+      texto: "y",
+      origens: ["fatos/x.md"],
+    })
+    expect(texto).toContain("Não existem")
+    expect(gravacoes).toHaveLength(0)
+  })
+
+  test("o aviso de fusão não volta no brief", async () => {
+    const { memoria } = memoriaFalsa({
+      poe: [pagina("jeito/velho.md", "# Fundida em jeito/novo.md\n\nEsta lembrança foi fundida.", "procedural")],
+    })
+    expect(await montarBrief(memoria, "poe", "")).toBe("")
+  })
+})
+
+describe("agenda", () => {
+  const meta = (extra: Partial<MetaConversa> = {}): MetaConversa => ({
+    id: "2026-09-30-poe-abc",
+    perfil: "poe",
+    titulo: "t",
+    criadaEm: "2026-09-30T10:00:00Z",
+    ...extra,
+  })
+  const msg = (ts: string): Mensagem => ({ role: "user", texto: "oi", ts, perfil: "poe" })
+
+  test("consolida só depois de 30 minutos parada e com trecho novo", () => {
+    const mensagens = [msg("2026-09-30T10:00:00Z"), msg("2026-09-30T10:05:00Z")]
+    expect(consolidacaoPendente(meta(), mensagens, new Date("2026-09-30T10:20:00Z"))).toBe(false)
+    expect(consolidacaoPendente(meta(), mensagens, new Date("2026-09-30T10:35:00Z"))).toBe(true)
+    expect(consolidacaoPendente(meta({ consolidadoAte: 2 }), mensagens, new Date("2026-09-30T12:00:00Z"))).toBe(false)
+  })
+
+  test("máquina desligada a noite toda ainda consolida na subida", () => {
+    expect(consolidacaoPendente(meta(), [msg("2026-09-29T23:00:00Z")], new Date("2026-09-30T09:00:00Z"))).toBe(true)
+  })
+
+  test("marcador maior que a conversa não dispara nada", () => {
+    expect(consolidacaoPendente(meta({ consolidadoAte: 9 }), [msg("2026-09-29T23:00:00Z")], new Date("2026-09-30T09:00:00Z"))).toBe(false)
+  })
+
+  test("o alfred nunca consolida", () => {
+    expect(consolidacaoPendente(meta({ perfil: "alfred" }), [msg("2026-09-29T23:00:00Z")], new Date("2026-09-30T09:00:00Z"))).toBe(false)
+  })
+
+  const local = (dia: number, h: number, m = 0) => new Date(2026, 8, dia, h, m)
+
+  test("sonha depois do horário se houve atividade desde o último sonho", () => {
+    const ultimo = local(29, 7, 35).toISOString()
+    const atividade = local(29, 22).toISOString()
+    expect(sonhoDevido(ultimo, atividade, local(30, 7, 0), "07:30")).toBe(false)
+    expect(sonhoDevido(ultimo, atividade, local(30, 7, 31), "07:30")).toBe(true)
+  })
+
+  test("não repete o sonho no mesmo dia", () => {
+    const ultimo = local(30, 7, 40).toISOString()
+    expect(sonhoDevido(ultimo, local(30, 9).toISOString(), local(30, 23), "07:30")).toBe(false)
+  })
+
+  test("sem atividade desde o último sonho, não sonha", () => {
+    expect(sonhoDevido(local(28, 8).toISOString(), local(28, 7).toISOString(), local(30, 9), "07:30")).toBe(false)
+  })
+
+  test("máquina desligada no horário sonha na primeira subida depois dele", () => {
+    const ultimo = local(28, 7, 31).toISOString()
+    expect(sonhoDevido(ultimo, local(28, 20).toISOString(), local(30, 14), "07:30")).toBe(true)
+  })
+
+  test("sem nenhuma atividade registrada, nunca sonha", () => {
+    expect(sonhoDevido(undefined, undefined, local(30, 9))).toBe(false)
+  })
+})
+
+describe("sonho", () => {
+  const p = (path: string, corpo: string): Pagina => ({ path, titulo: path, corpo, tier: "episodic", pinned: false })
+
+  test("só sonha com pelo menos duas frias ou jeito acima do teto", () => {
+    expect(precisaSonhar([p("episodios/a.md", "a")], [])).toBe(false)
+    expect(precisaSonhar([p("episodios/a.md", "a"), p("episodios/b.md", "b")], [])).toBe(true)
+    expect(precisaSonhar([], [p("jeito/a.md", "x".repeat(2000))], 1500)).toBe(true)
+  })
+
+  test("o pedido mostra as frias e avisa quando o jeito passou do teto", () => {
+    const pedido = montarPedidoSonho([p("episodios/a.md", "reclamou do trânsito")], [p("jeito/j.md", "x".repeat(2000))], 1500)
+    expect(pedido).toContain("### episodios/a.md\n\nreclamou do trânsito")
+    expect(pedido).toContain("ACIMA do teto")
+  })
+})
+
+describe("consolidação", () => {
+  test("o pedido traz a conversa com autor e hora e o que ela já lembra", () => {
+    const pedido = montarPedidoConsolidacao(
+      "nati",
+      { id: "2026-09-30-nati-abc", perfil: "nati", titulo: "Deploy", criadaEm: "" },
+      [
+        { role: "user", texto: "o deploy caiu", ts: "2026-09-30T10:00:00Z", perfil: "nati" },
+        { role: "assistant", texto: "que log apareceu?", ts: "2026-09-30T10:01:00Z", perfil: "nati" },
+      ],
+      [{ path: "fatos/deploy.md", titulo: "Deploy", trecho: "usa GitLab" }],
+    )
+    expect(pedido).toContain("[2026-09-30 10:00] Ueslei: o deploy caiu")
+    expect(pedido).toContain("[2026-09-30 10:01] Nati: que log apareceu?")
+    expect(pedido).toContain("- Deploy: usa GitLab (fatos/deploy.md)")
+  })
+})
+
+describe("coletivo", () => {
+  test("decisão vira página sem frontmatter, com título e detalhes", () => {
+    const nova = paginaDoColetivo(
+      "decisao",
+      "2026-08-22-arquitetura.md",
+      "---\nid: x\ndate: 2026-08-22\ntitle: Arquitetura\nstatus: aceita\ntags: [a, b]\n---\n\n## Contexto\n\ntexto",
+    )
+    expect(nova?.path).toBe("decisoes/2026-08-22-arquitetura.md")
+    expect(nova?.tier).toBe("semantic")
+    expect(nova?.corpo).toBe("# Arquitetura\n\n2026-08-22 · aceita · a, b\n\n## Contexto\n\ntexto\n")
+  })
+
+  test("ata vai para atas/ como episódio, sem mexer no corpo", () => {
+    const nova = paginaDoColetivo("ata", "2026-09-01-pauta.md", "# Ata do board\n\ncorpo")
+    expect(nova?.path).toBe("atas/2026-09-01-pauta.md")
+    expect(nova?.tier).toBe("episodic")
+    expect(nova?.corpo).toBe("# Ata do board\n\ncorpo")
+  })
+
+  test("arquivo com nome fora do formato não é espelhado", () => {
+    expect(paginaDoColetivo("ata", "Ata Estranha.md", "x")).toBeNull()
+  })
+
+  test("espelha decisões e atas no coletivo, fora o INDEX", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-coletivo-"))
+    await mkdir(join(raiz, "decisions"), { recursive: true })
+    await mkdir(join(raiz, "board", "minutes"), { recursive: true })
+    await Bun.write(join(raiz, "decisions", "INDEX.md"), "# Índice")
+    await Bun.write(join(raiz, "decisions", "2026-08-22-a.md"), "---\ntitle: A\n---\ncorpo")
+    await Bun.write(join(raiz, "board", "minutes", "2026-09-01-b.md"), "# B")
+    const { memoria, gravacoes } = memoriaFalsa()
+    expect(await espelharColetivo(raiz, memoria)).toBe(2)
+    expect(gravacoes.every((g) => g.projeto === "coletivo")).toBe(true)
+    await rm(raiz, { recursive: true, force: true })
+  })
+})
+
+describe("migração", () => {
+  const md = `# Memória do Lucas
+
+Atualizada pelo próprio Lucas. Contexto de negócio.
+
+## Contexto
+
+- Ueslei é desenvolvedor na Jacto e mantém projetos pessoais
+  em paralelo.
+- O control-tower nasceu como ferramenta pessoal.
+
+## Posições que defendi
+
+_(vazio por enquanto)_
+`
+
+  test("separa itens, juntando linhas quebradas, sem título, nota nem vazio", () => {
+    expect(itensDaMemoria(md)).toEqual([
+      "- Ueslei é desenvolvedor na Jacto e mantém projetos pessoais em paralelo.",
+      "- O control-tower nasceu como ferramenta pessoal.",
+    ])
+  })
+
+  test("item copiado literalmente conta como coberto, mesmo com outra quebra de linha", () => {
+    const corpos = [
+      "# Trabalho\n\nUeslei é desenvolvedor na Jacto e mantém\nprojetos pessoais em paralelo.",
+      "# Origem\n\nO control-tower **nasceu** como ferramenta pessoal.",
+    ]
+    expect(itensNaoCobertos(md, corpos)).toEqual([])
+  })
+
+  test("item resumido ou esquecido aparece como faltando", () => {
+    expect(itensNaoCobertos(md, ["# Trabalho\n\nUeslei trabalha na Jacto."])).toEqual([
+      "- Ueslei é desenvolvedor na Jacto e mantém projetos pessoais em paralelo.",
+      "- O control-tower nasceu como ferramenta pessoal.",
+    ])
+  })
+
+  test("todas as memory.md reais se decompõem em itens", async () => {
+    const raiz = join(import.meta.dir, "..", "..")
+    for (const persona of CONSELHEIROS) {
+      const arquivo = Bun.file(join(raiz, "profiles", persona, "memory.md"))
+      if (!(await arquivo.exists())) continue
+      const itens = itensDaMemoria(await arquivo.text())
+      expect(itens.length).toBeGreaterThan(0)
+      expect(itens.some((i) => i.startsWith("#"))).toBe(false)
+    }
   })
 })
