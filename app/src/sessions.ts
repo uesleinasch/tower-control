@@ -2,6 +2,9 @@ import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
 import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
 import { servidorTickTask } from "./ticktask"
+import type { Memoria } from "./memoria/tipos"
+import { montarBrief } from "./memoria/recuperacao"
+import { FERRAMENTAS_MEMORIA, servidorDeMemoria } from "./memoria/ferramentas"
 
 // allowedTools é lista de AUTO-APROVADAS, não de disponíveis. Pôr "Bash" aqui faria o
 // canUseTool ser pulado e o comando rodar sem ninguém aprovar.
@@ -37,6 +40,9 @@ interface OpcoesConversa {
   modelo?: string
   auto?: boolean
   foco?: "ticktask"
+  memoria?: Memoria
+  conversaId?: string
+  consulta?: string
   onChunk: (texto: string) => void
   onComando?: (comando: string, aprovar: boolean) => Promise<boolean>
 }
@@ -89,9 +95,19 @@ function hookDeComando(
 }
 
 export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string; sessionId?: string }> {
-  const system = await montarSystemPrompt(opcoes.raiz, opcoes.perfil, opcoes.foco)
-  const conselheiro = ehConselheiro(opcoes.perfil)
-  const mcp = conselheiro ? undefined : await servidorTickTask()
+  const perfil = opcoes.perfil
+  const conselheiro = ehConselheiro(perfil)
+  const brief =
+    conselheiro && opcoes.memoria
+      ? await montarBrief(opcoes.memoria, perfil, opcoes.consulta ?? opcoes.texto)
+      : ""
+  const system = await montarSystemPrompt(opcoes.raiz, perfil, opcoes.foco, brief)
+  const mcp = !conselheiro
+    ? await servidorTickTask()
+    : opcoes.memoria
+      ? { memoria: servidorDeMemoria(opcoes.memoria, perfil, `conversa:${opcoes.conversaId ?? "avulsa"}`) }
+      : undefined
+  const extras = !conselheiro ? FERRAMENTAS_TICKTASK : opcoes.memoria ? FERRAMENTAS_MEMORIA : []
   let acumulado = ""
   let sessionId = opcoes.sessionId
 
@@ -102,7 +118,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       resume: opcoes.sessionId,
       model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
-      allowedTools: mcp ? [...AUTO_APROVADAS, ...FERRAMENTAS_TICKTASK] : AUTO_APROVADAS,
+      allowedTools: mcp ? [...AUTO_APROVADAS, ...extras] : AUTO_APROVADAS,
       mcpServers: mcp,
       // Executor fica em "default" para o canUseTool decidir tudo explicitamente, em vez
       // de depender de como acceptEdits e canUseTool interagem entre si.

@@ -3,16 +3,11 @@ import { rename } from "node:fs/promises"
 import { CONSELHEIROS, type Conselheiro } from "./tipos"
 import { montarSystemPromptParecer, montarPautaParecer, montarPromptSintese } from "./prompt"
 import { perguntarUmaVez } from "./sessions"
+import { slug } from "./texto"
+import type { Memoria } from "./memoria/tipos"
+import { montarBrief } from "./memoria/recuperacao"
 
-export function slug(texto: string): string {
-  return texto
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-}
+export { slug }
 
 interface ResultadoBoard {
   sintese: string
@@ -24,12 +19,14 @@ export async function convocarBoard(
   pauta: string,
   contexto: string | undefined,
   onStatus: (texto: string) => void,
+  memoria?: Memoria,
 ): Promise<ResultadoBoard> {
   const pautaFormatada = montarPautaParecer(pauta, contexto)
 
   const pareceres = await Promise.all(
     CONSELHEIROS.map(async (perfil) => {
-      const system = await montarSystemPromptParecer(raiz, perfil)
+      const brief = memoria ? await montarBrief(memoria, perfil, pauta) : ""
+      const system = await montarSystemPromptParecer(raiz, perfil, brief)
       try {
         const texto = await perguntarUmaVez({ raiz, system, prompt: pautaFormatada, permitirLeitura: true })
         return { perfil, texto }

@@ -52,11 +52,8 @@ Sua personalidade e sua memória estão acima; encarne-as por completo.
 - Responda sempre em português brasileiro.
 - Escreva como gente conversa num chat de mensagens: um pensamento por balão. Para
   separar balões, insira uma linha contendo apenas "---".
-- Você PODE atualizar o arquivo profiles/${perfil}/memory.md quando aprender algo durável
-  sobre o Ueslei ou os projetos dele. Escreva na primeira pessoa e mantenha as seções
-  existentes.
-- Você NUNCA edita profiles/${perfil}/profile.md, arquivos de outros perfis, nem qualquer
-  outro arquivo fora dos citados nestas instruções.
+- Você NUNCA edita arquivos em profiles/ nem qualquer outro arquivo fora dos citados
+  nestas instruções.
 - Quando uma decisão for de fato tomada na conversa (não apenas discutida), registre-a:
   crie decisions/AAAA-MM-DD-<slug>.md com frontmatter YAML (id, date, title,
   status: proposta|aceita|revogada, tags, projeto, participantes) e as seções
@@ -64,6 +61,20 @@ Sua personalidade e sua memória estão acima; encarne-as por completo.
   depois adicione a linha correspondente em decisions/INDEX.md logo abaixo do marcador
   "<!-- decisões -->", no formato "- AAAA-MM-DD · status · [título](arquivo.md) · tags".
 - Antes de registrar uma decisão, confirme com o Ueslei que ela está fechada.
+
+## Sua memória
+
+A seção "Minha memória", quando aparece acima, traz o que você lembra que tem a ver com
+esta conversa. Ela é sua e de mais ninguém: os outros perfis não sabem o que o Ueslei
+conta a você.
+
+- Quando o que está ali não bastar, use a ferramenta recordar antes de dizer que não
+  lembra. Para ler uma lembrança inteira, use ler_lembranca.
+- Quando o Ueslei contar algo que claramente importa, ou pedir que você lembre, use
+  lembrar na hora. Não precisa guardar tudo: depois da conversa você mesmo repassa o
+  que foi dito e guarda o resto.
+- Lembrança marcada [coletivo] é decisão ou ata do board, que todos os perfis conhecem.
+- Não anuncie que está consultando ou guardando memória. Lembre como gente lembra.
 
 ## Tamanho da resposta
 
@@ -121,27 +132,31 @@ async function lerArquivo(caminho: string): Promise<string> {
   return (await arquivo.exists()) ? (await arquivo.text()).trim() : ""
 }
 
+export async function lerPerfil(raiz: string, perfil: Perfil): Promise<string> {
+  return lerArquivo(join(raiz, "profiles", perfil, "profile.md"))
+}
+
 export async function montarSystemPrompt(
   raiz: string,
   perfil: Perfil,
   foco?: string,
+  brief = "",
 ): Promise<string> {
-  const perfilMd = await lerArquivo(join(raiz, "profiles", perfil, "profile.md"))
+  const perfilMd = await lerPerfil(raiz, perfil)
   if (!ehConselheiro(perfil)) {
     return [perfilMd, instrucoesDoExecutor(perfil, foco)].filter(Boolean).join("\n\n---\n\n")
   }
-  const memoriaMd = await lerArquivo(join(raiz, "profiles", perfil, "memory.md"))
-  return [perfilMd, memoriaMd, instrucoesDaCasa(perfil)].filter(Boolean).join("\n\n---\n\n")
+  return [perfilMd, brief, instrucoesDaCasa(perfil)].filter(Boolean).join("\n\n---\n\n")
 }
 
 export async function montarSystemPromptParecer(
   raiz: string,
   perfil: Conselheiro,
+  brief = "",
 ): Promise<string> {
-  const perfilMd = await lerArquivo(join(raiz, "profiles", perfil, "profile.md"))
-  const memoriaMd = await lerArquivo(join(raiz, "profiles", perfil, "memory.md"))
+  const perfilMd = await lerPerfil(raiz, perfil)
   const charter = await lerArquivo(join(raiz, "board", "charter.md"))
-  return [perfilMd, memoriaMd, charter, instrucoesParecer(perfil)]
+  return [perfilMd, brief, charter, instrucoesParecer(perfil)]
     .filter(Boolean)
     .join("\n\n---\n\n")
 }
