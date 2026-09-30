@@ -52,3 +52,9 @@ flutter build apk --debug && adb install -r build/app/outputs/flutter-apk/app-de
 - No Android, abrir câmera ou seletor pausa o app; o WebSocket só fecha após 30 s em segundo
   plano, e reabrir a mesma conversa preserva citação e anexos do compositor.
 - A bandeja é StatusNotifierItem: no GNOME exige a extensão AppIndicator (o Ubuntu já traz).
+  No Linux o `cnativeapi` ignora o `Activate` (clique no ícone) e só exporta o menu com
+  `ContextMenuTrigger.clicked`; por isso o clique abre o menu, e não a janela direto.
+- Ubuntu 22.04 tem GLib 2.72 e o `cnativeapi` usa `G_APPLICATION_DEFAULT_FLAGS` (2.74+):
+  `linux/CMakeLists.txt` define o alias antes de incluir os plugins.
+- Os ícones do Android e o `assets/icone.png` saem de `app/web/icone.svg` por
+  `bash scripts/cliente-icones.sh`; sem ele o APK fica com o ícone padrão do Flutter.
