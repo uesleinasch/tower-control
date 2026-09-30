@@ -97,9 +97,12 @@ List<Dispositivo> dispositivosAdb(String saida) => [
 List<String> candidatosApk({required String home, required String executavel, String? forcado}) {
   final bundle = executavel.substring(0, executavel.lastIndexOf('/'));
   final projeto = bundle.contains('/build/linux/') ? bundle.substring(0, bundle.indexOf('/build/linux/')) : null;
+  final instalado = '$home/.local/share/control-tower-cliente/control-tower.apk';
+  final aoLado = '$bundle/control-tower.apk';
   return [
     if (forcado != null && forcado.isNotEmpty) forcado,
-    '$home/.local/share/control-tower-cliente/control-tower.apk',
+    if (projeto == null && aoLado != instalado) aoLado,
+    instalado,
     if (projeto != null) ...[
       '$projeto/build/app/outputs/flutter-apk/app-release.apk',
       '$projeto/build/app/outputs/flutter-apk/app-debug.apk',

@@ -72,6 +72,13 @@ emulator-5554          unauthorized transport_id:2
         ],
       );
     });
+
+    test('instalado pelo .deb, o APK fica ao lado do executável', () {
+      expect(candidatosApk(home: '/h', executavel: '/opt/control-tower/cliente/control-tower'), [
+        '/opt/control-tower/cliente/control-tower.apk',
+        '/h/.local/share/control-tower-cliente/control-tower.apk',
+      ]);
+    });
   });
 
   group('autostart', () {
