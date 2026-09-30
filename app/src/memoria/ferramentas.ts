@@ -19,7 +19,11 @@ export const FERRAMENTAS_MEMORIA = [
   "mcp__memoria__lembrar",
 ]
 
-export const FERRAMENTAS_MEMORIA_CONSOLIDACAO = [...FERRAMENTAS_MEMORIA, "mcp__memoria__atualizar_lembranca"]
+export const FERRAMENTAS_MEMORIA_CONSOLIDACAO = [
+  ...FERRAMENTAS_MEMORIA,
+  "mcp__memoria__atualizar_lembranca",
+  "mcp__memoria__fundir_lembrancas",
+]
 
 const INDISPONIVEL = "Memória indisponível agora. Siga a conversa sem ela."
 
@@ -89,6 +93,39 @@ export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string)
         await m.gravar(persona, { path: caminho, corpo, tier: tierDe(tipo), pinned: tipo === "jeito", tags })
         return `Atualizado ${caminho}.`
       }),
+
+    // A original vira um aviso que expira na hora: some da busca e do conjunto frio, e a
+    // versão anterior continua no histórico do ai-memory.
+    fundirLembrancas: ({ destino, titulo, texto, origens }: { destino: string; titulo: string; texto: string; origens: string[] }) =>
+      protegido(async () => {
+        const tipo = tipoDoCaminho(destino)
+        if (!caminhoValido(destino) || !tipo) return `Caminho inválido: ${destino}`
+        const invalidas = origens.filter((o) => !caminhoValido(o) || !tipoDoCaminho(o))
+        if (invalidas.length) return `Caminho inválido: ${invalidas.join(", ")}`
+        const outras = [...new Set(origens)].filter((o) => o !== destino)
+        const existentes = await Promise.all(outras.map((o) => m.ler(persona, o)))
+        const ausentes = outras.filter((_, i) => !existentes[i])
+        if (ausentes.length) return `Não existem lembranças suas em: ${ausentes.join(", ")}`
+        await m.gravar(persona, {
+          path: destino,
+          corpo: `# ${titulo.trim()}\n\n${texto.trim()}\n`,
+          tier: tierDe(tipo),
+          pinned: tipo === "jeito",
+          tags,
+        })
+        const agora = new Date().toISOString()
+        for (const origem of outras) {
+          await m.gravar(persona, {
+            path: origem,
+            corpo: `# Fundida em ${destino}\n\nEsta lembrança foi fundida em ${destino}.\n`,
+            tier: tierDe(tipoDoCaminho(origem)!),
+            pinned: false,
+            tags,
+            expiraEm: agora,
+          })
+        }
+        return `Fundidas ${outras.length} lembrança(s) em ${destino}.`
+      }),
   }
 }
 
@@ -134,6 +171,17 @@ export function servidorDeMemoria(
         "Reescreve uma lembrança sua que já existe. A versão anterior fica guardada.",
         { caminho: z.string().min(1), texto: z.string().min(1) },
         async (args) => resposta(await acoes.atualizarLembranca(args)),
+      ),
+      tool(
+        "fundir_lembrancas",
+        "Junta várias lembranças suas numa só, em destino. As originais deixam de aparecer; a versão antiga fica guardada.",
+        {
+          destino: z.string().min(1),
+          titulo: z.string().min(1),
+          texto: z.string().min(1),
+          origens: z.array(z.string().min(1)).min(1),
+        },
+        async (args) => resposta(await acoes.fundirLembrancas(args)),
       ),
     )
   }

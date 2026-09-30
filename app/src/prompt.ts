@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { ehConselheiro, type Conselheiro, type Perfil } from "./tipos"
 
-const NOMES: Record<Perfil, string> = {
+export const NOMES: Record<Perfil, string> = {
   poe: "Poe",
   nati: "Nati",
   lucas: "Lucas",

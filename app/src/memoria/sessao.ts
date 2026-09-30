@@ -1,0 +1,59 @@
+import { query } from "@anthropic-ai/claude-agent-sdk"
+import type { Conselheiro } from "../tipos"
+import { NOMES } from "../prompt"
+import { FERRAMENTAS_MEMORIA_CONSOLIDACAO, servidorDeMemoria } from "./ferramentas"
+import type { Memoria } from "./tipos"
+
+export const MODELO_MEMORIA = "sonnet"
+
+export function instrucoesDeBastidor(persona: Conselheiro, tarefa: string): string {
+  return `# Bastidor da sua memória
+
+Você é ${NOMES[persona]}, fora da conversa, cuidando da própria memória. Ninguém vai ler
+o que você responder aqui: o que importa é o que você grava com as ferramentas.
+
+${tarefa}
+
+Regras de toda escrita:
+- Escreva na primeira pessoa, na sua voz, em português brasileiro.
+- Antes de criar, use recordar para ver se já existe lembrança sobre o assunto. Se
+  existir, use atualizar_lembranca naquela página em vez de criar outra.
+- Tipos: fato (verdade sobre o Ueslei ou o mundo dele), episodio (o que aconteceu,
+  com data e como ele estava), jeito (quem você é com ele: opinião formada, jeito de
+  falar, piada interna, posição que defendeu).
+- jeito acrescenta ao seu perfil acima, nunca o contradiz: valores e limites ficam como
+  estão.
+- Não invente: grave só o que está no material que você recebeu.
+- Cada lembrança curta e específica. Uma ideia por página.`
+}
+
+export async function rodarPersona(opcoes: {
+  raiz: string
+  persona: Conselheiro
+  system: string
+  prompt: string
+  memoria: Memoria
+  origem: string
+}): Promise<void> {
+  const servidor = servidorDeMemoria(opcoes.memoria, opcoes.persona, opcoes.origem, { atualizar: true })
+  for await (const msg of query({
+    prompt: opcoes.prompt,
+    options: {
+      cwd: opcoes.raiz,
+      model: MODELO_MEMORIA,
+      systemPrompt: opcoes.system,
+      mcpServers: { memoria: servidor },
+      allowedTools: FERRAMENTAS_MEMORIA_CONSOLIDACAO,
+      tools: [],
+      permissionMode: "default",
+      maxTurns: 40,
+    },
+  })) {
+    if (msg.type === "result") {
+      const resultado = msg as { subtype?: string }
+      if (resultado.subtype !== "success") {
+        throw new Error(`a sessão de memória de ${opcoes.persona} terminou com "${resultado.subtype}"`)
+      }
+    }
+  }
+}

@@ -115,6 +115,7 @@ export function memoriaHttp(url: string = URL_PADRAO): Memoria {
         tier: pagina.tier,
         pinned: pagina.pinned,
         tags: pagina.tags,
+        ...(pagina.expiraEm ? { expires_at: pagina.expiraEm } : {}),
       })
     },
 

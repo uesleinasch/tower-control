@@ -34,6 +34,7 @@ export interface NovaPagina {
   tier: Tier
   pinned: boolean
   tags: string[]
+  expiraEm?: string
 }
 
 export interface Memoria {
