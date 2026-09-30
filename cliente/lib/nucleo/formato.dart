@@ -22,3 +22,19 @@ String quando(DateTime? data, {DateTime? agora}) {
 }
 
 const limiteAnexo = 10 * 1024 * 1024;
+
+final _mimes = {
+  'png': 'image/png',
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'webp': 'image/webp',
+  'gif': 'image/gif',
+  'pdf': 'application/pdf',
+  for (final t in ['log', 'md', 'txt', 'csv', 'json', 'ts', 'js', 'py', 'sql', 'yml', 'yaml', 'sh']) t: 'text/plain',
+};
+
+String mimePorNome(String nome) {
+  final ponto = nome.lastIndexOf('.');
+  final extensao = ponto < 0 ? '' : nome.substring(ponto + 1).toLowerCase();
+  return _mimes[extensao] ?? 'application/octet-stream';
+}

@@ -1,17 +1,18 @@
 class Perfil {
-  const Perfil(this.chave, this.nome, this.inicial, this.cor, {this.executor = false});
+  const Perfil(this.chave, this.nome, this.inicial, this.cor, this.papel, {this.executor = false});
 
   final String chave;
   final String nome;
   final String inicial;
   final int cor;
+  final String papel;
   final bool executor;
 
-  static const poe = Perfil('poe', 'Poe', 'P', 0xFFE0A458);
-  static const nati = Perfil('nati', 'Nati', 'N', 0xFF9A6EE8);
-  static const lucas = Perfil('lucas', 'Lucas', 'L', 0xFF4FAE7C);
-  static const pami = Perfil('pami', 'Pami', 'P', 0xFFE06A8A);
-  static const alfred = Perfil('alfred', 'Alfred', 'A', 0xFFA9B0BF, executor: true);
+  static const poe = Perfil('poe', 'Poe', 'P', 0xFFE0A458, 'o amigo');
+  static const nati = Perfil('nati', 'Nati', 'N', 0xFF9A6EE8, 'engenheira sênior');
+  static const lucas = Perfil('lucas', 'Lucas', 'L', 0xFF4FAE7C, 'o gestor');
+  static const pami = Perfil('pami', 'Pami', 'P', 0xFFE06A8A, 'a projetista');
+  static const alfred = Perfil('alfred', 'Alfred', 'A', 0xFFA9B0BF, 'executor de tarefas', executor: true);
 
   static const todos = [poe, nati, lucas, pami, alfred];
 
@@ -20,7 +21,7 @@ class Perfil {
   static const corDecisoes = 0xFF58B7C9;
 
   static Perfil porChave(String chave) =>
-      todos.firstWhere((p) => p.chave == chave, orElse: () => Perfil(chave, chave, '?', 0xFF8B93A7));
+      todos.firstWhere((p) => p.chave == chave, orElse: () => Perfil(chave, chave, '?', 0xFF8B93A7, ''));
 }
 
 const modelos = {'haiku': 'Haiku · padrão', 'sonnet': 'Sonnet', 'opus': 'Opus'};

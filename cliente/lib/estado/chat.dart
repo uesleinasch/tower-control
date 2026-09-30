@@ -209,7 +209,13 @@ class EstadoChat extends ChangeNotifier {
         conversaId = meta.id;
         titulo = '${Perfil.porChave(meta.perfil).nome} — ${meta.titulo}';
       case ConversaAberta(:final meta, :final mensagens):
+        final mesma = meta.id == conversaId;
+        final rascunho = (citacao: citacao, anexos: List.of(anexos));
         _limpar();
+        if (mesma) {
+          citacao = rascunho.citacao;
+          anexos.addAll(rascunho.anexos);
+        }
         perfil = meta.perfil;
         foco = meta.foco;
         conversaId = meta.id;

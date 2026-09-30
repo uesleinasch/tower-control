@@ -80,6 +80,21 @@ void main() {
       expect(enviados.last, {'tipo': 'abrir', 'conversaId': 'c1'});
     });
 
+    test('reabrir a mesma conversa preserva citação e anexos do compositor', () {
+      const anexo = Anexo(id: 'a1', nome: 'f.png', tipo: TipoAnexo.imagem, mime: 'image/png', bytes: 1);
+      final chat = EstadoChat(enviar)
+        ..tratar(const ConversaAberta(_meta, []))
+        ..definirCitacao('trecho')
+        ..adicionarAnexo(anexo)
+        ..tratar(const ConversaAberta(_meta, []));
+      expect(chat.citacao, 'trecho');
+      expect(chat.anexos.single.id, 'a1');
+      chat.tratar(const ConversaAberta(
+          MetaConversa(id: 'c2', perfil: 'nati', titulo: 'x', criadaEm: null), []));
+      expect(chat.citacao, isNull);
+      expect(chat.anexos, isEmpty);
+    });
+
     test('conversa aberta reconstrói balões da resposta gravada', () {
       final chat = EstadoChat(enviar)
         ..tratar(const ConversaAberta(_meta, [

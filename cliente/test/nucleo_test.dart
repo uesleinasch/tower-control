@@ -128,6 +128,14 @@ void main() {
       expect(formatarBytes(2 * 1024 * 1024), '2 MB');
     });
 
+    test('mime pelo nome', () {
+      expect(mimePorNome('Foto.JPG'), 'image/jpeg');
+      expect(mimePorNome('a.pdf'), 'application/pdf');
+      expect(mimePorNome('log.txt'), 'text/plain');
+      expect(mimePorNome('pacote.zip'), 'application/octet-stream');
+      expect(mimePorNome('semextensao'), 'application/octet-stream');
+    });
+
     test('quando', () {
       final agora = DateTime(2026, 9, 30, 15);
       expect(quando(DateTime(2026, 9, 30, 9, 5), agora: agora), '09:05');
