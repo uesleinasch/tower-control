@@ -1,10 +1,10 @@
-import { resolve } from "node:path"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
+import { raizDosDados } from "../src/caminhos"
 import { buscarDecisoes, lerDecisao, linhaIndice } from "../src/decisions"
 
-const RAIZ = resolve(import.meta.dir, "..", "..")
+const RAIZ = raizDosDados()
 
 const servidor = new McpServer({ name: "control-tower", version: "0.1.0" })
 

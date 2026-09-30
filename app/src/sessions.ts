@@ -1,3 +1,4 @@
+import { executavelDoClaude } from "./caminhos"
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
 import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
@@ -115,6 +116,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     prompt: conselheiro ? opcoes.texto : comoStream(opcoes.texto),
     options: {
       cwd: opcoes.raiz,
+      pathToClaudeCodeExecutable: executavelDoClaude(),
       resume: opcoes.sessionId,
       model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
@@ -161,6 +163,7 @@ export async function perguntarUmaVez(opcoes: {
     prompt: opcoes.prompt,
     options: {
       cwd: opcoes.raiz,
+      pathToClaudeCodeExecutable: executavelDoClaude(),
       systemPrompt: opcoes.system,
       allowedTools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
       permissionMode: "default",

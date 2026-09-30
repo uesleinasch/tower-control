@@ -1,4 +1,7 @@
-import { join, resolve } from "node:path"
+import { join } from "node:path"
+import { dirModelos, dirWeb, raizDoCodigo, raizDosDados } from "./caminhos"
+import { origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
+import { migrarPendentes } from "./memoria/migracao"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
 import { PERFIS, ehConselheiro, type Anexo, type Perfil } from "./tipos"
@@ -24,13 +27,28 @@ import {
   excluirConversa,
 } from "./store"
 
-const RAIZ = resolve(import.meta.dir, "..", "..")
+const CODIGO = raizDoCodigo()
+const RAIZ = raizDosDados()
+const WEB = dirWeb(CODIGO)
+
+try {
+  await prepararDados({ dados: RAIZ, modelos: dirModelos(CODIGO), origem: await origemDaImportacao(RAIZ, CODIGO) })
+} catch (erro) {
+  console.error(`não consegui preparar a pasta de dados ${RAIZ}: ${(erro as Error).message}`)
+  process.exit(1)
+}
 const PORTA = Number(process.env.TOWER_PORTA ?? 7878)
 const MEMORIA = memoriaHttp()
 
 function espelharEmSegundoPlano(): void {
   void espelharColetivo(RAIZ, MEMORIA).catch((erro: Error) =>
     console.warn(`[memoria] espelho do coletivo falhou — ${erro.message}`),
+  )
+}
+
+function versionarEmSegundoPlano(motivo: string): void {
+  void registrarNoGit(RAIZ, motivo).catch((erro: Error) =>
+    console.warn(`[dados] commit falhou — ${erro.message}`),
   )
 }
 
@@ -146,7 +164,10 @@ async function responderNaConversa(
     await atualizarMeta(RAIZ, id, { sessionId: resposta.sessionId })
   }
   mandar(ws, { tipo: "fim", conversaId: id })
-  if (ehConselheiro(meta.perfil)) espelharEmSegundoPlano()
+  if (ehConselheiro(meta.perfil)) {
+    espelharEmSegundoPlano()
+    versionarEmSegundoPlano(`conversa com ${meta.perfil}`)
+  }
 }
 
 async function resolverAnexos(ws: Cliente, ids: unknown): Promise<Anexo[]> {
@@ -236,6 +257,7 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
         MEMORIA,
       )
       espelharEmSegundoPlano()
+      versionarEmSegundoPlano(`ata do board: ${pauta.slice(0, 60)}`)
       mandar(ws, { tipo: "board-sintese", texto: resultado.sintese, ata: resultado.ata })
       return
     }
@@ -303,7 +325,7 @@ const servidor = Bun.serve({
     if (nome) {
       // Sem isto o navegador do celular serve UI velha do cache e a edição
       // parece não ter surtido efeito.
-      return new Response(Bun.file(join(import.meta.dir, "..", "web", nome)), {
+      return new Response(Bun.file(join(WEB, nome)), {
         headers: { "cache-control": "no-store" },
       })
     }
@@ -329,13 +351,14 @@ const servidor = Bun.serve({
 
 espelharEmSegundoPlano()
 iniciarAgenda(RAIZ, {
+  migrar: () => migrarPendentes(RAIZ, MEMORIA),
   pendentes: (agora) => conversasPendentes(RAIZ, agora),
   consolidar: (meta) => consolidarConversa(RAIZ, MEMORIA, meta),
   sonhar: (persona) => sonhar(RAIZ, MEMORIA, persona),
 })
 
 const rede = enderecos()
-console.log(`control-tower de pé (raiz: ${RAIZ})`)
+console.log(`control-tower de pé (dados: ${RAIZ}, código: ${CODIGO})`)
 console.log(`  local:     http://localhost:${servidor.port}`)
 if (rede.lan) console.log(`  rede:      http://${rede.lan}:${servidor.port}`)
 if (rede.tailscale) console.log(`  tailscale: http://${rede.tailscale}:${servidor.port}`)

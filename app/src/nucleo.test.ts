@@ -11,6 +11,8 @@ import { respostaEnderecos } from "./rede"
 import { CONSELHEIROS, PERFIS, ehConselheiro } from "./tipos"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, idValido } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
+import { raizDosDados } from "./caminhos"
+import { MARCADOR, origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import type { Anexo } from "./tipos"
 import {
   classificarAnexo,
@@ -826,6 +828,7 @@ describe("correções da revisão", () => {
     const tentadas: string[] = []
     const metas = ["a", "b"].map((id) => ({ id, perfil: "poe", titulo: id, criadaEm: "" }) as MetaConversa)
     const trabalhos = {
+      migrar: async () => {},
       pendentes: async () => metas,
       consolidar: async (m: MetaConversa) => {
         tentadas.push(m.id)
@@ -850,5 +853,97 @@ describe("correções da revisão", () => {
     await rm(join(raiz, "profiles", "poe", "memory.md"))
     expect(await montarSystemPrompt(raiz, "poe")).not.toContain("LEMBRANCA-ANTIGA")
     await rm(raiz, { recursive: true, force: true })
+  })
+})
+
+describe("pasta de dados", () => {
+  const modelos = join(import.meta.dir, "..", "modelos")
+
+  async function temporaria(nome: string): Promise<string> {
+    return mkdtemp(join(tmpdir(), `tower-${nome}-`))
+  }
+
+  async function gitLog(dir: string): Promise<string> {
+    const p = Bun.spawn(["git", "log", "--oneline"], { cwd: dir, stdout: "pipe" })
+    return new Response(p.stdout).text()
+  }
+
+  test("raiz de dados segue CT_DADOS, depois XDG_DATA_HOME, depois ~/.local/share", () => {
+    expect(raizDosDados({ CT_DADOS: "/x/y" })).toBe("/x/y")
+    expect(raizDosDados({ XDG_DATA_HOME: "/xdg", HOME: "/h" })).toBe("/xdg/control-tower")
+    expect(raizDosDados({ HOME: "/h" })).toBe("/h/.local/share/control-tower")
+  })
+
+  test("os modelos trazem os cinco perfis, o charter, os atalhos e o índice vazio", async () => {
+    for (const p of PERFIS) expect(await Bun.file(join(modelos, "profiles", p, "profile.md")).exists()).toBe(true)
+    expect(await Bun.file(join(modelos, "board", "charter.md")).exists()).toBe(true)
+    expect(await Bun.file(join(modelos, "atalhos.md")).exists()).toBe(true)
+    const indice = await Bun.file(join(modelos, "decisions", "INDEX.md")).text()
+    expect(indice).toContain("<!-- decisões -->")
+    expect(indice).not.toMatch(/^- \d{4}/m)
+  })
+
+  test("sem origem, nasce dos modelos com git e marcador, e não roda de novo", async () => {
+    const dados = join(await temporaria("dados"), "control-tower")
+    expect(await prepararDados({ dados, modelos, home: dados })).toBe(true)
+    expect(await Bun.file(join(dados, "profiles", "poe", "profile.md")).exists()).toBe(true)
+    expect(await Bun.file(join(dados, MARCADOR)).exists()).toBe(true)
+    expect(await Bun.file(join(dados, ".gitignore")).text()).toContain("conversations/")
+    expect(await gitLog(dados)).toContain("dados: modelos iniciais")
+    expect(await prepararDados({ dados, modelos, home: dados })).toBe(false)
+    await rm(dados, { recursive: true, force: true })
+  })
+
+  test("importa perfis, memória, decisões, conversas e as sessões do SDK referenciadas", async () => {
+    const origem = await temporaria("origem")
+    const home = await temporaria("home")
+    const dados = join(await temporaria("dados"), "control-tower")
+    const sessao = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
+    await mkdir(join(origem, "profiles", "poe"), { recursive: true })
+    await Bun.write(join(origem, "profiles", "poe", "memory.md"), "# Memória do Poe\n\n- lembra de tudo")
+    await mkdir(join(origem, "decisions"), { recursive: true })
+    await Bun.write(join(origem, "decisions", "2026-08-22-a.md"), "---\ntitle: A\n---\n")
+    await mkdir(join(origem, "conversations"), { recursive: true })
+    await Bun.write(join(origem, "conversations", "2026-09-30-poe-abc.meta.json"), JSON.stringify({ sessionId: sessao }))
+    await mkdir(diretorioDeSessoes(origem, home), { recursive: true })
+    await Bun.write(join(diretorioDeSessoes(origem, home), `${sessao}.jsonl`), "{}")
+    await Bun.write(join(diretorioDeSessoes(origem, home), "outra-sessao-qualquer.jsonl"), "{}")
+
+    await prepararDados({ dados, modelos, origem, home })
+
+    expect(await Bun.file(join(dados, "profiles", "poe", "memory.md")).text()).toContain("lembra de tudo")
+    expect(await Bun.file(join(dados, "profiles", "poe", "profile.md")).exists()).toBe(true)
+    expect(await Bun.file(join(dados, "decisions", "2026-08-22-a.md")).exists()).toBe(true)
+    expect(await Bun.file(join(dados, "conversations", "2026-09-30-poe-abc.meta.json")).exists()).toBe(true)
+    expect(await Bun.file(join(diretorioDeSessoes(dados, home), `${sessao}.jsonl`)).exists()).toBe(true)
+    expect(await Bun.file(join(diretorioDeSessoes(dados, home), "outra-sessao-qualquer.jsonl")).exists()).toBe(false)
+    expect(await Bun.file(join(origem, "profiles", "poe", "memory.md")).exists()).toBe(true)
+    for (const d of [origem, home, dados]) await rm(d, { recursive: true, force: true })
+  })
+
+  test("a origem vem de CT_IMPORTAR_DE, do arquivo deixado pelo postinst, ou do próprio clone", async () => {
+    const dados = await temporaria("dados")
+    const semNada = await temporaria("vazio")
+    expect(await origemDaImportacao(dados, semNada, { CT_IMPORTAR_DE: "/clone" })).toBe("/clone")
+    expect(await origemDaImportacao(dados, semNada, {})).toBeUndefined()
+    await Bun.write(join(dados, ".importar-de"), "/home/u/repo\n")
+    expect(await origemDaImportacao(dados, semNada, {})).toBe("/home/u/repo")
+    const clone = await temporaria("clone")
+    await mkdir(join(clone, "profiles"))
+    expect(await origemDaImportacao(await temporaria("dados2"), clone, {})).toBe(clone)
+    for (const d of [dados, semNada, clone]) await rm(d, { recursive: true, force: true })
+  })
+
+  test("registra no git só quando há mudança nos dados versionados", async () => {
+    const dados = join(await temporaria("dados"), "control-tower")
+    await prepararDados({ dados, modelos, home: dados })
+    expect(await registrarNoGit(dados, "nada")).toBe(false)
+    await mkdir(join(dados, "conversations"), { recursive: true })
+    await Bun.write(join(dados, "conversations", "x.jsonl"), "{}")
+    expect(await registrarNoGit(dados, "só conversa")).toBe(false)
+    await Bun.write(join(dados, "decisions", "2026-09-30-b.md"), "decisão")
+    expect(await registrarNoGit(dados, "decisão nova")).toBe(true)
+    expect(await gitLog(dados)).toContain("dados: decisão nova")
+    await rm(dados, { recursive: true, force: true })
   })
 })
