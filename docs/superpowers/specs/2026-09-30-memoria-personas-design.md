@@ -83,9 +83,14 @@ nosso código escreve nele. O isolamento é garantido pelo adaptador, não pelo 
    nesta ordem de prioridade:
    - **Camada viva**: páginas `pinned` da persona, sempre, com teto de 1.500 caracteres.
    - **Contexto recente**: o episódio mais recente da persona, para saber "onde paramos".
-   - **Lembranças relevantes**: `memory_query` com o texto da mensagem, `scopes`
-     `[persona, coletivo]`, os melhores trechos até completar o orçamento. Trecho vindo de
-     `coletivo` chega marcado como decisão ou ata, com data.
+   - **Lembranças relevantes**: `memory_query` com o texto da mensagem, uma busca na
+     persona e outra em `coletivo` (os hits de uma busca com `scopes` não dizem de que
+     projeto vieram), intercaladas até completar o orçamento. Trecho vindo de `coletivo`
+     chega marcado como decisão ou ata.
+
+   A camada viva e o episódio recente saem da listagem REST
+   (`GET /api/v1/workspaces/{ws}/projects/{p}/pages`) filtrada pelo prefixo do caminho,
+   porque o ai-memory não lista por `pinned`.
 2. `montarSystemPrompt` passa a ser `[profile.md, brief, instruções da casa]`. O brief é
    cercado como material de memória, não como instrução.
 3. Durante a resposta, a persona tem as tools:
@@ -137,15 +142,17 @@ Toda escrita da persona leva a tag de origem: `origem:conversa:<id>`,
 - **Gatilho:** `HORARIO_SONHO`, padrão **07:30**, com override por `CT_HORARIO_SONHO`.
   Cada persona grava a data do último sonho; se o horário passou e ela não sonhou desde
   então, e teve atividade desde o último sonho, o sonho está devido.
-- **Faz:** pega até 40 páginas frias da persona (menor relevância pelo decaimento do
-  ai-memory, fora `jeito/`). A persona agrupa por tema e reescreve cada grupo como uma
+- **Faz:** pega até 40 páginas frias da persona, que o ai-memory entrega em
+  `memory_forget_sweep` com `dry_run=true`. Só episódios ficam frios: fatos, camada viva e
+  pinned são isentos do decaimento. A persona agrupa por tema e reescreve cada grupo como uma
   lembrança única na voz dela; as originais ficam substituídas, não apagadas.
 - **Poda da camada viva:** se `jeito/` passar de 1.500 caracteres, a persona funde e
   resume, e decide o que ainda a define. A camada viva só acrescenta ao núcleo: não
   pode contradizer valores nem limites do `profile.md`.
 - **Modelo:** Sonnet.
-- **Decaimento nativo:** o ai-memory continua reduzindo relevância, o que afeta só o
-  ranking. **O despejo fica desligado.** Nada some sem passar pelo sonho.
+- **Decaimento nativo:** no ai-memory ele não entra no ranking da busca; só define o
+  conjunto frio. **O despejo fica desligado** com
+  `[maintenance] forget_sweep_interval_secs = 0`. Nada some sem passar pelo sonho.
 
 ## Máquina desligada
 
