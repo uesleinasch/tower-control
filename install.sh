@@ -38,6 +38,13 @@ say "instalando dependências"
 say "registrando o serviço (boot + restart automático)"
 bash "$RAIZ/scripts/servico.sh"
 
+if command -v flutter >/dev/null 2>&1 || [ -x "$HOME/flutter/bin/flutter" ] || [ -x "$HOME/development/flutter/bin/flutter" ]; then
+  say "instalando o app de desktop e o APK do celular"
+  bash "$RAIZ/scripts/instalar-cliente.sh" || echo "o app não instalou — rode de novo depois: bash scripts/instalar-cliente.sh"
+else
+  echo "sem Flutter nesta máquina: o app de desktop fica para depois (bash scripts/instalar-cliente.sh)"
+fi
+
 say "pronto — endereços (local, rede e tailscale) no log do serviço:"
 echo "  journalctl --user -u control-tower.service -n 5 --no-pager"
 echo

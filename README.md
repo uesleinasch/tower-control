@@ -47,6 +47,21 @@ consegue descrever um print e ler um log longo por partes. Anexo fica em
 Pelo menu do navegador, "Adicionar à tela inicial" instala como app e abre sem a
 barra de endereço.
 
+## App de desktop e de celular (Flutter)
+
+Além da página web, há um app nativo em `cliente/` para Linux e Android. No computador ele
+fica na bandeja, sobe no login e tem uma tela de **Configuração**: estado do serviço com
+iniciar/parar/reiniciar, logs ao vivo, endereços de rede, autostart e a instalação no celular.
+
+```bash
+sudo apt install -y libgtk-3-dev libx11-dev libxi-dev   # uma vez
+bash scripts/instalar-cliente.sh                          # compila, instala e abre na bandeja
+```
+
+Para o celular: plugue no cabo com depuração USB, abra Configuração → Celular e toque em
+**Instalar e conectar**. O app abre já com os endereços da rede local e do Tailscale e, a
+cada abertura, usa o primeiro que responder. Detalhes em [cliente/README.md](cliente/README.md).
+
 ## Instalar como serviço (sobe no boot)
 
 ```bash
@@ -121,6 +136,7 @@ claude mcp add --scope user control-tower -- bun run <caminho>/control-tower/app
 
 ```
 app/           servidor Bun + Agent SDK, UI web e MCP server
+cliente/       app Flutter (Linux e Android) do mesmo servidor
 profiles/      personalidade fixa + memória evolutiva de cada perfil
 board/         charter do conselho e atas das deliberações
 decisions/     decisões registradas + índice
