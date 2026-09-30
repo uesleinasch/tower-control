@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js"
 import {
   MemoriaIndisponivel,
   WORKSPACE,
@@ -12,6 +13,8 @@ import {
 } from "./tipos"
 
 export const URL_PADRAO = process.env.CT_MEMORIA_URL ?? "http://127.0.0.1:49374"
+
+const FALHAS_DE_TRANSPORTE = new Set<number>([ErrorCode.ConnectionClosed, ErrorCode.RequestTimeout])
 
 export function limparTrecho(snippet: string): string {
   return snippet.replace(/<\/?mark>/g, "").replace(/\s+/g, " ").trim()
@@ -39,6 +42,9 @@ export function memoriaHttp(url: string = URL_PADRAO): Memoria {
       const cliente = await conectar()
       resultado = await cliente.callTool({ name: nome, arguments: args })
     } catch (erro) {
+      if (erro instanceof McpError && !FALHAS_DE_TRANSPORTE.has(erro.code)) {
+        throw new Error(`${nome}: ${erro.message}`)
+      }
       const antiga = conexao
       conexao = null
       void antiga?.then((c) => c.close()).catch(() => {})
@@ -66,12 +72,17 @@ export function memoriaHttp(url: string = URL_PADRAO): Memoria {
     `/api/v1/workspaces/${encodeURIComponent(WORKSPACE)}/projects/${encodeURIComponent(projeto)}/pages`
 
   return {
+    // Projeto que ainda não recebeu nenhuma página faz o memory_query falhar fechado;
+    // para quem busca, isso é só "nada lembrado".
     async buscar(projeto, consulta, limite) {
       const r = await chamar<{ hits?: { path: string; title?: string; snippet?: string }[] }>("memory_query", {
         query: consulta,
         limit: limite,
         workspace: WORKSPACE,
         project: projeto,
+      }).catch((erro: Error) => {
+        if (erro instanceof MemoriaIndisponivel) throw erro
+        return { hits: [] }
       })
       return (r.hits ?? []).map<Trecho>((h) => ({
         path: h.path,

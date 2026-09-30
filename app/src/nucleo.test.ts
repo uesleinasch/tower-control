@@ -32,8 +32,8 @@ import {
 } from "./memoria/tipos"
 import { limparTrecho } from "./memoria/cliente"
 import { LIMITE_BRIEF, LIMITE_JEITO, comporBrief, montarBrief } from "./memoria/recuperacao"
-import { acoesDaPersona, caminhoNovo } from "./memoria/ferramentas"
-import { consolidacaoPendente, sonhoDevido } from "./memoria/agenda"
+import { acoesDaPersona, caminhoNovo, placarVazio } from "./memoria/ferramentas"
+import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memoria/agenda"
 import { montarPedidoSonho, precisaSonhar } from "./memoria/sonho"
 import { montarPedidoConsolidacao } from "./memoria/consolidacao"
 import { espelharColetivo, paginaDoColetivo } from "./memoria/coletivo"
@@ -777,5 +777,78 @@ _(vazio por enquanto)_
       expect(itens.length).toBeGreaterThan(0)
       expect(itens.some((i) => i.startsWith("#"))).toBe(false)
     }
+  })
+})
+
+describe("correções da revisão", () => {
+  test("lembrar com título repetido não sobrescreve a lembrança anterior", async () => {
+    const { memoria, gravacoes } = memoriaFalsa({ poe: [pagina("fatos/cafe.md", "# Café\n\nsem açúcar")] })
+    const texto = await acoesDaPersona(memoria, "poe", "t").lembrar({ titulo: "Café", texto: "prefere coado", tipo: "fato" })
+    expect(texto).toContain("fatos/cafe-2.md")
+    expect(gravacoes[0]!.pagina.path).toBe("fatos/cafe-2.md")
+  })
+
+  test("o placar conta gravações e quedas do daemon", async () => {
+    const { memoria } = memoriaFalsa()
+    const placar = placarVazio()
+    await acoesDaPersona(memoria, "poe", "t", placar).lembrar({ titulo: "A", texto: "a", tipo: "fato" })
+    await acoesDaPersona(fora, "poe", "t", placar).lembrar({ titulo: "B", texto: "b", tipo: "fato" })
+    expect(placar).toEqual({ gravacoes: 1, indisponivel: 1 })
+  })
+
+  test("erro de servidor que não é queda não conta como indisponível", async () => {
+    const quebrada: Memoria = { ...memoriaFalsa().memoria, gravar: () => Promise.reject(new Error("path recusado")) }
+    const placar = placarVazio()
+    const texto = await acoesDaPersona(quebrada, "poe", "t", placar).lembrar({ titulo: "A", texto: "a", tipo: "fato" })
+    expect(texto).toContain("Não deu certo")
+    expect(placar.indisponivel).toBe(0)
+  })
+
+  test("falha repetida espera cada vez mais, até 6 horas, e volta ao normal quando dá certo", () => {
+    const espera = new Espera()
+    const t0 = new Date("2026-09-30T10:00:00Z")
+    const depois = (min: number) => new Date(t0.getTime() + min * 60_000)
+    espera.falhou("x", t0)
+    expect(espera.pode("x", depois(4))).toBe(false)
+    expect(espera.pode("x", depois(5))).toBe(true)
+    espera.falhou("x", depois(5))
+    expect(espera.pode("x", depois(14))).toBe(false)
+    expect(espera.pode("x", depois(15))).toBe(true)
+    for (let i = 0; i < 20; i++) espera.falhou("x", t0)
+    expect(espera.pode("x", depois(6 * 60))).toBe(true)
+    espera.deuCerto("x")
+    expect(espera.pode("x", t0)).toBe(true)
+    expect(espera.pode("outro", t0)).toBe(true)
+  })
+
+  test("uma falha na agenda não impede os outros itens e entra em espera", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-agenda-"))
+    const tentadas: string[] = []
+    const metas = ["a", "b"].map((id) => ({ id, perfil: "poe", titulo: id, criadaEm: "" }) as MetaConversa)
+    const trabalhos = {
+      pendentes: async () => metas,
+      consolidar: async (m: MetaConversa) => {
+        tentadas.push(m.id)
+        if (m.id === "a") throw new Error("caiu")
+      },
+      sonhar: async () => {},
+    }
+    const espera = new Espera()
+    const agora = new Date("2026-09-30T10:00:00Z")
+    await rodarUmaVez(raiz, trabalhos, espera, agora)
+    await rodarUmaVez(raiz, trabalhos, espera, new Date(agora.getTime() + 60_000))
+    expect(tentadas).toEqual(["a", "b", "b"])
+    await rm(raiz, { recursive: true, force: true })
+  })
+
+  test("enquanto não migrou, o memory.md antigo segue no prompt", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-legado-"))
+    await mkdir(join(raiz, "profiles", "poe"), { recursive: true })
+    await Bun.write(join(raiz, "profiles", "poe", "profile.md"), "# Poe")
+    await Bun.write(join(raiz, "profiles", "poe", "memory.md"), "LEMBRANCA-ANTIGA")
+    expect(await montarSystemPrompt(raiz, "poe")).toContain("LEMBRANCA-ANTIGA")
+    await rm(join(raiz, "profiles", "poe", "memory.md"))
+    expect(await montarSystemPrompt(raiz, "poe")).not.toContain("LEMBRANCA-ANTIGA")
+    await rm(raiz, { recursive: true, force: true })
   })
 })

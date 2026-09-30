@@ -54,7 +54,7 @@ export async function consolidarConversa(raiz: string, m: Memoria, meta: MetaCon
     .map((x) => x.texto)
     .join(" ")
     .slice(0, 500)
-  const anteriores = assunto ? await m.buscar(persona, assunto, 8).catch(() => []) : []
+  const anteriores = assunto ? await m.buscar(persona, assunto, 8) : []
 
   const perfil = await lerPerfil(raiz, persona)
   await rodarPersona({
@@ -63,6 +63,7 @@ export async function consolidarConversa(raiz: string, m: Memoria, meta: MetaCon
     system: [perfil, instrucoesDeBastidor(persona, TAREFA)].filter(Boolean).join("\n\n---\n\n"),
     prompt: montarPedidoConsolidacao(persona, meta, novas, anteriores),
     memoria: m,
+    exigirGravacao: true,
     origem: `conversa:${meta.id}`,
   })
   await atualizarMeta(raiz, meta.id, { consolidadoAte: mensagens.length })

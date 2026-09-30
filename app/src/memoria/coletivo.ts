@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { readdir } from "node:fs/promises"
 import { parseFrontmatter } from "../decisions"
-import { COLETIVO, caminhoValido, type Memoria, type NovaPagina } from "./tipos"
+import { COLETIVO, MemoriaIndisponivel, caminhoValido, type Memoria, type NovaPagina } from "./tipos"
 
 export type OrigemColetiva = "decisao" | "ata"
 
@@ -47,8 +47,13 @@ export async function espelharColetivo(raiz: string, m: Memoria): Promise<number
         console.warn(`[memoria] ${nome} fora do formato de caminho; não espelhado no coletivo`)
         continue
       }
-      await m.gravar(COLETIVO, pagina)
-      espelhadas++
+      try {
+        await m.gravar(COLETIVO, pagina)
+        espelhadas++
+      } catch (erro) {
+        if (erro instanceof MemoriaIndisponivel) throw erro
+        console.warn(`[memoria] ${pagina.path} não espelhado no coletivo — ${(erro as Error).message}`)
+      }
     }
   }
   return espelhadas

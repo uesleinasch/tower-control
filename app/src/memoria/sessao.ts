@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import type { Conselheiro } from "../tipos"
 import { NOMES } from "../prompt"
-import { FERRAMENTAS_MEMORIA_CONSOLIDACAO, servidorDeMemoria } from "./ferramentas"
+import { FERRAMENTAS_MEMORIA_CONSOLIDACAO, placarVazio, servidorDeMemoria, type Placar } from "./ferramentas"
 import type { Memoria } from "./tipos"
 
 export const MODELO_MEMORIA = "sonnet"
@@ -34,8 +34,11 @@ export async function rodarPersona(opcoes: {
   prompt: string
   memoria: Memoria
   origem: string
-}): Promise<void> {
-  const servidor = servidorDeMemoria(opcoes.memoria, opcoes.persona, opcoes.origem, { atualizar: true })
+  exigirGravacao: boolean
+}): Promise<Placar> {
+  await opcoes.memoria.listar(opcoes.persona)
+  const placar = placarVazio()
+  const servidor = servidorDeMemoria(opcoes.memoria, opcoes.persona, opcoes.origem, { atualizar: true, placar })
   for await (const msg of query({
     prompt: opcoes.prompt,
     options: {
@@ -56,4 +59,7 @@ export async function rodarPersona(opcoes: {
       }
     }
   }
+  if (placar.indisponivel) throw new Error(`a memória caiu durante a sessão de ${opcoes.persona}`)
+  if (opcoes.exigirGravacao && !placar.gravacoes) throw new Error(`${opcoes.persona} não gravou nenhuma lembrança`)
+  return placar
 }

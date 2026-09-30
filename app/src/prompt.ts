@@ -146,7 +146,13 @@ export async function montarSystemPrompt(
   if (!ehConselheiro(perfil)) {
     return [perfilMd, instrucoesDoExecutor(perfil, foco)].filter(Boolean).join("\n\n---\n\n")
   }
-  return [perfilMd, brief, instrucoesDaCasa(perfil)].filter(Boolean).join("\n\n---\n\n")
+  const legado = await memoriaLegada(raiz, perfil)
+  return [perfilMd, legado, brief, instrucoesDaCasa(perfil)].filter(Boolean).join("\n\n---\n\n")
+}
+
+// Até scripts/migrar-memoria.ts rodar, o memory.md antigo segue valendo; a migração o apaga.
+async function memoriaLegada(raiz: string, perfil: Perfil): Promise<string> {
+  return lerArquivo(join(raiz, "profiles", perfil, "memory.md"))
 }
 
 export async function montarSystemPromptParecer(
@@ -156,7 +162,8 @@ export async function montarSystemPromptParecer(
 ): Promise<string> {
   const perfilMd = await lerPerfil(raiz, perfil)
   const charter = await lerArquivo(join(raiz, "board", "charter.md"))
-  return [perfilMd, brief, charter, instrucoesParecer(perfil)]
+  const legado = await memoriaLegada(raiz, perfil)
+  return [perfilMd, legado, brief, charter, instrucoesParecer(perfil)]
     .filter(Boolean)
     .join("\n\n---\n\n")
 }

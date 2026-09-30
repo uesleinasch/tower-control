@@ -80,32 +80,61 @@ export interface Trabalhos {
   sonhar(persona: Conselheiro): Promise<void>
 }
 
-export async function rodarUmaVez(raiz: string, trabalhos: Trabalhos, agora: Date = new Date()): Promise<void> {
+const ESPERA_MAXIMA_MS = 6 * 60 * 60_000
+
+export class Espera {
+  private falhas = new Map<string, { vezes: number; ate: number }>()
+
+  pode(chave: string, agora: Date): boolean {
+    return (this.falhas.get(chave)?.ate ?? 0) <= agora.getTime()
+  }
+
+  falhou(chave: string, agora: Date): void {
+    const vezes = (this.falhas.get(chave)?.vezes ?? 0) + 1
+    const espera = Math.min(INTERVALO_MS * 2 ** (vezes - 1), ESPERA_MAXIMA_MS)
+    this.falhas.set(chave, { vezes, ate: agora.getTime() + espera })
+  }
+
+  deuCerto(chave: string): void {
+    this.falhas.delete(chave)
+  }
+}
+
+async function tentar(espera: Espera, chave: string, agora: Date, acao: () => Promise<void>): Promise<void> {
+  if (!espera.pode(chave, agora)) return
+  try {
+    await acao()
+    espera.deuCerto(chave)
+  } catch (erro) {
+    espera.falhou(chave, agora)
+    console.warn(`[memoria] ${chave} falhou — ${(erro as Error).message}`)
+  }
+}
+
+export async function rodarUmaVez(
+  raiz: string,
+  trabalhos: Trabalhos,
+  espera: Espera = new Espera(),
+  agora: Date = new Date(),
+): Promise<void> {
   for (const meta of await trabalhos.pendentes(agora)) {
-    try {
-      await trabalhos.consolidar(meta)
-    } catch (erro) {
-      console.warn(`[memoria] consolidação de ${meta.id} falhou — ${(erro as Error).message}`)
-    }
+    await tentar(espera, `consolidação de ${meta.id}`, agora, () => trabalhos.consolidar(meta))
   }
   const estado = await lerEstado(raiz)
   for (const persona of CONSELHEIROS) {
     if (!sonhoDevido(estado.sonhos[persona], estado.atividade[persona], agora)) continue
-    try {
-      await trabalhos.sonhar(persona)
-    } catch (erro) {
-      console.warn(`[memoria] sonho de ${persona} falhou — ${(erro as Error).message}`)
-    }
+    await tentar(espera, `sonho de ${persona}`, agora, () => trabalhos.sonhar(persona))
   }
 }
 
 export function iniciarAgenda(raiz: string, trabalhos: Trabalhos): void {
   let rodando = false
+  const espera = new Espera()
   const ciclo = async () => {
     if (rodando) return
     rodando = true
     try {
-      await rodarUmaVez(raiz, trabalhos)
+      await rodarUmaVez(raiz, trabalhos, espera)
     } finally {
       rodando = false
     }

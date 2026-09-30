@@ -133,7 +133,10 @@ Toda escrita da persona leva a tag de origem: `origem:conversa:<id>`,
   texto)`, que gera nova versão da página (supersede) em vez de duplicar.
 - **Produz:** um episódio da conversa; fatos novos ou atualizados (fato que contradiz um
   antigo atualiza a página antiga); e, quando algo mudou nela, página de camada viva.
-- **Falha:** `consolidadoAte` só avança ao fim, então a próxima verificação refaz. Uma
+- **Falha:** `consolidadoAte` só avança ao fim, então a próxima verificação refaz. A
+  sessão conta como falha se o daemon cair no meio ou se a persona não gravar nada. Cada
+  item que falha espera o dobro da vez anterior antes de ser tentado de novo (5 min, 10,
+  20… até 6 h), para uma falha persistente não gastar Sonnet a cada ciclo. Uma
   consolidação por persona por vez. Refazer não duplica, porque a persona atualiza em
   vez de criar.
 
@@ -177,6 +180,10 @@ subida e uma varredura depois de cada turno de conselheiro cobrem esse caminho.
 `origem:migracao`. Antes de remover o `memory.md`, o script confere que toda linha com
 conteúdo aparece em alguma página (texto normalizado) e aborta listando o que faltou. O
 `memory.md` continua no histórico do git. Depois roda a varredura do coletivo.
+
+Enquanto o `memory.md` de uma persona existir, ele continua entrando no prompt, ao lado
+do brief. Assim, reiniciar o serviço antes de migrar não apaga a memória de ninguém, e a
+migração é o único ponto que tira o arquivo antigo de cena.
 
 ## O que muda no código existente
 

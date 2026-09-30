@@ -80,6 +80,7 @@ export async function migrarPersona(raiz: string, m: Memoria, persona: Conselhei
     system: [perfil, instrucoesDeBastidor(persona, TAREFA)].filter(Boolean).join("\n\n---\n\n"),
     prompt: montarPedidoMigracao(memoriaMd),
     memoria: m,
+    exigirGravacao: true,
     origem: ORIGEM_MIGRACAO,
   })
 }

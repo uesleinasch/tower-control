@@ -36,25 +36,52 @@ export function caminhoNovo(tipo: TipoLembranca, titulo: string, data: string = 
   return `${prefixoDe(tipo)}${tipo === "episodio" ? `${data}-` : ""}${base}.md`
 }
 
-async function protegido(acao: () => Promise<string>): Promise<string> {
-  try {
-    return await acao()
-  } catch (erro) {
-    if (erro instanceof MemoriaIndisponivel) return INDISPONIVEL
-    return `Não deu certo: ${(erro as Error).message}`
-  }
+export interface Placar {
+  gravacoes: number
+  indisponivel: number
+}
+
+export function placarVazio(): Placar {
+  return { gravacoes: 0, indisponivel: 0 }
 }
 
 // O projeto nunca vem do modelo: é fixado aqui, na criação, e nenhuma ação aceita outro.
-export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string) {
+export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string, placar: Placar = placarVazio()) {
   const tags = [`origem:${origem}`]
+
+  async function protegido(acao: () => Promise<string>): Promise<string> {
+    try {
+      return await acao()
+    } catch (erro) {
+      if (erro instanceof MemoriaIndisponivel) {
+        placar.indisponivel++
+        return INDISPONIVEL
+      }
+      return `Não deu certo: ${(erro as Error).message}`
+    }
+  }
+
+  async function gravar(pagina: Parameters<Memoria["gravar"]>[1]): Promise<void> {
+    await m.gravar(persona, pagina)
+    placar.gravacoes++
+  }
+
+  async function caminhoLivre(tipo: TipoLembranca, titulo: string): Promise<string> {
+    const base = caminhoNovo(tipo, titulo)
+    if (!(await m.ler(persona, base))) return base
+    for (let n = 2; n < 100; n++) {
+      const alternativo = base.replace(/\.md$/, `-${n}.md`)
+      if (!(await m.ler(persona, alternativo))) return alternativo
+    }
+    throw new Error(`já existem lembranças demais com o título "${titulo}"`)
+  }
 
   return {
     recordar: ({ consulta }: { consulta: string }) =>
       protegido(async () => {
         const [proprios, coletivo] = await Promise.all([
           m.buscar(persona, consulta, 8),
-          m.buscar(COLETIVO, consulta, 5).catch(() => []),
+          m.buscar(COLETIVO, consulta, 5),
         ])
         const linhas = [
           ...proprios.map((t) => `- ${t.titulo}: ${t.trecho} (${t.path})`),
@@ -72,8 +99,8 @@ export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string)
 
     lembrar: ({ titulo, texto, tipo }: { titulo: string; texto: string; tipo: TipoLembranca }) =>
       protegido(async () => {
-        const path = caminhoNovo(tipo, titulo)
-        await m.gravar(persona, {
+        const path = await caminhoLivre(tipo, titulo)
+        await gravar({
           path,
           corpo: `# ${titulo.trim()}\n\n${texto.trim()}\n`,
           tier: tierDe(tipo),
@@ -90,7 +117,7 @@ export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string)
         const atual = await m.ler(persona, caminho)
         if (!atual) return `Não existe lembrança sua em ${caminho}. Use lembrar para criar.`
         const corpo = /^#\s/.test(texto.trim()) ? `${texto.trim()}\n` : `# ${atual.titulo}\n\n${texto.trim()}\n`
-        await m.gravar(persona, { path: caminho, corpo, tier: tierDe(tipo), pinned: tipo === "jeito", tags })
+        await gravar({ path: caminho, corpo, tier: tierDe(tipo), pinned: tipo === "jeito", tags })
         return `Atualizado ${caminho}.`
       }),
 
@@ -106,7 +133,7 @@ export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string)
         const existentes = await Promise.all(outras.map((o) => m.ler(persona, o)))
         const ausentes = outras.filter((_, i) => !existentes[i])
         if (ausentes.length) return `Não existem lembranças suas em: ${ausentes.join(", ")}`
-        await m.gravar(persona, {
+        await gravar({
           path: destino,
           corpo: `# ${titulo.trim()}\n\n${texto.trim()}\n`,
           tier: tierDe(tipo),
@@ -115,7 +142,7 @@ export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string)
         })
         const agora = new Date().toISOString()
         for (const origem of outras) {
-          await m.gravar(persona, {
+          await gravar({
             path: origem,
             corpo: `# Fundida em ${destino}\n\nEsta lembrança foi fundida em ${destino}.\n`,
             tier: tierDe(tipoDoCaminho(origem)!),
@@ -141,9 +168,9 @@ export function servidorDeMemoria(
   m: Memoria,
   persona: Conselheiro,
   origem: string,
-  opcoes: { atualizar: boolean } = { atualizar: false },
+  opcoes: { atualizar: boolean; placar?: Placar } = { atualizar: false },
 ) {
-  const acoes = acoesDaPersona(m, persona, origem)
+  const acoes = acoesDaPersona(m, persona, origem, opcoes.placar)
   const ferramentas = [
     tool(
       "recordar",

@@ -58,6 +58,7 @@ export async function sonhar(raiz: string, m: Memoria, persona: Conselheiro): Pr
       system: [perfil, instrucoesDeBastidor(persona, TAREFA)].filter(Boolean).join("\n\n---\n\n"),
       prompt: montarPedidoSonho(frias, jeito),
       memoria: m,
+      exigirGravacao: false,
       origem: `sonho:${data}`,
     })
     console.log(`[memoria] ${persona} sonhou sobre ${frias.length} lembrança(s) fria(s)`)
