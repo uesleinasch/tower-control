@@ -7,6 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'conexao/pareamento.dart';
 import 'estado/sala.dart';
 import 'estado/servidor.dart';
+import 'nucleo/autostart.dart';
+import 'sistema/desktop.dart';
+import 'tela/configuracao.dart';
 import 'tela/raiz.dart';
 import 'tela/sem_servidor.dart';
 import 'tela/tema.dart';
@@ -30,8 +33,17 @@ Future<void> main(List<String> argumentos) async {
     runApp(ControlTower(sala: sala, bloqueio: (_) => bloqueioDoCelular(sala, servidor)));
     return;
   }
-  final sala = Sala(ServidorLocal(prefs))..iniciar();
-  runApp(ControlTower(sala: sala));
+  final servidor = ServidorLocal(prefs);
+  final sala = Sala(servidor);
+  final desktop = Desktop(sala);
+  if (!await assumirInstanciaUnica(desktop.mostrar)) exit(0);
+  sala.iniciar();
+  final autostart = Autostart();
+  runApp(ControlTower(
+    sala: sala,
+    configuracao: (_) => TelaConfiguracao(sala: sala, servidor: servidor, autostart: autostart),
+  ));
+  await desktop.iniciar(naBandeja: pedeBandeja(argumentos));
 }
 
 class ControlTower extends StatelessWidget {
