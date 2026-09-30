@@ -47,6 +47,11 @@ String _exigirSerial(String serial) {
 Comando adbInstalar(String serial, String apk) =>
     Comando('adb', ['-s', _exigirSerial(serial), 'install', '-r', apk]);
 
+Comando adbReverso(String serial, int porta) =>
+    Comando('adb', ['-s', _exigirSerial(serial), 'reverse', 'tcp:$porta', 'tcp:$porta']);
+
+List<String> enderecosParaCelular(List<String> daRede, int porta) => [...daRede, '127.0.0.1:$porta'];
+
 // adb shell junta o argv numa string e a entrega ao shell do aparelho: o JSON precisa
 // ir entre aspas simples, senão as aspas duplas somem e o extra chega corrompido.
 Comando adbConectar(String serial, List<String> enderecos) => Comando('adb', [

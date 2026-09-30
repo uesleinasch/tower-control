@@ -23,6 +23,11 @@ void main() {
       expect(c.argumentos.last, '\'["10.0.0.2:7878","100.1.1.1:7878"]\'');
     });
 
+    test('reverso pelo cabo e endereço local por último', () {
+      expect(adbReverso('0088238899', 7878).argumentos, ['-s', '0088238899', 'reverse', 'tcp:7878', 'tcp:7878']);
+      expect(enderecosParaCelular(['10.0.0.2:7878'], 7878), ['10.0.0.2:7878', '127.0.0.1:7878']);
+    });
+
     test('aspas simples escapam aspas simples', () {
       expect(aspasShell("it's"), "'it'\\''s'");
     });

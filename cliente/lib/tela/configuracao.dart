@@ -437,8 +437,14 @@ class _BlocoCelularState extends State<_BlocoCelular> {
     registrar(instalacao.mensagem);
     if (!instalacao.ok || instalacao.saida.contains('Failure')) return _fim(falhou: true);
 
+    final porta = widget.servidor.porta;
+    final reverso = await rodar(adbReverso(d.serial, porta));
+    registrar(reverso.ok
+        ? 'Cabo: o celular alcança o servidor em 127.0.0.1:$porta enquanto estiver plugado.'
+        : 'Sem túnel pelo cabo: ${reverso.mensagem}');
+
     registrar('Abrindo o app com os endereços…');
-    final abertura = await rodar(adbConectar(d.serial, enderecos));
+    final abertura = await rodar(adbConectar(d.serial, reverso.ok ? enderecosParaCelular(enderecos, porta) : enderecos));
     registrar(abertura.mensagem);
     if (!abertura.ok || abertura.saida.contains('Error')) return _fim(falhou: true);
     registrar('Pronto: o app abriu no celular já conectado.');
