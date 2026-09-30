@@ -1,3 +1,4 @@
+import { executavelDoClaude } from "../caminhos"
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import type { Conselheiro } from "../tipos"
 import { NOMES } from "../prompt"
@@ -43,6 +44,7 @@ export async function rodarPersona(opcoes: {
     prompt: opcoes.prompt,
     options: {
       cwd: opcoes.raiz,
+      pathToClaudeCodeExecutable: executavelDoClaude(),
       model: MODELO_MEMORIA,
       systemPrompt: opcoes.system,
       mcpServers: { memoria: servidor },

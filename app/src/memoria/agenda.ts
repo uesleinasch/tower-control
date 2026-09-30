@@ -10,6 +10,7 @@ const INTERVALO_MS = 5 * 60_000
 export interface EstadoMemoria {
   sonhos: Partial<Record<Conselheiro, string>>
   atividade: Partial<Record<Conselheiro, string>>
+  migracaoBloqueada?: Partial<Record<Conselheiro, string[]>>
 }
 
 export function consolidacaoPendente(meta: MetaConversa, mensagens: Mensagem[], agora: Date): boolean {
@@ -47,7 +48,7 @@ function caminhoEstado(raiz: string): string {
 export async function lerEstado(raiz: string): Promise<EstadoMemoria> {
   try {
     const bruto = (await Bun.file(caminhoEstado(raiz)).json()) as Partial<EstadoMemoria>
-    return { sonhos: bruto.sonhos ?? {}, atividade: bruto.atividade ?? {} }
+    return { sonhos: bruto.sonhos ?? {}, atividade: bruto.atividade ?? {}, migracaoBloqueada: bruto.migracaoBloqueada }
   } catch {
     return { sonhos: {}, atividade: {} }
   }
@@ -75,6 +76,7 @@ export function registrarAtividade(raiz: string, persona: Conselheiro, quando: D
 }
 
 export interface Trabalhos {
+  migrar(): Promise<void>
   pendentes(agora: Date): Promise<MetaConversa[]>
   consolidar(meta: MetaConversa): Promise<void>
   sonhar(persona: Conselheiro): Promise<void>
@@ -117,6 +119,7 @@ export async function rodarUmaVez(
   espera: Espera = new Espera(),
   agora: Date = new Date(),
 ): Promise<void> {
+  await tentar(espera, "migração dos memory.md", agora, () => trabalhos.migrar())
   for (const meta of await trabalhos.pendentes(agora)) {
     await tentar(espera, `consolidação de ${meta.id}`, agora, () => trabalhos.consolidar(meta))
   }

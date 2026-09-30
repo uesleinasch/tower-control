@@ -1,4 +1,7 @@
-import type { Conselheiro } from "../tipos"
+import { join } from "node:path"
+import { rm } from "node:fs/promises"
+import { CONSELHEIROS, type Conselheiro } from "../tipos"
+import { alterarEstado, lerEstado } from "./agenda"
 import { lerPerfil } from "../prompt"
 import { instrucoesDeBastidor, rodarPersona } from "./sessao"
 import type { Memoria, Pagina } from "./tipos"
@@ -89,4 +92,41 @@ export async function corposDaPersona(m: Memoria, persona: Conselheiro): Promise
   const resumos = await m.listar(persona)
   const paginas = await Promise.all(resumos.map((r) => m.ler(persona, r.path)))
   return paginas.filter((p): p is Pagina => p !== null).map((p) => p.corpo)
+}
+
+export type ResultadoMigracao = "sem-arquivo" | "migrada" | { faltando: string[] }
+
+export async function migrarUma(
+  raiz: string,
+  m: Memoria,
+  persona: Conselheiro,
+  opcoes: { soVerificar?: boolean } = {},
+): Promise<ResultadoMigracao> {
+  const caminho = join(raiz, "profiles", persona, "memory.md")
+  const arquivo = Bun.file(caminho)
+  if (!(await arquivo.exists())) return "sem-arquivo"
+  const memoriaMd = await arquivo.text()
+  if (!opcoes.soVerificar) await migrarPersona(raiz, m, persona, memoriaMd)
+  const faltando = itensNaoCobertos(memoriaMd, await corposDaPersona(m, persona))
+  if (faltando.length) return { faltando }
+  if (!opcoes.soVerificar) await rm(caminho)
+  return "migrada"
+}
+
+// Refazer sozinho uma migração incompleta duplicaria páginas; quem resolve é o script.
+export async function migrarPendentes(raiz: string, m: Memoria): Promise<void> {
+  const estado = await lerEstado(raiz)
+  for (const persona of CONSELHEIROS) {
+    if (estado.migracaoBloqueada?.[persona]) continue
+    const resultado = await migrarUma(raiz, m, persona)
+    if (resultado === "migrada") console.log(`[memoria] memory.md de ${persona} migrado e removido`)
+    if (typeof resultado === "object") {
+      await alterarEstado(raiz, (e) => {
+        e.migracaoBloqueada = { ...e.migracaoBloqueada, [persona]: resultado.faltando }
+      })
+      console.warn(
+        `[memoria] migração de ${persona} incompleta; memory.md mantido. Resolva com scripts/migrar-memoria.ts. Faltou: ${resultado.faltando.join(" | ")}`,
+      )
+    }
+  }
 }
