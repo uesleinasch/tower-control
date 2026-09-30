@@ -1,0 +1,15 @@
+[Unit]
+Description=Control Tower — sala de decisões (porta 7878)
+After=network-online.target ai-memory.service
+Wants=ai-memory.service
+
+[Service]
+Environment=CT_INSTALACAO=/opt/control-tower
+Environment=CT_CLAUDE=/opt/control-tower/bin/claude
+ExecStart=/opt/control-tower/bin/control-tower-servidor
+WorkingDirectory=%h
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

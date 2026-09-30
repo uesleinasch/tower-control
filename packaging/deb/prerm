@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+[ "$1" = "remove" ] || exit 0
+
+UNITS="ai-memory.service control-tower.service"
+usuario="${SUDO_USER:-}"
+if [ -n "$usuario" ] && [ "$usuario" != "root" ]; then
+  systemctl --user --machine="$usuario@" stop $UNITS >/dev/null 2>&1 || true
+  systemctl --user --machine="$usuario@" disable $UNITS >/dev/null 2>&1 || true
+fi
+systemctl --global disable $UNITS >/dev/null 2>&1 || true
+pkill -x control-tower >/dev/null 2>&1 || true

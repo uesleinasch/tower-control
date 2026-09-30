@@ -1,0 +1,11 @@
+[Unit]
+Description=ai-memory — memória das personas do Control Tower (127.0.0.1:49374)
+
+[Service]
+ExecStartPre=/usr/bin/mkdir -p %h/.local/share/control-tower/memoria
+ExecStart=/opt/control-tower/bin/ai-memory --data-dir %h/.local/share/control-tower/memoria --config /opt/control-tower/memoria-config.toml serve --transport http
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Control Tower
+Comment=Sala de decisões
+Exec=/opt/control-tower/cliente/control-tower
+Icon=control-tower
+Terminal=false
+Categories=Utility;
+StartupWMClass=dev.ueslei.controltower

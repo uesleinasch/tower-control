@@ -1,0 +1,13 @@
+Package: control-tower
+Version: @VERSAO@
+Architecture: amd64
+Maintainer: Ueslei Nascimento <uesleinac@gmail.com>
+Installed-Size: @TAMANHO@
+Depends: libgtk-3-0, git
+Recommends: adb
+Section: utils
+Priority: optional
+Description: Control Tower — sala de decisões pessoal
+ Chat na rede local com as personas do Control Tower (Poe, Nati, Lucas, Pami e
+ Alfred), com memória própria de cada uma sobre o ai-memory, board de
+ conselheiros e app de desktop. Usa o login do Claude Code do usuário.

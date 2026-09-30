@@ -1,0 +1,57 @@
+#!/bin/sh
+set -e
+
+[ "$1" = "configure" ] || exit 0
+
+UNITS="ai-memory.service control-tower.service"
+CLIENTE_ANTIGO=".local/share/control-tower-cliente/control-tower"
+CLIENTE_NOVO="/opt/control-tower/cliente/control-tower"
+
+systemctl --global enable $UNITS >/dev/null 2>&1 || true
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications || true
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+
+usuario="${SUDO_USER:-}"
+if [ -z "$usuario" ] || [ "$usuario" = "root" ]; then
+  echo "control-tower: instalado. Cada usuário: systemctl --user start $UNITS"
+  exit 0
+fi
+
+casa="$(getent passwd "$usuario" | cut -d: -f6)"
+grupo="$(id -gn "$usuario")"
+unidades="$casa/.config/systemd/user"
+dados="$casa/.local/share/control-tower"
+
+# Units do modo clone (scripts/servico.sh) têm o mesmo nome e sombreariam as do pacote.
+if [ -f "$unidades/control-tower.service" ]; then
+  clone="$(sed -n 's/^WorkingDirectory=//p' "$unidades/control-tower.service" | head -n1)"
+  clone="${clone%/app}"
+  if [ -n "$clone" ] && [ -d "$clone/profiles" ] && [ ! -e "$dados/.control-tower" ]; then
+    mkdir -p "$dados"
+    printf '%s\n' "$clone" >"$dados/.importar-de"
+    chown -R "$usuario:$grupo" "$casa/.local/share/control-tower"
+    echo "control-tower: os dados de $clone serão importados na primeira subida"
+  fi
+fi
+for unit in $UNITS; do
+  [ -f "$unidades/$unit" ] && mv "$unidades/$unit" "$unidades/$unit.bak"
+  [ -L "$unidades/default.target.wants/$unit" ] && rm -f "$unidades/default.target.wants/$unit"
+done
+
+# Atalhos gravados pelo scripts/instalar-cliente.sh apontam para o cliente antigo.
+for entrada in "$casa/.local/share/applications/control-tower.desktop" "$casa/.config/autostart/control-tower.desktop"; do
+  [ -f "$entrada" ] && grep -q "$CLIENTE_ANTIGO" "$entrada" && sed -i "s#\"*$casa/$CLIENTE_ANTIGO\"*#\"$CLIENTE_NOVO\"#" "$entrada"
+done
+
+loginctl enable-linger "$usuario" >/dev/null 2>&1 || true
+if systemctl --user --machine="$usuario@" daemon-reload >/dev/null 2>&1; then
+  systemctl --user --machine="$usuario@" enable $UNITS >/dev/null 2>&1 || true
+  systemctl --user --machine="$usuario@" restart $UNITS >/dev/null 2>&1 || true
+  echo "control-tower: serviços de pé para $usuario em http://localhost:7878"
+else
+  echo "control-tower: faça login de novo ou rode: systemctl --user start $UNITS"
+fi
+
+if [ ! -s "$casa/.claude/.credentials.json" ]; then
+  echo "control-tower: AVISO — $usuario ainda não fez login no Claude Code. Rode 'claude' e faça login; as personas dependem disso."
+fi
