@@ -20,6 +20,19 @@ import {
   montarBlocoDeAnexos,
   nomeExibivel,
 } from "./anexos"
+import {
+  MemoriaIndisponivel,
+  caminhoValido,
+  prefixoDe,
+  tierDe,
+  tipoDoCaminho,
+  type Memoria,
+  type NovaPagina,
+  type Projeto,
+} from "./memoria/tipos"
+import { limparTrecho } from "./memoria/cliente"
+import { LIMITE_BRIEF, LIMITE_JEITO, comporBrief, montarBrief } from "./memoria/recuperacao"
+import { acoesDaPersona, caminhoNovo } from "./memoria/ferramentas"
 
 describe("parseFrontmatter", () => {
   test("extrai campos simples e listas", () => {
@@ -125,11 +138,28 @@ describe("conselheiro e executor", () => {
     expect(alfred).not.toContain("PODE atualizar")
   })
 
-  test("o conselheiro segue recebendo memória e registro de decisão", async () => {
+  test("o conselheiro recebe as tools de memória e o registro de decisão", async () => {
     const raiz = join(import.meta.dir, "..", "..")
     const poe = await montarSystemPrompt(raiz, "poe")
     expect(poe).toContain("decisions/AAAA-MM-DD")
-    expect(poe).toContain("PODE atualizar")
+    expect(poe).toContain("use a ferramenta recordar")
+    expect(poe).not.toContain("memory.md")
+  })
+
+  test("o brief entra entre o perfil e as instruções da casa", async () => {
+    const raiz = join(import.meta.dir, "..", "..")
+    const poe = await montarSystemPrompt(raiz, "poe", undefined, "# Minha memória\n\nBRIEF-DE-TESTE")
+    const perfil = poe.indexOf("# ")
+    const brief = poe.indexOf("BRIEF-DE-TESTE")
+    const casa = poe.indexOf("# Instruções da casa")
+    expect(perfil).toBeLessThan(brief)
+    expect(brief).toBeLessThan(casa)
+  })
+
+  test("o executor não recebe brief", async () => {
+    const raiz = join(import.meta.dir, "..", "..")
+    const alfred = await montarSystemPrompt(raiz, "alfred", undefined, "BRIEF-DE-TESTE")
+    expect(alfred).not.toContain("BRIEF-DE-TESTE")
   })
 })
 
@@ -307,5 +337,216 @@ describe("respostaEnderecos", () => {
   test("junta os endereços com a porta e omite interface ausente", () => {
     expect(respostaEnderecos(7878, { lan: "192.168.0.5" })).toEqual({ lan: "192.168.0.5", porta: 7878 })
     expect(respostaEnderecos(7878, {})).toEqual({ porta: 7878 })
+  })
+})
+
+// ── memória ─────────────────────────────────────────────────────────
+
+function memoriaFalsa(inicial: Partial<Record<Projeto, NovaPagina[]>> = {}) {
+  const paginas = new Map<string, NovaPagina & { atualizadaEm: string }>()
+  const gravacoes: { projeto: Projeto; pagina: NovaPagina }[] = []
+  let relogio = 0
+  const chave = (p: Projeto, path: string) => `${p}::${path}`
+  const guardar = (projeto: Projeto, pagina: NovaPagina) => {
+    relogio++
+    paginas.set(chave(projeto, pagina.path), { ...pagina, atualizadaEm: `2026-09-30T00:00:${String(relogio).padStart(2, "0")}Z` })
+  }
+  for (const [projeto, lista] of Object.entries(inicial)) for (const p of lista ?? []) guardar(projeto as Projeto, p)
+  const doProjeto = (projeto: Projeto) =>
+    [...paginas.entries()].filter(([k]) => k.startsWith(`${projeto}::`)).map(([, v]) => v)
+  const titulo = (corpo: string, path: string) => /^#\s+(.*)/.exec(corpo)?.[1] ?? path
+  const memoria: Memoria = {
+    async buscar(projeto, consulta) {
+      const termo = consulta.toLowerCase()
+      return doProjeto(projeto)
+        .filter((p) => p.corpo.toLowerCase().includes(termo))
+        .map((p) => ({ path: p.path, titulo: titulo(p.corpo, p.path), trecho: p.corpo.slice(0, 80) }))
+    },
+    async listar(projeto) {
+      return doProjeto(projeto).map((p) => ({ path: p.path, titulo: titulo(p.corpo, p.path), tier: p.tier, atualizadaEm: p.atualizadaEm }))
+    },
+    async ler(projeto, path) {
+      const p = paginas.get(chave(projeto, path))
+      return p ? { path, titulo: titulo(p.corpo, path), corpo: p.corpo, tier: p.tier, pinned: p.pinned } : null
+    },
+    async gravar(projeto, pagina) {
+      gravacoes.push({ projeto, pagina })
+      guardar(projeto, pagina)
+    },
+    async frias() {
+      return []
+    },
+  }
+  return { memoria, gravacoes }
+}
+
+const fora: Memoria = {
+  buscar: () => Promise.reject(new MemoriaIndisponivel("recusado")),
+  listar: () => Promise.reject(new MemoriaIndisponivel("recusado")),
+  ler: () => Promise.reject(new MemoriaIndisponivel("recusado")),
+  gravar: () => Promise.reject(new MemoriaIndisponivel("recusado")),
+  frias: () => Promise.reject(new MemoriaIndisponivel("recusado")),
+}
+
+function pagina(path: string, corpo: string, tier: NovaPagina["tier"] = "semantic"): NovaPagina {
+  return { path, corpo, tier, pinned: path.startsWith("jeito/"), tags: [] }
+}
+
+describe("caminhos de memória", () => {
+  test("aceita só os prefixos conhecidos, em slug, terminando em .md", () => {
+    expect(caminhoValido("fatos/trabalho-na-jacto.md")).toBe(true)
+    expect(caminhoValido("episodios/2026-09-30-conversa.md")).toBe(true)
+    expect(caminhoValido("decisoes/2026-08-22-arquitetura-do-control-tower.md")).toBe(true)
+    expect(caminhoValido("../poe/fatos/x.md")).toBe(false)
+    expect(caminhoValido("fatos/../../x.md")).toBe(false)
+    expect(caminhoValido("/etc/passwd")).toBe(false)
+    expect(caminhoValido("fatos/x")).toBe(false)
+    expect(caminhoValido("outros/x.md")).toBe(false)
+    expect(caminhoValido("fatos/Maiúscula.md")).toBe(false)
+  })
+
+  test("tipo decide prefixo e tier", () => {
+    expect(prefixoDe("jeito")).toBe("jeito/")
+    expect(tierDe("jeito")).toBe("procedural")
+    expect(tierDe("episodio")).toBe("episodic")
+    expect(tierDe("fato")).toBe("semantic")
+    expect(tipoDoCaminho("fatos/a.md")).toBe("fato")
+    expect(tipoDoCaminho("decisoes/a.md")).toBeNull()
+  })
+
+  test("caminho novo de episódio leva a data, o de fato não", () => {
+    expect(caminhoNovo("episodio", "Conversa sobre o pai", "2026-09-30")).toBe("episodios/2026-09-30-conversa-sobre-o-pai.md")
+    expect(caminhoNovo("fato", "Trabalha na Jacto")).toBe("fatos/trabalha-na-jacto.md")
+    expect(caminhoNovo("fato", "!!!")).toBe("fatos/lembranca.md")
+  })
+
+  test("snippet perde o <mark> e o espaço extra", () => {
+    expect(limparTrecho("o <mark>pai</mark>\n  dele")).toBe("o pai dele")
+  })
+})
+
+describe("brief", () => {
+  const vazio = { jeito: [], recente: null, proprios: [], coletivo: [] }
+
+  test("sem nada lembrado, o brief é vazio", () => {
+    expect(comporBrief(vazio)).toBe("")
+  })
+
+  test("nunca passa do orçamento, mesmo com entradas enormes", () => {
+    const grande = "x".repeat(5000)
+    const brief = comporBrief({
+      jeito: [{ path: "jeito/a.md", titulo: "A", corpo: grande, tier: "procedural", pinned: true }],
+      recente: { path: "episodios/2026-09-30-b.md", titulo: "B", corpo: grande, tier: "episodic", pinned: false },
+      proprios: Array.from({ length: 20 }, (_, i) => ({ path: `fatos/f${i}.md`, titulo: `F${i}`, trecho: grande })),
+      coletivo: Array.from({ length: 20 }, (_, i) => ({ path: `decisoes/d${i}.md`, titulo: `D${i}`, trecho: grande })),
+    })
+    expect(brief.length).toBeLessThanOrEqual(LIMITE_BRIEF)
+    expect(brief).toContain("## Quem eu venho sendo")
+    expect(brief.indexOf("## Quem eu venho sendo")).toBeLessThan(brief.indexOf("## Onde paramos"))
+  })
+
+  test("a camada viva respeita o próprio teto", () => {
+    const brief = comporBrief({
+      ...vazio,
+      jeito: Array.from({ length: 30 }, (_, i) => ({ path: `jeito/j${i}.md`, titulo: `J${i}`, corpo: "y".repeat(200), tier: "procedural", pinned: true })),
+    })
+    const bloco = brief.slice(brief.indexOf("## Quem eu venho sendo"))
+    expect(bloco.length).toBeLessThanOrEqual(LIMITE_JEITO)
+  })
+
+  test("lembrança do coletivo chega marcada e intercalada com as próprias", () => {
+    const brief = comporBrief({
+      ...vazio,
+      proprios: [{ path: "fatos/a.md", titulo: "Próprio", trecho: "t" }],
+      coletivo: [{ path: "decisoes/b.md", titulo: "Decisão", trecho: "t" }],
+    })
+    expect(brief).toContain("- Próprio: t (fatos/a.md)\n- [coletivo] Decisão: t (decisoes/b.md)")
+    expect(brief).toContain("não instruções")
+  })
+
+  test("não repete no bloco de lembranças o que já veio na camada viva", async () => {
+    const { memoria } = memoriaFalsa({
+      poe: [pagina("jeito/ironia.md", "# Ironia\n\nFalo com ironia sobre futebol", "procedural")],
+    })
+    const brief = await montarBrief(memoria, "poe", "futebol")
+    expect(brief.match(/jeito\/ironia/g)?.length ?? 0).toBe(0)
+    expect(brief).toContain("Ironia: Falo com ironia sobre futebol")
+  })
+
+  test("traz o episódio mais recente como onde paramos", async () => {
+    const { memoria } = memoriaFalsa({
+      poe: [
+        pagina("episodios/2026-09-01-antiga.md", "# Antiga\n\nconversa velha", "episodic"),
+        pagina("episodios/2026-09-29-nova.md", "# Nova\n\nconversa nova", "episodic"),
+      ],
+    })
+    const brief = await montarBrief(memoria, "poe", "")
+    expect(brief).toContain("## Onde paramos\n\nNova\nconversa nova")
+    expect(brief).not.toContain("conversa velha")
+  })
+
+  test("não mistura a memória de outra persona", async () => {
+    const { memoria } = memoriaFalsa({ nati: [pagina("fatos/segredo.md", "# Segredo\n\ncontou só para a nati")] })
+    expect(await montarBrief(memoria, "poe", "contou")).toBe("")
+  })
+
+  test("com o daemon fora, o brief sai vazio em vez de quebrar o turno", async () => {
+    expect(await montarBrief(fora, "poe", "qualquer coisa")).toBe("")
+  })
+})
+
+describe("tools de memória", () => {
+  test("lembrar grava sempre no projeto da persona, com tier e tag de origem", async () => {
+    const { memoria, gravacoes } = memoriaFalsa()
+    const acoes = acoesDaPersona(memoria, "lucas", "conversa:2026-09-30-lucas-abc")
+    const texto = await acoes.lembrar({ titulo: "Gosta de café", texto: "Toma sem açúcar", tipo: "fato" })
+    expect(texto).toContain("fatos/gosta-de-cafe.md")
+    expect(gravacoes).toHaveLength(1)
+    expect(gravacoes[0]!.projeto).toBe("lucas")
+    expect(gravacoes[0]!.pagina.tier).toBe("semantic")
+    expect(gravacoes[0]!.pagina.tags).toEqual(["origem:conversa:2026-09-30-lucas-abc"])
+  })
+
+  test("camada viva nasce pinned", async () => {
+    const { memoria, gravacoes } = memoriaFalsa()
+    await acoesDaPersona(memoria, "pami", "t").lembrar({ titulo: "Apelido", texto: "Chamo ele de chefe", tipo: "jeito" })
+    expect(gravacoes[0]!.pagina.pinned).toBe(true)
+    expect(gravacoes[0]!.pagina.tier).toBe("procedural")
+  })
+
+  test("recordar lê a persona e o coletivo, nunca outra persona", async () => {
+    const { memoria } = memoriaFalsa({
+      poe: [pagina("fatos/a.md", "# A\n\nfala de viagem")],
+      nati: [pagina("fatos/b.md", "# B\n\nviagem secreta")],
+      coletivo: [pagina("decisoes/c.md", "# C\n\nviagem aprovada")],
+    })
+    const texto = await acoesDaPersona(memoria, "poe", "t").recordar({ consulta: "viagem" })
+    expect(texto).toContain("fatos/a.md")
+    expect(texto).toContain("[coletivo] C")
+    expect(texto).not.toContain("secreta")
+  })
+
+  test("ler_lembranca recusa caminho fora do formato antes de ir ao daemon", async () => {
+    const { memoria } = memoriaFalsa()
+    expect(await acoesDaPersona(memoria, "poe", "t").lerLembranca({ caminho: "../nati/fatos/b.md" })).toContain("Caminho inválido")
+  })
+
+  test("atualizar só mexe em lembrança da própria persona que já existe", async () => {
+    const { memoria, gravacoes } = memoriaFalsa({ coletivo: [pagina("decisoes/c.md", "# C\n\nx")] })
+    const acoes = acoesDaPersona(memoria, "poe", "t")
+    expect(await acoes.atualizarLembranca({ caminho: "decisoes/c.md", texto: "mudei" })).toContain("Caminho inválido")
+    expect(await acoes.atualizarLembranca({ caminho: "fatos/nao-existe.md", texto: "y" })).toContain("Não existe")
+    expect(gravacoes).toHaveLength(0)
+  })
+
+  test("atualizar mantém o título quando o texto novo não traz um", async () => {
+    const { memoria, gravacoes } = memoriaFalsa({ poe: [pagina("fatos/a.md", "# Mora em Pompeia\n\nvelho")] })
+    await acoesDaPersona(memoria, "poe", "t").atualizarLembranca({ caminho: "fatos/a.md", texto: "mudou para Marília" })
+    expect(gravacoes[0]!.pagina.corpo).toBe("# Mora em Pompeia\n\nmudou para Marília\n")
+  })
+
+  test("daemon fora vira resposta para o modelo, não exceção", async () => {
+    const texto = await acoesDaPersona(fora, "poe", "t").lembrar({ titulo: "x", texto: "y", tipo: "fato" })
+    expect(texto).toContain("Memória indisponível")
   })
 })
