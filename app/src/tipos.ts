@@ -42,6 +42,7 @@ export interface MetaConversa {
   modelo?: string
   auto?: boolean
   foco?: "ticktask"
+  consolidadoAte?: number
 }
 
 export interface Decisao {

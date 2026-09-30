@@ -1,0 +1,117 @@
+import { join } from "node:path"
+import { mkdir, rename } from "node:fs/promises"
+import { CONSELHEIROS, ehConselheiro, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
+
+export const OCIOSIDADE_MS = 30 * 60_000
+export const HORARIO_SONHO = process.env.CT_HORARIO_SONHO ?? "07:30"
+const ATRASO_NA_SUBIDA_MS = 5 * 60_000
+const INTERVALO_MS = 5 * 60_000
+
+export interface EstadoMemoria {
+  sonhos: Partial<Record<Conselheiro, string>>
+  atividade: Partial<Record<Conselheiro, string>>
+}
+
+export function consolidacaoPendente(meta: MetaConversa, mensagens: Mensagem[], agora: Date): boolean {
+  if (!ehConselheiro(meta.perfil)) return false
+  const feitas = meta.consolidadoAte ?? 0
+  if (mensagens.length <= feitas) return false
+  const ultima = Date.parse(mensagens[mensagens.length - 1]!.ts)
+  return Number.isFinite(ultima) && agora.getTime() - ultima >= OCIOSIDADE_MS
+}
+
+export function marcoDoSonho(agora: Date, horario: string = HORARIO_SONHO): Date {
+  const [h, min] = horario.split(":").map(Number)
+  const marco = new Date(agora)
+  marco.setHours(h ?? 7, min ?? 30, 0, 0)
+  if (marco.getTime() > agora.getTime()) marco.setDate(marco.getDate() - 1)
+  return marco
+}
+
+export function sonhoDevido(
+  ultimoSonho: string | undefined,
+  ultimaAtividade: string | undefined,
+  agora: Date,
+  horario: string = HORARIO_SONHO,
+): boolean {
+  if (!ultimaAtividade) return false
+  if (!ultimoSonho) return true
+  const sonho = Date.parse(ultimoSonho)
+  return sonho < marcoDoSonho(agora, horario).getTime() && Date.parse(ultimaAtividade) > sonho
+}
+
+function caminhoEstado(raiz: string): string {
+  return join(raiz, "conversations", "memoria.json")
+}
+
+export async function lerEstado(raiz: string): Promise<EstadoMemoria> {
+  try {
+    const bruto = (await Bun.file(caminhoEstado(raiz)).json()) as Partial<EstadoMemoria>
+    return { sonhos: bruto.sonhos ?? {}, atividade: bruto.atividade ?? {} }
+  } catch {
+    return { sonhos: {}, atividade: {} }
+  }
+}
+
+let fila: Promise<unknown> = Promise.resolve()
+
+export function alterarEstado(raiz: string, mudar: (estado: EstadoMemoria) => void): Promise<void> {
+  const proxima = fila.then(async () => {
+    const estado = await lerEstado(raiz)
+    mudar(estado)
+    await mkdir(join(raiz, "conversations"), { recursive: true })
+    const temporario = `${caminhoEstado(raiz)}.tmp`
+    await Bun.write(temporario, JSON.stringify(estado, null, 2))
+    await rename(temporario, caminhoEstado(raiz))
+  })
+  fila = proxima.catch(() => {})
+  return proxima
+}
+
+export function registrarAtividade(raiz: string, persona: Conselheiro, quando: Date = new Date()): Promise<void> {
+  return alterarEstado(raiz, (e) => {
+    e.atividade[persona] = quando.toISOString()
+  })
+}
+
+export interface Trabalhos {
+  pendentes(agora: Date): Promise<MetaConversa[]>
+  consolidar(meta: MetaConversa): Promise<void>
+  sonhar(persona: Conselheiro): Promise<void>
+}
+
+export async function rodarUmaVez(raiz: string, trabalhos: Trabalhos, agora: Date = new Date()): Promise<void> {
+  for (const meta of await trabalhos.pendentes(agora)) {
+    try {
+      await trabalhos.consolidar(meta)
+    } catch (erro) {
+      console.warn(`[memoria] consolidação de ${meta.id} falhou — ${(erro as Error).message}`)
+    }
+  }
+  const estado = await lerEstado(raiz)
+  for (const persona of CONSELHEIROS) {
+    if (!sonhoDevido(estado.sonhos[persona], estado.atividade[persona], agora)) continue
+    try {
+      await trabalhos.sonhar(persona)
+    } catch (erro) {
+      console.warn(`[memoria] sonho de ${persona} falhou — ${(erro as Error).message}`)
+    }
+  }
+}
+
+export function iniciarAgenda(raiz: string, trabalhos: Trabalhos): void {
+  let rodando = false
+  const ciclo = async () => {
+    if (rodando) return
+    rodando = true
+    try {
+      await rodarUmaVez(raiz, trabalhos)
+    } finally {
+      rodando = false
+    }
+  }
+  setTimeout(() => {
+    void ciclo()
+    setInterval(() => void ciclo(), INTERVALO_MS)
+  }, ATRASO_NA_SUBIDA_MS)
+}
