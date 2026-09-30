@@ -92,10 +92,13 @@ jobs:
         run: |
           flutter build linux --release
           flutter build apk --release
-          apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n1)"
-          assinatura="$("$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          apksigner="$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/ | sort -V | tail -n1)apksigner"
+          echo "apksigner: $apksigner"
+          saida="$("$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk 2>&1)" || { echo "$saida"; exit 1; }
+          assinatura="$(printf '%s\n' "$saida" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d '\r' | head -n1)"
           if [ "$assinatura" != "$ASSINATURA_APK" ]; then
-            echo "::error::APK assinado com $assinatura, esperado $ASSINATURA_APK. Não atualizaria o app instalado."
+            printf '%s\n' "$saida"
+            echo "::error::APK assinado com '$assinatura', esperado $ASSINATURA_APK. Não atualizaria o app instalado."
             exit 1
           fi
           mkdir -p ../artefatos
