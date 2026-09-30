@@ -1,0 +1,6 @@
+bind = "127.0.0.1:49374"
+embedding_provider = "local"
+
+# Nada some sem passar pelo sonho das personas (app/src/memoria/sonho.ts).
+[maintenance]
+forget_sweep_interval_secs = 0
