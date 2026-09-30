@@ -1,0 +1,30 @@
+{
+  "cliente→servidor": [
+    "listar",
+    "nova",
+    "mensagem",
+    "permissao-resposta",
+    "excluir",
+    "abrir",
+    "board",
+    "decisoes",
+    "decisao"
+  ],
+  "servidor→cliente": [
+    "atalhos",
+    "aviso",
+    "board-sintese",
+    "board-status",
+    "chunk",
+    "comando",
+    "conversa",
+    "conversas",
+    "criada",
+    "decisao",
+    "decisoes",
+    "erro",
+    "excluida",
+    "fim",
+    "permissao"
+  ]
+}

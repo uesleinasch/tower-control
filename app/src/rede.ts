@@ -25,3 +25,10 @@ export function enderecos(): { lan?: string; tailscale?: string } {
   resultado.lan ??= lanReserva
   return resultado
 }
+
+export function respostaEnderecos(
+  porta: number,
+  rede: { lan?: string; tailscale?: string } = enderecos(),
+): { lan?: string; tailscale?: string; porta: number } {
+  return { ...rede, porta }
+}

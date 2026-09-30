@@ -6,6 +6,8 @@ import { parseFrontmatter, linhaIndice } from "./decisions"
 import { montarPautaParecer, montarSystemPrompt, politicaDeTamanho } from "./prompt"
 import { slug } from "./board"
 import { lerAtalhos } from "./atalhos"
+import { tiposEmitidos, tiposTratados, type Protocolo } from "./protocolo"
+import { respostaEnderecos } from "./rede"
 import { CONSELHEIROS, PERFIS, ehConselheiro } from "./tipos"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, idValido } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
@@ -273,5 +275,37 @@ describe("apagarSessao", () => {
     expect(await apagarSessao("/tmp", undefined)).toBe(false)
     expect(await apagarSessao("/tmp", "../../../etc/passwd")).toBe(false)
     expect(await apagarSessao("/tmp", "nao-e-uuid")).toBe(false)
+  })
+})
+
+describe("contrato do protocolo", () => {
+  const raiz = join(import.meta.dir, "..", "..")
+  const ler = (caminho: string) => Bun.file(join(raiz, caminho)).text()
+
+  test("server.ts trata e emite exatamente os tipos de docs/protocolo.json", async () => {
+    const protocolo = (await Bun.file(join(raiz, "docs", "protocolo.json")).json()) as Protocolo
+    const servidor = await ler("app/src/server.ts")
+    expect(tiposTratados(servidor)).toEqual([...protocolo["cliente→servidor"]].sort())
+    expect(tiposEmitidos(servidor)).toEqual([...protocolo["servidor→cliente"]].sort())
+  })
+
+  test("app.js envia e trata exatamente os tipos de docs/protocolo.json", async () => {
+    const protocolo = (await Bun.file(join(raiz, "docs", "protocolo.json")).json()) as Protocolo
+    const web = await ler("app/web/app.js")
+    expect(tiposEmitidos(web)).toEqual([...protocolo["cliente→servidor"]].sort())
+    expect(tiposTratados(web)).toEqual([...protocolo["servidor→cliente"]].sort())
+  })
+
+  test("extrai tipos só do switch de mensagens", () => {
+    const fonte = 'case "antes"\nswitch (msg.tipo) {\ncase "a": case "b-c":\n}\nmandar({ tipo: "x" })'
+    expect(tiposTratados(fonte)).toEqual(["a", "b-c"])
+    expect(tiposEmitidos(fonte)).toEqual(["x"])
+  })
+})
+
+describe("respostaEnderecos", () => {
+  test("junta os endereços com a porta e omite interface ausente", () => {
+    expect(respostaEnderecos(7878, { lan: "192.168.0.5" })).toEqual({ lan: "192.168.0.5", porta: 7878 })
+    expect(respostaEnderecos(7878, {})).toEqual({ porta: 7878 })
   })
 })

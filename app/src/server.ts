@@ -6,7 +6,7 @@ import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } 
 import { carregarAtalhos } from "./atalhos"
 import { conversar } from "./sessions"
 import { convocarBoard } from "./board"
-import { enderecos } from "./rede"
+import { enderecos, respostaEnderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
 import { apagarSessao } from "./sessao-sdk"
 import {
@@ -276,6 +276,7 @@ const servidor = Bun.serve({
     if (url.pathname === "/ws") {
       return server.upgrade(req) ? undefined : new Response("upgrade falhou", { status: 400 })
     }
+    if (url.pathname === "/enderecos") return Response.json(respostaEnderecos(PORTA))
     if (url.pathname === "/anexo" && req.method === "POST") return receberAnexo(req)
     if (url.pathname.startsWith("/anexo/")) {
       return entregarAnexo(decodeURIComponent(url.pathname.slice("/anexo/".length)))
