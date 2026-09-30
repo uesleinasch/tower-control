@@ -6,8 +6,15 @@ set -e
 UNITS="ai-memory.service control-tower.service"
 usuario="${SUDO_USER:-}"
 if [ -n "$usuario" ] && [ "$usuario" != "root" ]; then
-  systemctl --user --machine="$usuario@" stop $UNITS >/dev/null 2>&1 || true
-  systemctl --user --machine="$usuario@" disable $UNITS >/dev/null 2>&1 || true
+  uid="$(id -u "$usuario")"
+  # --machine=usuario@ não serve: o systemd corta no primeiro "@", e usuário de domínio
+  # (nome@dominio) tem um.
+  como_usuario() {
+    runuser -u "$usuario" -- env XDG_RUNTIME_DIR="/run/user/$uid" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" systemctl --user "$@"
+  }
+  como_usuario stop $UNITS >/dev/null 2>&1 || true
+  como_usuario disable $UNITS >/dev/null 2>&1 || true
 fi
 systemctl --global disable $UNITS >/dev/null 2>&1 || true
-pkill -x control-tower >/dev/null 2>&1 || true
+pkill -f /opt/control-tower/ >/dev/null 2>&1 || true

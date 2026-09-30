@@ -3,7 +3,7 @@ Version: @VERSAO@
 Architecture: amd64
 Maintainer: Ueslei Nascimento <uesleinac@gmail.com>
 Installed-Size: @TAMANHO@
-Depends: libgtk-3-0, git
+Depends: libgtk-3-0, libayatana-appindicator3-1, git
 Recommends: adb
 Section: utils
 Priority: optional

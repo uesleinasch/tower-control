@@ -18,6 +18,14 @@ if [ -z "$usuario" ] || [ "$usuario" = "root" ]; then
 fi
 
 casa="$(getent passwd "$usuario" | cut -d: -f6)"
+uid="$(id -u "$usuario")"
+# --machine=usuario@ não serve: o systemd corta no primeiro "@", e usuário de domínio
+# (nome@dominio) tem um.
+como_usuario() {
+  runuser -u "$usuario" -- env XDG_RUNTIME_DIR="/run/user/$uid" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" systemctl --user "$@"
+}
+
 grupo="$(id -gn "$usuario")"
 unidades="$casa/.config/systemd/user"
 dados="$casa/.local/share/control-tower"
@@ -34,19 +42,23 @@ if [ -f "$unidades/control-tower.service" ]; then
   fi
 fi
 for unit in $UNITS; do
-  [ -f "$unidades/$unit" ] && mv "$unidades/$unit" "$unidades/$unit.bak"
-  [ -L "$unidades/default.target.wants/$unit" ] && rm -f "$unidades/default.target.wants/$unit"
+  [ -f "$unidades/$unit" ] && mv "$unidades/$unit" "$unidades/$unit.bak" || true
+  [ -L "$unidades/default.target.wants/$unit" ] && rm -f "$unidades/default.target.wants/$unit" || true
 done
 
 # Atalhos gravados pelo scripts/instalar-cliente.sh apontam para o cliente antigo.
 for entrada in "$casa/.local/share/applications/control-tower.desktop" "$casa/.config/autostart/control-tower.desktop"; do
-  [ -f "$entrada" ] && grep -q "$CLIENTE_ANTIGO" "$entrada" && sed -i "s#\"*$casa/$CLIENTE_ANTIGO\"*#\"$CLIENTE_NOVO\"#" "$entrada"
+  [ -f "$entrada" ] && grep -q "$CLIENTE_ANTIGO" "$entrada" && sed -i "s#\"*$casa/$CLIENTE_ANTIGO\"*#\"$CLIENTE_NOVO\"#" "$entrada" || true
 done
 
 loginctl enable-linger "$usuario" >/dev/null 2>&1 || true
-if systemctl --user --machine="$usuario@" daemon-reload >/dev/null 2>&1; then
-  systemctl --user --machine="$usuario@" enable $UNITS >/dev/null 2>&1 || true
-  systemctl --user --machine="$usuario@" restart $UNITS >/dev/null 2>&1 || true
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [ -S "/run/user/$uid/bus" ] && break
+  sleep 1
+done
+if como_usuario daemon-reload >/dev/null 2>&1; then
+  como_usuario enable $UNITS >/dev/null 2>&1 || true
+  como_usuario restart $UNITS >/dev/null 2>&1 || true
   echo "control-tower: serviços de pé para $usuario em http://localhost:7878"
 else
   echo "control-tower: faça login de novo ou rode: systemctl --user start $UNITS"
