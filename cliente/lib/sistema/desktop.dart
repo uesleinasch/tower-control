@@ -112,11 +112,11 @@ class Desktop with WindowListener {
     item('Reiniciar servidor', () => rodar(servico(VerboServico.reiniciar)));
     menu.addSeparator();
     item('Sair', sair);
+    // No Linux o cnativeapi ignora o Activate do StatusNotifierItem e só exporta o menu
+    // com o gatilho "clicked"; sem isto o clique no ícone não faz nada.
     icone
       ..setContextMenu(menu)
-      ..addListener((e) {
-        if (e is bandeja.TrayIconClickedEvent) mostrar();
-      })
+      ..setContextMenuTrigger(bandeja.ContextMenuTrigger.clicked)
       ..setVisible(true);
     _icone = icone;
   }
