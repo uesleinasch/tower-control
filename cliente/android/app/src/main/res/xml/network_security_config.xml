@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O servidor do Control Tower só fala HTTP/WS em claro na LAN e no Tailscale; sem isto o Android 9+ recusa a conexão. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
