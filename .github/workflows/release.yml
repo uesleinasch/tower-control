@@ -10,6 +10,7 @@ permissions:
 env:
   BUN_VERSAO: "1.3.14"
   FLUTTER_VERSAO: "3.47.5"
+  ASSINATURA_APK: "1b5579ddebfad9d7739458564e1603cb1325fc80bf2456f73eb2a29b8ee5e61f"
 
 jobs:
   ai-memory:
@@ -65,8 +66,8 @@ jobs:
             echo "::error::secret ANDROID_DEBUG_KEYSTORE ausente. Sem ele o APK sairia com chave aleatória e não atualizaria o instalado. Rode: gh secret set ANDROID_DEBUG_KEYSTORE < <(base64 -w0 ~/.android/debug.keystore)"
             exit 1
           fi
-          mkdir -p ~/.android
-          echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+          echo "CT_ANDROID_KEYSTORE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -91,6 +92,12 @@ jobs:
         run: |
           flutter build linux --release
           flutter build apk --release
+          apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n1)"
+          assinatura="$("$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          if [ "$assinatura" != "$ASSINATURA_APK" ]; then
+            echo "::error::APK assinado com $assinatura, esperado $ASSINATURA_APK. Não atualizaria o app instalado."
+            exit 1
+          fi
           mkdir -p ../artefatos
           tar -C build/linux/x64/release/bundle -czf ../artefatos/cliente.tar.gz .
           cp build/app/outputs/flutter-apk/app-release.apk ../artefatos/control-tower.apk

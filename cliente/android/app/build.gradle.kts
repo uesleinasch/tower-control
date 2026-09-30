@@ -4,6 +4,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// No CI o debug.keystore padrão não é garantido: sem caminho explícito o Gradle gera uma
+// chave nova e o APK deixa de atualizar o instalado. Mesma chave de debug, caminho fixo.
+val keystoreFixa = System.getenv("CT_ANDROID_KEYSTORE")
+
 android {
     namespace = "dev.ueslei.controltower"
     compileSdk = flutter.compileSdkVersion
@@ -29,11 +33,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (keystoreFixa != null) {
+            create("fixa") {
+                storeFile = file(keystoreFixa)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (keystoreFixa != null) "fixa" else "debug")
         }
     }
 }
