@@ -125,7 +125,7 @@ describe("politicaDeTamanho", () => {
 })
 
 test("montarSystemPrompt injeta a política do perfil", async () => {
-  const raiz = join(import.meta.dir, "..", "..")
+  const raiz = join(import.meta.dir, "..", "modelos")
   const system = await montarSystemPrompt(raiz, "poe")
   expect(system).toContain("## Tamanho da resposta")
   expect(system).toContain("é sempre o menor")
@@ -140,7 +140,7 @@ describe("conselheiro e executor", () => {
   })
 
   test("o executor não recebe as instruções de conselheiro", async () => {
-    const raiz = join(import.meta.dir, "..", "..")
+    const raiz = join(import.meta.dir, "..", "modelos")
     const alfred = await montarSystemPrompt(raiz, "alfred")
     expect(alfred).toContain("o executor do control-tower")
     expect(alfred).not.toContain("decisions/AAAA-MM-DD")
@@ -148,7 +148,7 @@ describe("conselheiro e executor", () => {
   })
 
   test("o conselheiro recebe as tools de memória e o registro de decisão", async () => {
-    const raiz = join(import.meta.dir, "..", "..")
+    const raiz = join(import.meta.dir, "..", "modelos")
     const poe = await montarSystemPrompt(raiz, "poe")
     expect(poe).toContain("decisions/AAAA-MM-DD")
     expect(poe).toContain("use a ferramenta recordar")
@@ -156,7 +156,7 @@ describe("conselheiro e executor", () => {
   })
 
   test("o brief entra entre o perfil e as instruções da casa", async () => {
-    const raiz = join(import.meta.dir, "..", "..")
+    const raiz = join(import.meta.dir, "..", "modelos")
     const poe = await montarSystemPrompt(raiz, "poe", undefined, "# Minha memória\n\nBRIEF-DE-TESTE")
     const perfil = poe.indexOf("# ")
     const brief = poe.indexOf("BRIEF-DE-TESTE")
@@ -166,7 +166,7 @@ describe("conselheiro e executor", () => {
   })
 
   test("o executor não recebe brief", async () => {
-    const raiz = join(import.meta.dir, "..", "..")
+    const raiz = join(import.meta.dir, "..", "modelos")
     const alfred = await montarSystemPrompt(raiz, "alfred", undefined, "BRIEF-DE-TESTE")
     expect(alfred).not.toContain("BRIEF-DE-TESTE")
   })
@@ -768,17 +768,6 @@ _(vazio por enquanto)_
       "- Ueslei é desenvolvedor na Jacto e mantém projetos pessoais em paralelo.",
       "- O control-tower nasceu como ferramenta pessoal.",
     ])
-  })
-
-  test("todas as memory.md reais se decompõem em itens", async () => {
-    const raiz = join(import.meta.dir, "..", "..")
-    for (const persona of CONSELHEIROS) {
-      const arquivo = Bun.file(join(raiz, "profiles", persona, "memory.md"))
-      if (!(await arquivo.exists())) continue
-      const itens = itensDaMemoria(await arquivo.text())
-      expect(itens.length).toBeGreaterThan(0)
-      expect(itens.some((i) => i.startsWith("#"))).toBe(false)
-    }
   })
 })
 

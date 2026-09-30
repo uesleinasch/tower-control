@@ -5,7 +5,35 @@ conselheiros, convocar um board que delibera em conjunto, e registrar decisões 
 formato leve e pesquisável. O design completo está em
 [docs/superpowers/specs/2026-08-22-control-tower-design.md](docs/superpowers/specs/2026-08-22-control-tower-design.md).
 
-## Como rodar
+## Instalar pelo pacote
+
+Cada tag `v*` gera um GitHub Release com o `.deb` (servidor, memória, app de desktop e
+serviços) e o APK. Instalar e atualizar são o mesmo comando:
+
+```bash
+gh release download -R uesleinasch/tower-control -p '*.deb' -D /tmp --clobber && sudo apt install -y /tmp/control-tower_*_amd64.deb
+```
+
+Pré-requisito: login do Claude Code nesta conta (`claude` e fazer login). O pacote traz o
+próprio binário do Claude Code que o Agent SDK usa, mas as credenciais são suas.
+`sudo apt remove control-tower` tira código e serviços e não toca nos dados.
+
+Publicar uma versão: `git tag v0.2.0 && git push --tags`. O APK é assinado com a
+`~/.android/debug.keystore`, guardada como secret uma única vez:
+
+```bash
+gh secret set ANDROID_DEBUG_KEYSTORE < <(base64 -w0 ~/.android/debug.keystore)
+```
+
+## Onde ficam os dados
+
+Tudo o que é seu fica em `~/.local/share/control-tower/` (ou `CT_DADOS`), com git próprio:
+`profiles/`, `decisions/`, `board/`, `atalhos.md` e, fora do git, `conversations/` e a
+memória das personas (`memoria/`). Na primeira subida ela nasce dos modelos em
+`app/modelos/` e, se houver um clone antigo, importa perfis, decisões, atas, atalhos e
+conversas dele. O servidor faz commit sozinho quando surge decisão, ata ou mudança de perfil.
+
+## Como rodar do clone
 
 ```bash
 cd app
@@ -36,13 +64,13 @@ primeira tela e a conversa é a segunda, com
 o menu de responder e copiar.
 
 Com o campo vazio aparecem chips de atalho acima dele — tocar envia a frase na hora.
-Editar `atalhos.md` na raiz (formato `- rótulo :: texto`) e recarregar a página muda a
+Editar `atalhos.md` na pasta de dados (formato `- rótulo :: texto`) e recarregar a página muda a
 lista.
 
 O clipe no composer anexa imagem, arquivo de texto e PDF (até 10 MB; imagem grande é
 reduzida antes de subir). O conselheiro abre o anexo com a ferramenta `Read`, então
 consegue descrever um print e ler um log longo por partes. Anexo fica em
-`conversations/anexos/`, fora do git.
+`conversations/anexos/` da pasta de dados, fora do git.
 
 Pelo menu do navegador, "Adicionar à tela inicial" instala como app e abre sem a
 barra de endereço.
@@ -62,10 +90,12 @@ Para o celular: plugue no cabo com depuração USB, abra Configuração → Celu
 **Instalar e conectar**. O app abre já com os endereços da rede local e do Tailscale e, a
 cada abertura, usa o primeiro que responder. Detalhes em [cliente/README.md](cliente/README.md).
 
-## Instalar como serviço (sobe no boot)
+## Instalar do clone como serviço (sobe no boot)
+
+Para desenvolver. Precisa de Bun e de `cargo` (o ai-memory é Rust).
 
 ```bash
-./install.sh                 # de dentro do clone: deps + serviço systemd de usuário
+./install.sh                 # de dentro do clone: deps, ai-memory, serviços systemd de usuário
 ```
 
 Em uma máquina nova, um comando só (clona, instala deps e registra o serviço):
@@ -91,15 +121,19 @@ bash scripts/servico.sh      # reinstala/atualiza a unit
 - **Lucas** — o Gestor: gestão de empresas, visão de negócio, valor × custo × risco.
 - **Pami** — a Projetista: criação e gestão de projetos, técnicas de mercado.
 
-Cada perfil vive em `profiles/<nome>/`: `profile.md` é o núcleo fixo da personalidade;
-`memory.md` é a memória evolutiva que o próprio perfil atualiza quando aprende algo
-durável.
+Cada perfil tem um `profile.md` em `profiles/<nome>/` da pasta de dados: o núcleo fixo da
+personalidade. A memória de cada um mora no ai-memory (`ai-memory/`, serviço
+`ai-memory.service`), separada por persona: a cada turno entra só um resumo do que é
+relevante, até 4.000 caracteres. Depois de cada conversa a própria persona repassa o que
+ouviu e guarda, e uma vez por dia (07:30) "sonha", fundindo lembranças velhas. A memória
+coletiva tem só as decisões e as atas do board. Design em
+[docs/superpowers/specs/2026-09-30-memoria-personas-design.md](docs/superpowers/specs/2026-09-30-memoria-personas-design.md).
 
 ## Alfred
 
 Os quatro perfis são conselheiros: conversam, guardam memória e registram decisão. O
 **Alfred** é de outro tipo — executor. Ele verifica arquivo, edita coisa e roda comando,
-a pedido direto, sem opinar. Não emite parecer no board, não tem `memory.md` e não
+a pedido direto, sem opinar. Não emite parecer no board, não tem memória e não
 registra ADR.
 
 Comando de terminal não roda direto: aparece na tela com o comando exato e dois botões.
@@ -129,16 +163,16 @@ tem uma linha por decisão para lookup barato.
 O MCP server em `app/mcp/server.ts` expõe `buscar_decisoes` e `ler_decisao`:
 
 ```bash
-claude mcp add --scope user control-tower -- bun run <caminho>/control-tower/app/mcp/server.ts
+claude mcp add --scope user control-tower -- /opt/control-tower/bin/control-tower-mcp   # pelo pacote
+claude mcp add --scope user control-tower -- bun run <clone>/app/mcp/server.ts         # do clone
 ```
 
 ## Estrutura
 
 ```
-app/           servidor Bun + Agent SDK, UI web e MCP server
+app/           servidor Bun + Agent SDK, UI web, MCP server e modelos padrão (app/modelos/)
+ai-memory/     ai-memory (Rust) via git subtree: a memória das personas
 cliente/       app Flutter (Linux e Android) do mesmo servidor
-profiles/      personalidade fixa + memória evolutiva de cada perfil
-board/         charter do conselho e atas das deliberações
-decisions/     decisões registradas + índice
-conversations/ histórico das conversas (runtime, fora do git)
+packaging/     o .deb: units systemd, atalho, postinst
+.github/       release por tag (.deb + APK) e testes a cada push
 ```

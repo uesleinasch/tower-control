@@ -35,6 +35,11 @@ fi
 say "instalando dependências"
 (cd "$RAIZ/app" && bun install)
 
+command -v cargo >/dev/null 2>&1 ||
+  die "cargo não encontrado — o ai-memory (memória das personas) é Rust: https://rustup.rs. Ou instale pelo .deb do GitHub Release."
+say "compilando o ai-memory (demora na primeira vez)"
+(cd "$RAIZ/ai-memory" && cargo build --release --locked -p ai-memory-cli)
+
 say "registrando o serviço (boot + restart automático)"
 bash "$RAIZ/scripts/servico.sh"
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 import { join } from "node:path"
 import { readdir } from "node:fs/promises"
+import { raizDosDados } from "../app/src/caminhos"
 
-const RAIZ = join(import.meta.dir, "..")
+const RAIZ = raizDosDados()
 const SEPARADOR_BALAO = /\n\s*-{3,}\s*\n/
 
 interface Mensagem {
