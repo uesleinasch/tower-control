@@ -8,7 +8,7 @@ import { slug } from "./board"
 import { lerAtalhos } from "./atalhos"
 import { tiposEmitidos, tiposTratados, type Protocolo } from "./protocolo"
 import { respostaEnderecos } from "./rede"
-import { CONSELHEIROS, PERFIS, ehConselheiro } from "./tipos"
+import { CONSELHEIROS, PERFIS, ehConselheiro, exigirPerfilExcluivel, perfilExcluivel } from "./tipos"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, idValido } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
 import { raizDosDados } from "./caminhos"
@@ -144,6 +144,13 @@ describe("conselheiro e executor", () => {
     expect(CONSELHEIROS).not.toContain("alfred")
     expect(ehConselheiro("alfred")).toBe(false)
     expect(ehConselheiro("poe")).toBe(true)
+  })
+
+  test("executor nunca é excluível; conselheiro é", () => {
+    expect(perfilExcluivel("alfred")).toBe(false)
+    expect(perfilExcluivel("poe")).toBe(true)
+    expect(() => exigirPerfilExcluivel("alfred")).toThrow("não pode ser excluído")
+    expect(() => exigirPerfilExcluivel("nati")).not.toThrow()
   })
 
   test("o executor não recebe as instruções de conselheiro", async () => {

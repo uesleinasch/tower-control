@@ -13,6 +13,15 @@ export function ehConselheiro(perfil: Perfil): perfil is Conselheiro {
   return (CONSELHEIROS as readonly string[]).includes(perfil)
 }
 
+export function perfilExcluivel(perfil: Perfil): boolean {
+  return !(EXECUTORES as readonly string[]).includes(perfil)
+}
+
+// O pedido de exclusão chega por WebSocket sem autenticação: esconder a opção na UI não basta.
+export function exigirPerfilExcluivel(perfil: Perfil): void {
+  if (!perfilExcluivel(perfil)) throw new Error(`${perfil} é o executor da casa e não pode ser excluído`)
+}
+
 export type TipoAnexo = "imagem" | "texto" | "pdf"
 
 export interface Anexo {
