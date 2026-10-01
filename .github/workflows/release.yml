@@ -95,7 +95,7 @@ jobs:
           apksigner="$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/ | sort -V | tail -n1)apksigner"
           echo "apksigner: $apksigner"
           saida="$("$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk 2>&1)" || { echo "$saida"; exit 1; }
-          assinatura="$(printf '%s\n' "$saida" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d '\r' | head -n1)"
+          assinatura="$(printf '%s\n' "$saida" | sed -n -E 's/^(Signer #1|V[0-9]+ Signer):? certificate SHA-256 digest: //p' | tr -d '\r' | head -n1)"
           if [ "$assinatura" != "$ASSINATURA_APK" ]; then
             printf '%s\n' "$saida"
             echo "::error::APK assinado com '$assinatura', esperado $ASSINATURA_APK. Não atualizaria o app instalado."
