@@ -1,6 +1,7 @@
 import { executavelDoClaude } from "./caminhos"
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
+import { blocoDeEscrita, carregarRitmo, classificar, lembreteDeForma, normalizadorDeStream, orcamento } from "./ritmo"
 import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
 import { servidorTickTask } from "./ticktask"
 import type { Memoria } from "./memoria/tipos"
@@ -102,7 +103,17 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     conselheiro && opcoes.memoria
       ? await montarBrief(opcoes.memoria, perfil, opcoes.consulta ?? opcoes.texto)
       : ""
-  const system = await montarSystemPrompt(opcoes.raiz, perfil, opcoes.foco, brief)
+  let escrita: string | undefined
+  let prompt = opcoes.texto
+  if (conselheiro) {
+    const ritmo = await carregarRitmo(opcoes.raiz, perfil)
+    const o = orcamento(classificar(opcoes.consulta ?? opcoes.texto), ritmo)
+    escrita = blocoDeEscrita(o, ritmo)
+    prompt = `${opcoes.texto}\n\n${lembreteDeForma(o)}`
+  }
+  const system = await montarSystemPrompt(opcoes.raiz, perfil, opcoes.foco, brief, escrita)
+  const saida = conselheiro ? normalizadorDeStream(opcoes.onChunk) : undefined
+  const emitir = (pedaco: string) => (saida ? saida.receber(pedaco) : opcoes.onChunk(pedaco))
   const mcp = !conselheiro
     ? await servidorTickTask()
     : opcoes.memoria
@@ -113,7 +124,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
   let sessionId = opcoes.sessionId
 
   for await (const msg of query({
-    prompt: conselheiro ? opcoes.texto : comoStream(opcoes.texto),
+    prompt: conselheiro ? prompt : comoStream(opcoes.texto),
     options: {
       cwd: opcoes.raiz,
       pathToClaudeCodeExecutable: executavelDoClaude(),
@@ -130,10 +141,16 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     },
   })) {
     if (msg.type === "stream_event") {
-      const evento = (msg as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event
+      const evento = (
+        msg as { event?: { type?: string; delta?: { type?: string; text?: string }; content_block?: { type?: string } } }
+      ).event
+      if (saida && evento?.type === "content_block_start" && evento.content_block?.type === "text" && acumulado) {
+        acumulado += "\n\n"
+        emitir("\n\n")
+      }
       if (evento?.type === "content_block_delta" && evento.delta?.type === "text_delta" && evento.delta.text) {
         acumulado += evento.delta.text
-        opcoes.onChunk(evento.delta.text)
+        emitir(evento.delta.text)
       }
     } else if (msg.type === "result") {
       const resultado = msg as { session_id?: string; subtype?: string; result?: string }
@@ -143,11 +160,11 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       }
       if (!acumulado && typeof resultado.result === "string") {
         acumulado = resultado.result
-        opcoes.onChunk(resultado.result)
+        emitir(resultado.result)
       }
     }
   }
-  return { texto: acumulado, sessionId }
+  return { texto: saida ? saida.finalizar() : acumulado, sessionId }
 }
 
 export async function perguntarUmaVez(opcoes: {

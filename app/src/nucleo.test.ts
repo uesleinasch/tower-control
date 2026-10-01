@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
 import { parseFrontmatter, linhaIndice } from "./decisions"
-import { montarPautaParecer, montarSystemPrompt, politicaDeTamanho } from "./prompt"
+import { montarPautaParecer, montarSystemPrompt } from "./prompt"
 import { slug } from "./board"
 import { lerAtalhos } from "./atalhos"
 import { tiposEmitidos, tiposTratados, type Protocolo } from "./protocolo"
@@ -38,6 +38,21 @@ import { acoesDaPersona, caminhoNovo, placarVazio } from "./memoria/ferramentas"
 import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memoria/agenda"
 import { montarPedidoSonho, precisaSonhar } from "./memoria/sonho"
 import { montarPedidoConsolidacao } from "./memoria/consolidacao"
+import { lerExport, medirCorpus, rajadas } from "./ritmo-corpus"
+import {
+  RITMO_NEUTRO,
+  blocoDeEscrita,
+  cabeNoOrcamento,
+  carregarRitmo,
+  classificar,
+  espelho,
+  lerRitmo,
+  normalizadorDeStream,
+  normalizar,
+  lembreteDeForma,
+  orcamento,
+  reacaoDoUeslei,
+} from "./ritmo"
 import { espelharColetivo, paginaDoColetivo } from "./memoria/coletivo"
 import { itensDaMemoria, itensNaoCobertos } from "./memoria/migracao"
 import type { Mensagem, MetaConversa } from "./tipos"
@@ -111,24 +126,16 @@ describe("lerAtalhos", () => {
   })
 })
 
-describe("politicaDeTamanho", () => {
-  test("o Poe ganha piso curto; os outros seguem a regra antiga", () => {
-    expect(politicaDeTamanho("poe")).toContain("é sempre o menor")
-    expect(politicaDeTamanho("poe")).toContain("Cinco palavras")
-    expect(politicaDeTamanho("nati")).not.toContain("é sempre o menor")
-  })
-
-  test("os três perfis sem política própria compartilham a mesma", () => {
-    expect(politicaDeTamanho("nati")).toBe(politicaDeTamanho("lucas"))
-    expect(politicaDeTamanho("nati")).toBe(politicaDeTamanho("pami"))
-  })
-})
-
-test("montarSystemPrompt injeta a política do perfil", async () => {
+test("montarSystemPrompt troca a política antiga pelo bloco de escrita", async () => {
   const raiz = join(import.meta.dir, "..", "modelos")
-  const system = await montarSystemPrompt(raiz, "poe")
-  expect(system).toContain("## Tamanho da resposta")
-  expect(system).toContain("é sempre o menor")
+  const poe = await montarSystemPrompt(raiz, "poe", undefined, "", "## Como escrever\n\nBLOCO-DE-TESTE")
+  expect(poe).toContain("BLOCO-DE-TESTE")
+  expect(poe).not.toContain("## Tamanho da resposta")
+  const padrao = await montarSystemPrompt(raiz, "nati")
+  expect(padrao).toContain("## Como escrever")
+  const alfred = await montarSystemPrompt(raiz, "alfred")
+  expect(alfred).toContain("## Tamanho da resposta")
+  expect(alfred).not.toContain("## Como escrever")
 })
 
 describe("conselheiro e executor", () => {
@@ -934,5 +941,176 @@ describe("pasta de dados", () => {
     expect(await registrarNoGit(dados, "decisão nova")).toBe(true)
     expect(await gitLog(dados)).toContain("dados: decisão nova")
     await rm(dados, { recursive: true, force: true })
+  })
+})
+
+describe("corpus de ritmo", () => {
+  const exportado = [
+    "12/01/2025 10:00 - As mensagens são protegidas com criptografia de ponta a ponta.",
+    "12/01/2025 10:01 - Ana: bom dia",
+    "12/01/2025 10:01 - Ana: tudo certo?",
+    "12/01/2025, 10:02:33 - Beto: Tudo",
+    "segunda linha da mesma mensagem",
+    "12/01/2025 10:03 - Beto: <Mídia oculta>",
+    "12/01/2025 10:04 - Ana: kkkk boa <Mensagem editada>",
+  ].join("\n")
+
+  test("lê o export com e sem vírgula, junta linhas e descarta mídia", () => {
+    const msgs = lerExport(exportado)
+    expect(msgs.map((m) => m.autor)).toEqual(["Ana", "Ana", "Beto", "Ana"])
+    expect(msgs[2]!.texto).toBe("Tudo\nsegunda linha da mesma mensagem")
+    expect(msgs[3]!.texto).toBe("kkkk boa")
+  })
+
+  test("agrupa rajadas e mede só números", () => {
+    const msgs = lerExport(exportado)
+    expect(rajadas(msgs).map((r) => r.length)).toEqual([2, 1, 1])
+    const corpus = medirCorpus([msgs], "2026-09-30")
+    expect(corpus.fonte).toEqual({ conversas: 1, mensagens: 4, geradoEm: "2026-09-30" })
+    expect(corpus.baloesPorResposta.p90).toBe(2)
+    expect(corpus.tracos.risada).toBeCloseTo(1 / 3, 2)
+    expect(JSON.stringify(corpus)).not.toContain("Ana")
+  })
+})
+
+describe("orçamento de escrita", () => {
+  test("pedido explícito de profundidade muda a situação", () => {
+    expect(classificar("kkkk boa")).toBe("padrao")
+    expect(classificar("vale a pena eu correr de manhã?")).toBe("padrao")
+    expect(classificar("me explica com calma os prós e contras")).toBe("profundidade")
+    expect(classificar("compara web e nativo pra mim")).toBe("profundidade")
+  })
+
+  test("ritmo inválido cai no neutro e multiplicador fica entre 0,5 e 2", () => {
+    expect(lerRitmo(null)).toEqual(RITMO_NEUTRO)
+    expect(lerRitmo({ baloes: 9, palavras: 0.1, risada: "sempre" })).toMatchObject({
+      baloes: 2,
+      palavras: 0.5,
+      risada: RITMO_NEUTRO.risada,
+    })
+  })
+
+  test("profundidade dá mais balões e mais palavras que o padrão", () => {
+    const ritmo = lerRitmo({ baloes: 1.2, palavras: 1 })
+    const padrao = orcamento("padrao", ritmo)
+    const fundo = orcamento("profundidade", ritmo)
+    expect(padrao.baloes[0]).toBe(1)
+    expect(fundo.baloes[1]).toBeGreaterThan(padrao.baloes[1])
+    expect(fundo.palavrasPorBalao).toBe(padrao.palavrasPorBalao * 3)
+  })
+
+  test("personas com ritmo diferente recebem orçamento diferente", async () => {
+    const modelos = join(import.meta.dir, "..", "modelos")
+    const poe = orcamento("padrao", await carregarRitmo(modelos, "poe"))
+    const nati = orcamento("padrao", await carregarRitmo(modelos, "nati"))
+    expect(nati.palavrasPorBalao).toBeGreaterThan(poe.palavrasPorBalao)
+    expect(nati.baloes[1]).toBeLessThan(poe.baloes[1])
+  })
+
+  test("o bloco traz os números e os traços da persona", () => {
+    const ritmo = lerRitmo({ risada: "nunca", minusculas: true })
+    const bloco = blocoDeEscrita(orcamento("padrao", ritmo), ritmo)
+    expect(bloco).toContain("## Como escrever")
+    expect(bloco).toMatch(/de 1 a \d balões/)
+    expect(bloco).toContain("Não use kkk")
+    expect(bloco).toContain("minúscula")
+  })
+
+  test("o lembrete do turno carrega o orçamento da situação", () => {
+    const padrao = orcamento("padrao", RITMO_NEUTRO)
+    expect(lembreteDeForma(padrao)).toContain(`até ${padrao.baloes[1]} balão(ões)`)
+    expect(lembreteDeForma(orcamento("profundidade", RITMO_NEUTRO))).toContain("pode aprofundar")
+  })
+
+  test("cabeNoOrcamento olha quantidade e tamanho dos balões", () => {
+    const o = { situacao: "padrao" as const, baloes: [1, 2] as [number, number], palavrasPorBalao: 4 }
+    expect(cabeNoOrcamento("boa\n---\nfaz sentido", o)).toBe(true)
+    expect(cabeNoOrcamento("a\n---\nb\n---\nc", o)).toBe(false)
+    expect(cabeNoOrcamento("um dois três quatro cinco seis sete", o)).toBe(false)
+  })
+})
+
+describe("normalizar", () => {
+  const amostras = [
+    "## Resumo\n\n**Boa** pergunta.\n\n- primeiro ponto\n- segundo ponto\n\nFechou?",
+    "oi\n---\ntudo bem\n\n\n\nkkkk",
+    "olha só:\n\n```ts\nconst a = 1\n\n// ---\n```\n\nviu?",
+    "linha única sem nada",
+    "* item com asterisco\n\n-5 graus hoje\n\n--------\n\nfim **forte** aqui",
+  ]
+
+  test("parágrafo vira balão e formatação de documento some", () => {
+    expect(normalizar(amostras[0]!)).toBe("Resumo\n---\nBoa pergunta.\n---\nprimeiro ponto\nsegundo ponto\n---\nFechou?")
+    expect(normalizar(amostras[1]!)).toBe("oi\n---\ntudo bem\n---\nkkkk")
+  })
+
+  test("bloco de código fica intacto", () => {
+    expect(normalizar(amostras[2]!)).toBe("olha só:\n---\n```ts\nconst a = 1\n\n// ---\n```\n---\nviu?")
+  })
+
+  test("é idempotente e não perde palavra", () => {
+    for (const a of amostras) {
+      const n = normalizar(a)
+      expect(normalizar(n)).toBe(n)
+      const semMarcas = (t: string) => t.replace(/[#*`•-]/g, " ").split(/\s+/).filter(Boolean)
+      expect(semMarcas(n)).toEqual(semMarcas(a))
+    }
+  })
+
+  test("qualquer divisão em chunks dá o mesmo texto que normalizar", () => {
+    for (const a of amostras) {
+      for (const tamanho of [1, 2, 3, 5, 7, 13]) {
+        let emitido = ""
+        const s = normalizadorDeStream((p) => (emitido += p))
+        for (let i = 0; i < a.length; i += tamanho) s.receber(a.slice(i, i + tamanho))
+        const final = s.finalizar()
+        expect(final).toBe(normalizar(a))
+        expect(emitido).toBe(final)
+      }
+    }
+  })
+})
+
+describe("espelho da escrita", () => {
+  test("reconhece a reação do Ueslei", () => {
+    expect(reacaoDoUeslei("kkkkk")).toBe("riu")
+    expect(reacaoDoUeslei("hsjsjshs")).toBe("riu")
+    expect(reacaoDoUeslei("?")).toBe("confuso")
+    expect(reacaoDoUeslei("resume isso aí")).toBe("pediu-curto")
+    expect(reacaoDoUeslei("ok")).toBe("neutra")
+  })
+
+  test("resume as falas e conta as reações", () => {
+    const texto = espelho(
+      [
+        { role: "user", texto: "bom dia" },
+        { role: "assistant", texto: "bom dia\n---\nacordou cedo hein" },
+        { role: "user", texto: "kkkk sim" },
+        { role: "assistant", texto: Array(80).fill("palavra").join(" ") },
+        { role: "user", texto: "textão hein, resume" },
+      ],
+      RITMO_NEUTRO,
+    )
+    expect(texto).toContain("## Espelho da sua escrita")
+    expect(texto).toContain("2 resposta(s)")
+    expect(texto).toContain("Passaram do ponto: 1 de 2")
+    expect(texto).toContain("riu 1")
+    expect(texto).toContain("pediu mais curto 1")
+  })
+
+  test("conversa sem fala da persona não gera espelho", () => {
+    expect(espelho([{ role: "user", texto: "oi" }], RITMO_NEUTRO)).toBe("")
+  })
+
+  test("o espelho entra no pedido de consolidação", () => {
+    const pedido = montarPedidoConsolidacao(
+      "poe",
+      { id: "c", perfil: "poe", titulo: "t", criadaEm: "" },
+      [{ role: "user", texto: "oi", ts: "2026-09-30T10:00:00Z", perfil: "poe" }],
+      [],
+      "## Espelho da sua escrita\n\nESPELHO",
+    )
+    expect(pedido).toContain("ESPELHO")
+    expect(pedido.indexOf("ESPELHO")).toBeLessThan(pedido.indexOf("Repasse a conversa"))
   })
 })

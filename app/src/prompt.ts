@@ -1,5 +1,6 @@
 import { join } from "node:path"
 import { ehConselheiro, type Conselheiro, type Perfil } from "./tipos"
+import { RITMO_NEUTRO, blocoDeEscrita, orcamento } from "./ritmo"
 
 export const NOMES: Record<Perfil, string> = {
   poe: "Poe",
@@ -9,49 +10,18 @@ export const NOMES: Record<Perfil, string> = {
   alfred: "Alfred",
 }
 
-const POLITICA_PADRAO = `Prefira 1 a 3 balões curtos por resposta; só escreva longo quando o Ueslei pedir
-profundidade — e mesmo aí, quebre em balões.`
-
-const POLITICA_POE = `Antes de escrever, decida em qual dos três casos a mensagem cai:
-
-1. Conversa, reação, confirmação, ou opinião que você já tem formada.
-   Um balão, uma ou duas frases. Cinco palavras muitas vezes bastam.
-   Este é o caso mais comum.
-2. Ele pediu para pensar junto, comparar opções, ou explicar um porquê.
-   Dois ou três balões curtos.
-3. Ele pediu profundidade com essas palavras, ou a decisão é grande e
-   difícil de desfazer. Quantos balões precisar, ainda quebrados.
-
-Na dúvida entre dois casos, é sempre o menor.
-
-Em qualquer caso: não abra resumindo o que ele acabou de dizer, não feche
-oferecendo mais ajuda, e não liste alternativas que ele não pediu.`
-
 const POLITICA_ALFRED = `Uma ou duas linhas dizendo o que você fez ou o que encontrou. Sem preâmbulo, sem
 recapitular o pedido, sem oferecer o próximo passo. Saída de comando só quando ela for
 a resposta; se for longa, resuma e diga onde está o resto.`
 
-const POLITICAS_DE_TAMANHO: Record<Perfil, string> = {
-  poe: POLITICA_POE,
-  nati: POLITICA_PADRAO,
-  lucas: POLITICA_PADRAO,
-  pami: POLITICA_PADRAO,
-  alfred: POLITICA_ALFRED,
-}
-
-export function politicaDeTamanho(perfil: Perfil): string {
-  return POLITICAS_DE_TAMANHO[perfil]
-}
-
-function instrucoesDaCasa(perfil: Perfil): string {
+function instrucoesDaCasa(perfil: Perfil, escrita: string): string {
   return `# Instruções da casa (control-tower)
 
 Você é ${NOMES[perfil]}, um dos perfis do control-tower — a sala de decisões do Ueslei.
-Sua personalidade e sua memória estão acima; encarne-as por completo.
+Sua personalidade e sua memória estão acima; encarne-as por completo. A seção "Como eu
+escrevo" da sua memória, quando existe, é o seu jeito de falar: siga-o.
 
 - Responda sempre em português brasileiro.
-- Escreva como gente conversa num chat de mensagens: um pensamento por balão. Para
-  separar balões, insira uma linha contendo apenas "---".
 - Você NUNCA edita arquivos em profiles/ nem qualquer outro arquivo fora dos citados
   nestas instruções.
 - Quando uma decisão for de fato tomada na conversa (não apenas discutida), registre-a:
@@ -76,9 +46,7 @@ conta a você.
 - Lembrança marcada [coletivo] é decisão ou ata do board, que todos os perfis conhecem.
 - Não anuncie que está consultando ou guardando memória. Lembre como gente lembra.
 
-## Tamanho da resposta
-
-${politicaDeTamanho(perfil)}`
+${escrita}`
 }
 
 const FOCO_TICKTASK = `## Modo TickTask
@@ -114,7 +82,7 @@ sem ser perguntado, não sugere melhorias, não pergunta se o Ueslei quer mais a
 
 ## Tamanho da resposta
 
-${politicaDeTamanho(perfil)}${foco === "ticktask" ? `\n\n${FOCO_TICKTASK}` : ""}`
+${POLITICA_ALFRED}${foco === "ticktask" ? `\n\n${FOCO_TICKTASK}` : ""}`
 }
 
 function instrucoesParecer(perfil: Conselheiro): string {
@@ -141,13 +109,14 @@ export async function montarSystemPrompt(
   perfil: Perfil,
   foco?: string,
   brief = "",
+  escrita = blocoDeEscrita(orcamento("padrao", RITMO_NEUTRO), RITMO_NEUTRO),
 ): Promise<string> {
   const perfilMd = await lerPerfil(raiz, perfil)
   if (!ehConselheiro(perfil)) {
     return [perfilMd, instrucoesDoExecutor(perfil, foco)].filter(Boolean).join("\n\n---\n\n")
   }
   const legado = await memoriaLegada(raiz, perfil)
-  return [perfilMd, legado, brief, instrucoesDaCasa(perfil)].filter(Boolean).join("\n\n---\n\n")
+  return [perfilMd, legado, brief, instrucoesDaCasa(perfil, escrita)].filter(Boolean).join("\n\n---\n\n")
 }
 
 // Até scripts/migrar-memoria.ts rodar, o memory.md antigo segue valendo; a migração o apaga.

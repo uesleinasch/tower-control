@@ -1,6 +1,7 @@
 import { NOMES, lerPerfil } from "../prompt"
 import { atualizarMeta, lerMensagens, listarConversas } from "../store"
 import { ehConselheiro, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
+import { carregarRitmo, espelho } from "../ritmo"
 import { consolidacaoPendente, registrarAtividade } from "./agenda"
 import { instrucoesDeBastidor, rodarPersona } from "./sessao"
 import type { Memoria, Trecho } from "./tipos"
@@ -14,7 +15,10 @@ o que vale lembrar.
    a página antiga dizendo o que mudou e quando.
 3. Se algo mudou em você — uma opinião que você formou, um jeito de falar com ele que
    funcionou, uma piada interna, uma posição que defendeu —, grave ou atualize um jeito.
-4. Conversa sem nada durável ainda vira episodio, curto.`
+4. Conversa sem nada durável ainda vira episodio, curto.
+5. Olhe o espelho da sua escrita e atualize o jeito com título "Como eu escrevo" (crie se
+   não existir): expressões suas, tiques, o que fez o Ueslei rir, o que o fez pedir para
+   encurtar. É a sua voz, não uma cópia da dele.`
 
 function linha(m: Mensagem, persona: Conselheiro): string {
   const quem = m.role === "user" ? "Ueslei" : NOMES[persona]
@@ -27,6 +31,7 @@ export function montarPedidoConsolidacao(
   meta: MetaConversa,
   novas: Mensagem[],
   anteriores: Trecho[],
+  espelhoDaEscrita = "",
 ): string {
   const lembrancas = anteriores.length
     ? anteriores.map((t) => `- ${t.titulo}: ${t.trecho} (${t.path})`).join("\n")
@@ -38,7 +43,7 @@ ${novas.map((m) => linha(m, persona)).join("\n\n")}
 ## O que você já lembra sobre esses assuntos
 
 ${lembrancas}
-
+${espelhoDaEscrita ? `\n${espelhoDaEscrita}\n` : ""}
 Repasse a conversa e guarde o que vale lembrar.`
 }
 
@@ -61,7 +66,7 @@ export async function consolidarConversa(raiz: string, m: Memoria, meta: MetaCon
     raiz,
     persona,
     system: [perfil, instrucoesDeBastidor(persona, TAREFA)].filter(Boolean).join("\n\n---\n\n"),
-    prompt: montarPedidoConsolidacao(persona, meta, novas, anteriores),
+    prompt: montarPedidoConsolidacao(persona, meta, novas, anteriores, espelho(novas, await carregarRitmo(raiz, persona))),
     memoria: m,
     exigirGravacao: true,
     origem: `conversa:${meta.id}`,
