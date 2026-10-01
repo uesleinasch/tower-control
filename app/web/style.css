@@ -155,7 +155,7 @@ body {
   cursor: pointer;
 }
 #seletor-modelo:disabled { opacity: 0.5; cursor: default; }
-#auto {
+#auto, #ticktask {
   border: 1px solid var(--borda);
   border-radius: 8px;
   background: var(--painel-2);
@@ -164,7 +164,13 @@ body {
   font: 12px system-ui, sans-serif;
   cursor: pointer;
 }
-#auto[hidden] { display: none; }
+#auto[hidden], #ticktask[hidden] { display: none; }
+#ticktask[aria-pressed="true"] {
+  background: var(--ticktask);
+  border-color: var(--ticktask);
+  color: #10131a;
+  font-weight: 600;
+}
 #auto[aria-pressed="true"] {
   background: var(--alfred);
   border-color: var(--alfred);

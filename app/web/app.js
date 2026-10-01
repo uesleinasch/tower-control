@@ -1,7 +1,7 @@
 "use strict"
 
 const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", alfred: "Alfred", board: "Board" }
-const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", ticktask: "T", board: "B", decisoes: "D" }
+const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", board: "B", decisoes: "D" }
 
 const EXECUTORES = ["alfred"]
 const ICONES_ANEXO = { imagem: "🖼", texto: "📄", pdf: "📕" }
@@ -34,6 +34,7 @@ const el = {
   citacaoTexto: document.getElementById("citacao-texto"),
   modelo: document.getElementById("seletor-modelo"),
   auto: document.getElementById("auto"),
+  ticktask: document.getElementById("ticktask"),
   clipe: document.getElementById("clipe"),
   pendentes: document.getElementById("pendentes"),
   atalhos: document.getElementById("atalhos"),
@@ -111,10 +112,21 @@ function refletirAuto() {
   el.modelo.title = ligado ? "no modo auto o Alfred usa Opus 5.5" : "modelo usado nas respostas desta conversa"
 }
 
+function refletirFoco() {
+  const ligado = estado.foco === "ticktask"
+  el.ticktask.setAttribute("aria-pressed", String(ligado))
+  if (estado.modo === "chat" && estado.perfil) {
+    el.entrada.placeholder = ligado ? "O que registrar no TickTask…" : `Mensagem para ${NOMES[estado.perfil]}…`
+  }
+}
+
 function ajustarAoModo() {
+  const executor = estado.modo === "chat" && EXECUTORES.includes(estado.perfil)
   el.clipe.hidden = estado.modo !== "chat"
-  el.auto.hidden = !(estado.modo === "chat" && EXECUTORES.includes(estado.perfil))
+  el.auto.hidden = !executor
+  el.ticktask.hidden = !executor
   refletirAuto()
+  refletirFoco()
   limparAnexos()
   renderAtalhos()
 }
@@ -395,24 +407,17 @@ function selecionarBotao(seletor) {
 
 // ── modos ──────────────────────────────────────────────────────────
 
-function abrirPerfil(perfil, foco) {
+function abrirPerfil(perfil) {
   estado.modo = "chat"
   estado.perfil = perfil
   estado.conversaId = null
-  estado.foco = foco ?? null
+  estado.foco = null
   estado.auto = false
   ajustarAoModo()
-  selecionarBotao(foco ? `[data-foco="${foco}"]` : `[data-perfil="${perfil}"]:not([data-foco])`)
-  const rotulo = foco === "ticktask" ? "TickTask — registro direto" : `Nova conversa com ${NOMES[perfil]}`
-  definirCabecalho(foco === "ticktask" ? "ticktask" : perfil, rotulo)
+  selecionarBotao(`[data-perfil="${perfil}"]`)
+  definirCabecalho(perfil, `Nova conversa com ${NOMES[perfil]}`)
   limparTela()
-  adicionarMensagem(
-    "aviso",
-    foco === "ticktask"
-      ? "Registro direto no TickTask. Diga o que registrar; o Alfred usa as ferramentas do app."
-      : `Você está falando com ${NOMES[perfil]}. A conversa é criada na primeira mensagem.`,
-  )
-  el.entrada.placeholder = foco === "ticktask" ? "O que registrar…" : `Mensagem para ${NOMES[perfil]}…`
+  adicionarMensagem("aviso", `Você está falando com ${NOMES[perfil]}. A conversa é criada na primeira mensagem.`)
   irParaConversa()
   focarEntrada()
 }
@@ -476,7 +481,7 @@ function submeter() {
       anexos: ids,
       modelo: el.modelo.value,
       auto: estado.auto,
-      foco: estado.foco ?? undefined,
+      foco: EXECUTORES.includes(estado.perfil) ? (estado.foco ?? "") : undefined,
     }
     if (estado.conversaId) {
       enviar({ tipo: "mensagem", conversaId: estado.conversaId, ...comum })
@@ -546,9 +551,8 @@ function tratar(msg) {
       el.listaConversas.innerHTML = ""
       for (const meta of msg.lista) {
         const li = document.createElement("li")
-        const chave = meta.foco === "ticktask" ? "ticktask" : meta.perfil
         li.innerHTML =
-          `<span class="avatar ${chave}">${INICIAIS[chave] ?? "?"}</span>` +
+          `<span class="avatar ${meta.perfil}">${INICIAIS[meta.perfil] ?? "?"}</span>` +
           `<span class="linha"><span class="titulo">${escapar(meta.titulo)}</span>` +
           `<time>${quando(meta.criadaEm)}</time></span>`
         li.onclick = () => {
@@ -585,15 +589,8 @@ function tratar(msg) {
       estado.auto = msg.meta.auto === true
       estado.foco = msg.meta.foco ?? null
       ajustarAoModo()
-      selecionarBotao(
-        estado.foco
-          ? `[data-foco="${estado.foco}"]`
-          : `[data-perfil="${msg.meta.perfil}"]:not([data-foco])`,
-      )
-      definirCabecalho(
-        estado.foco === "ticktask" ? "ticktask" : msg.meta.perfil,
-        `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`,
-      )
+      selecionarBotao(`[data-perfil="${msg.meta.perfil}"]`)
+      definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
       el.modelo.value = msg.meta.modelo ?? "haiku"
       irParaConversa()
       limparTela()
@@ -665,12 +662,22 @@ function tratar(msg) {
 // ── ligação da UI ──────────────────────────────────────────────────
 
 document.querySelectorAll(".perfil").forEach((b) => {
-  b.onclick = () => abrirPerfil(b.dataset.perfil, b.dataset.foco)
+  b.onclick = () => abrirPerfil(b.dataset.perfil)
 })
 
 el.auto.onclick = () => {
   estado.auto = !estado.auto
   refletirAuto()
+}
+el.ticktask.onclick = () => {
+  estado.foco = estado.foco === "ticktask" ? null : "ticktask"
+  refletirFoco()
+  adicionarMensagem(
+    "aviso",
+    estado.foco
+      ? "TickTask ligado: o Alfred registra direto no app."
+      : "TickTask desligado: o Alfred volta a executar comandos.",
+  )
 }
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes

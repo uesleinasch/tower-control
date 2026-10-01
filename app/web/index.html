@@ -27,7 +27,6 @@
       <button class="perfil" data-perfil="lucas"><span class="avatar lucas">L</span><span class="nome">Lucas<small>o gestor</small></span></button>
       <button class="perfil" data-perfil="pami"><span class="avatar pami">P</span><span class="nome">Pami<small>a projetista</small></span></button>
       <button class="perfil" data-perfil="alfred"><span class="avatar alfred">A</span><span class="nome">Alfred<small>executor de tarefas</small></span></button>
-      <button class="perfil" data-perfil="alfred" data-foco="ticktask"><span class="avatar ticktask">T</span><span class="nome">TickTask<small>registro direto</small></span></button>
       <span class="divisor-perfis" role="separator"></span>
       <button id="botao-board"><span class="avatar board">B</span><span class="nome">Convocar board<small>deliberação em conselho</small></span></button>
       <button id="botao-decisoes"><span class="avatar decisoes">D</span><span class="nome">Decisões<small>registro e consulta</small></span></button>
@@ -55,6 +54,8 @@
       <span class="avatar" id="avatar-conversa" hidden></span>
       <span id="titulo-conversa">Escolha um perfil para começar</span>
       <span id="controles">
+        <button id="ticktask" hidden aria-pressed="false"
+                title="registro direto no TickTask: o Alfred usa as ferramentas do app">TickTask</button>
         <button id="auto" hidden aria-pressed="false"
                 title="modo auto: roda comando sem pedir aprovação (os sensíveis ainda pedem) e usa Opus 5.5">auto</button>
         <select id="seletor-modelo" title="modelo usado nas respostas desta conversa">
