@@ -24,7 +24,9 @@ void main() {
 
   group('EstadoChat', () {
     test('primeiro envio manda nova; depois de criada, mensagem', () {
-      final chat = EstadoChat(enviar)..novaConversa('alfred', foco: 'ticktask');
+      final chat = EstadoChat(enviar)
+        ..novaConversa('alfred')
+        ..alternarTicktask();
       expect(chat.enviar('registre x'), isTrue);
       expect(enviados.last['tipo'], 'nova');
       expect(enviados.last['foco'], 'ticktask');
@@ -34,6 +36,28 @@ void main() {
       expect(chat.enviar('mais'), isTrue);
       expect(enviados.last['tipo'], 'mensagem');
       expect(enviados.last['conversaId'], 'c1');
+      expect(enviados.last['foco'], 'ticktask');
+    });
+
+    test('TickTask liga e desliga no meio da conversa do Alfred', () {
+      final chat = EstadoChat(enviar)
+        ..novaConversa('alfred')
+        ..tratar(const Criada(MetaConversa(id: 'c1', perfil: 'alfred', titulo: 't', criadaEm: null)))
+        ..tratar(const Fim('c1'))
+        ..alternarTicktask()
+        ..alternarTicktask();
+      expect(chat.ticktask, isFalse);
+      expect(chat.enviar('ls'), isTrue);
+      expect(enviados.last['foco'], '');
+    });
+
+    test('conselheiro não manda foco', () {
+      final chat = EstadoChat(enviar)
+        ..novaConversa('poe')
+        ..tratar(const Criada(MetaConversa(id: 'c2', perfil: 'poe', titulo: 't', criadaEm: null)))
+        ..tratar(const Fim('c2'));
+      expect(chat.enviar('oi'), isTrue);
+      expect(enviados.last.containsKey('foco'), isFalse);
     });
 
     test('não envia em curso, vazio ou desconectado', () {

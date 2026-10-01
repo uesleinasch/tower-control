@@ -109,12 +109,23 @@ class _Cabecalho extends StatelessWidget {
                 IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => sala.ir(Tela.conversas))
               else
                 const SizedBox(width: 12),
-              Avatar.doPerfil(chat.perfil!, foco: chat.foco, tamanho: 32),
+              Avatar.doPerfil(chat.perfil!, tamanho: 32),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(chat.titulo,
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleSmall),
               ),
+              if (chat.executor)
+                Tooltip(
+                  message: 'Registro direto no TickTask: o Alfred usa as ferramentas do app',
+                  child: FilterChip(
+                    label: const Text('TickTask'),
+                    selected: chat.ticktask,
+                    onSelected: chat.emCurso ? null : (_) => chat.alternarTicktask(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              if (chat.executor) const SizedBox(width: 4),
               if (chat.executor)
                 Tooltip(
                   message: 'Modo auto: comandos rodam sem pedir aprovação (os sensíveis ainda pedem) e usa $modeloDoAuto',
@@ -653,7 +664,7 @@ class _Compositor extends StatelessWidget {
                         textCapitalization: TextCapitalization.sentences,
                         decoration: InputDecoration(
                           hintText: chat.ticktask
-                              ? 'O que registrar…'
+                              ? 'O que registrar no TickTask…'
                               : 'Mensagem para ${Perfil.porChave(chat.perfil!).nome}…',
                         ),
                       ),

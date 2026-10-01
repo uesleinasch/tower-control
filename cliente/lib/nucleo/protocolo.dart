@@ -188,6 +188,7 @@ class EnviarMensagem extends Saida {
     this.anexos = const [],
     this.modelo,
     this.auto,
+    this.foco,
   });
   final String conversaId;
   final String texto;
@@ -195,6 +196,7 @@ class EnviarMensagem extends Saida {
   final List<String> anexos;
   final String? modelo;
   final bool? auto;
+  final String? foco;
 
   @override
   String get tipo => 'mensagem';
@@ -206,6 +208,7 @@ class EnviarMensagem extends Saida {
         'anexos': anexos,
         'modelo': modelo,
         'auto': auto,
+        'foco': foco,
       };
 }
 

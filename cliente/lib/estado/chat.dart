@@ -89,16 +89,13 @@ class EstadoChat extends ChangeNotifier {
   String? get perfilStreaming => _perfilStreaming;
   ({List<String> fechados, String aberto}) get emStreaming => baloesEmCurso(_streaming);
 
-  void novaConversa(String perfil, {String? foco, String modelo = modeloPadrao}) {
+  void novaConversa(String perfil, {String modelo = modeloPadrao}) {
     _limpar();
     this.perfil = perfil;
-    this.foco = foco;
     this.modelo = modelo;
     final nome = Perfil.porChave(perfil).nome;
-    titulo = foco == 'ticktask' ? 'TickTask — registro direto' : 'Nova conversa com $nome';
-    itens.add(AvisoChat(foco == 'ticktask'
-        ? 'Registro direto no TickTask. Diga o que registrar; o Alfred usa as ferramentas do app.'
-        : 'Você está falando com $nome. A conversa é criada na primeira mensagem.'));
+    titulo = 'Nova conversa com $nome';
+    itens.add(AvisoChat('Você está falando com $nome. A conversa é criada na primeira mensagem.'));
     notifyListeners();
   }
 
@@ -111,6 +108,14 @@ class EstadoChat extends ChangeNotifier {
 
   void definirModelo(String valor) {
     modelo = valor;
+    notifyListeners();
+  }
+
+  void alternarTicktask() {
+    foco = ticktask ? null : 'ticktask';
+    itens.add(AvisoChat(ticktask
+        ? 'TickTask ligado: o Alfred registra direto no app.'
+        : 'TickTask desligado: o Alfred volta a executar comandos.'));
     notifyListeners();
   }
 
@@ -171,6 +176,7 @@ class EstadoChat extends ChangeNotifier {
             anexos: ids,
             modelo: modelo,
             auto: auto,
+            foco: executor ? (foco ?? '') : null,
           );
     if (!_enviar(saida)) return false;
     itens.add(DoUsuario(texto, citacao: citacao, ts: DateTime.now(), anexos: List.of(anexos)));

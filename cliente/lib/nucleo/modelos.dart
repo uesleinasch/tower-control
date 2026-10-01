@@ -16,7 +16,6 @@ class Perfil {
 
   static const todos = [poe, nati, lucas, pami, alfred];
 
-  static const corTicktask = 0xFFF43F5E;
   static const corBoard = 0xFF5B8DEF;
   static const corDecisoes = 0xFF58B7C9;
 

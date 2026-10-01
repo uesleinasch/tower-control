@@ -7,8 +7,7 @@ import '../nucleo/modelos.dart';
 class Avatar extends StatelessWidget {
   const Avatar({super.key, required this.cor, required this.inicial, this.tamanho = 36});
 
-  factory Avatar.doPerfil(String perfil, {String? foco, double tamanho = 36}) {
-    if (foco == 'ticktask') return Avatar(cor: const Color(Perfil.corTicktask), inicial: 'T', tamanho: tamanho);
+  factory Avatar.doPerfil(String perfil, {double tamanho = 36}) {
     final p = Perfil.porChave(perfil);
     return Avatar(cor: Color(p.cor), inicial: p.inicial, tamanho: tamanho);
   }

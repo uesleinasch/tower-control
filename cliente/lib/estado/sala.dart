@@ -48,8 +48,8 @@ class Sala extends ChangeNotifier {
     notifyListeners();
   }
 
-  void novaConversa(String perfil, {String? foco, String? modelo}) {
-    chat.novaConversa(perfil, foco: foco, modelo: modelo ?? chat.modelo);
+  void novaConversa(String perfil, {String? modelo}) {
+    chat.novaConversa(perfil, modelo: modelo ?? chat.modelo);
     ir(Tela.chat);
   }
 

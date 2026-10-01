@@ -36,13 +36,13 @@ class ListaConversas extends StatelessWidget {
             itemCount: estado.lista.length,
             itemBuilder: (context, i) {
               final meta = estado.lista[i];
-              final nome = meta.ticktask ? 'TickTask' : Perfil.porChave(meta.perfil).nome;
+              final nome = Perfil.porChave(meta.perfil).nome;
               return MenuDeToque(
                 itens: () => [(Icons.delete_outline, 'Excluir', () => _excluir(context, meta))],
                 child: ListTile(
                   selected: sala.chat.conversaId == meta.id,
                   selectedTileColor: cores.surfaceContainerHighest,
-                  leading: Avatar.doPerfil(meta.perfil, foco: meta.foco),
+                  leading: Avatar.doPerfil(meta.perfil),
                   title: Text(meta.titulo, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(nome, style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
                   trailing: Text(quando(meta.criadaEm), style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
@@ -74,9 +74,9 @@ class _FolhaNova extends StatefulWidget {
 class _FolhaNovaState extends State<_FolhaNova> {
   String _modelo = modeloPadrao;
 
-  void _escolher(String perfil, {String? foco}) {
+  void _escolher(String perfil) {
     Navigator.pop(context);
-    widget.sala.novaConversa(perfil, foco: foco, modelo: _modelo);
+    widget.sala.novaConversa(perfil, modelo: _modelo);
   }
 
   @override
@@ -124,8 +124,6 @@ class _FolhaNovaState extends State<_FolhaNova> {
             ),
             opcao(Avatar.doPerfil('alfred'), 'Alfred', Perfil.alfred.papel,
                 () => _escolher('alfred')),
-            opcao(Avatar.doPerfil('alfred', foco: 'ticktask'), 'TickTask', 'registro direto',
-                () => _escolher('alfred', foco: 'ticktask')),
           ],
         ),
       ),
