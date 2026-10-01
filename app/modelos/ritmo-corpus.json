@@ -1,0 +1,29 @@
+{
+  "fonte": {
+    "conversas": 5,
+    "mensagens": 7103,
+    "geradoEm": "2026-10-01"
+  },
+  "palavrasPorBalao": {
+    "p10": 1,
+    "p50": 3,
+    "p90": 9
+  },
+  "baloesPorResposta": {
+    "p10": 1,
+    "p50": 2,
+    "p90": 5
+  },
+  "palavrasPorResposta": {
+    "p10": 1,
+    "p50": 8,
+    "p90": 25
+  },
+  "tracos": {
+    "reacaoCurta": 0.423,
+    "risada": 0.084,
+    "pontoFinal": 0.003,
+    "inicioMinusculo": 0.188,
+    "perguntaSolta": 0.038
+  }
+}

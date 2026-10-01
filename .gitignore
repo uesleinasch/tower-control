@@ -3,3 +3,5 @@
 node_modules/
 conversations/*
 !conversations/.gitkeep
+conversas/
+scripts/saida-sonda/
