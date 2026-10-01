@@ -117,9 +117,9 @@ class _Cabecalho extends StatelessWidget {
               ),
               if (chat.executor)
                 Tooltip(
-                  message: 'Modo auto: comandos rodam sem pedir aprovação',
+                  message: 'Modo auto: comandos rodam sem pedir aprovação (os sensíveis ainda pedem) e usa $modeloDoAuto',
                   child: FilterChip(
-                    label: const Text('auto'),
+                    label: Text(chat.auto ? 'auto · $modeloDoAuto' : 'auto'),
                     selected: chat.auto,
                     onSelected: chat.emCurso ? null : (_) => chat.alternarAuto(),
                     visualDensity: VisualDensity.compact,
@@ -127,7 +127,8 @@ class _Cabecalho extends StatelessWidget {
                 ),
               const SizedBox(width: 4),
               PopupMenuButton<String>(
-                tooltip: 'Modelo',
+                tooltip: chat.executor && chat.auto ? 'No modo auto o Alfred usa $modeloDoAuto' : 'Modelo',
+                enabled: !(chat.executor && chat.auto),
                 initialValue: chat.modelo,
                 onSelected: chat.definirModelo,
                 itemBuilder: (_) => [
@@ -136,7 +137,8 @@ class _Cabecalho extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(chat.modelo, style: TextStyle(color: cores.onSurfaceVariant)),
+                    Text(chat.executor && chat.auto ? modeloDoAuto : chat.modelo,
+                        style: TextStyle(color: cores.onSurfaceVariant)),
                     Icon(Icons.expand_more, size: 18, color: cores.onSurfaceVariant),
                   ]),
                 ),

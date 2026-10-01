@@ -26,6 +26,7 @@ class Perfil {
 
 const modelos = {'haiku': 'Haiku · padrão', 'sonnet': 'Sonnet', 'opus': 'Opus'};
 const modeloPadrao = 'haiku';
+const modeloDoAuto = 'Opus 5.5';
 
 enum TipoAnexo { imagem, texto, pdf }
 
