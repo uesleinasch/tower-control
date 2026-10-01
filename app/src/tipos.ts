@@ -29,6 +29,12 @@ export function modeloEfetivo(meta: { perfil: Perfil; modelo?: string; auto?: bo
   return meta.auto && !ehConselheiro(meta.perfil) ? MODELO_DO_AUTO : meta.modelo
 }
 
+// undefined = o cliente não mexeu no foco; null = desligar. Conselheiro não tem foco.
+export function lerFoco(perfil: Perfil, bruto: unknown): "ticktask" | null | undefined {
+  if (typeof bruto !== "string" || ehConselheiro(perfil)) return undefined
+  return bruto === "ticktask" ? "ticktask" : null
+}
+
 export type TipoAnexo = "imagem" | "texto" | "pdf"
 
 export interface Anexo {

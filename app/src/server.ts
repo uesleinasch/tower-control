@@ -4,7 +4,7 @@ import { origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import { migrarPendentes } from "./memoria/migracao"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
-import { PERFIS, ehConselheiro, modeloEfetivo, type Anexo, type Perfil } from "./tipos"
+import { PERFIS, ehConselheiro, lerFoco, modeloEfetivo, type Anexo, type Perfil } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
 import { conversar } from "./sessions"
@@ -115,8 +115,13 @@ async function responderNaConversa(
   modelo?: string,
   anexos: Anexo[] = [],
   auto?: boolean,
+  foco?: unknown,
 ): Promise<void> {
   let meta = await lerMeta(RAIZ, id)
+  const focoPedido = lerFoco(meta.perfil, foco)
+  if (focoPedido !== undefined && focoPedido !== (meta.foco ?? null)) {
+    meta = await atualizarMeta(RAIZ, id, { foco: focoPedido ?? undefined })
+  }
   if (modelo !== undefined && modelo !== (meta.modelo ?? "")) {
     meta = await atualizarMeta(RAIZ, id, { modelo: modelo || undefined })
   }
@@ -229,6 +234,7 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
         msg.modelo !== undefined ? String(msg.modelo) : undefined,
         anexos,
         msg.auto !== undefined ? msg.auto === true : undefined,
+        msg.foco,
       )
       return
     }

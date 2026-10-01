@@ -14,6 +14,7 @@ import {
   PERFIS,
   ehConselheiro,
   exigirPerfilExcluivel,
+  lerFoco,
   modeloEfetivo,
   perfilExcluivel,
 } from "./tipos"
@@ -1138,6 +1139,13 @@ describe("modo auto do executor", () => {
     expect(modeloEfetivo({ perfil: "alfred", modelo: "haiku", auto: false })).toBe("haiku")
     expect(modeloEfetivo({ perfil: "alfred" })).toBeUndefined()
     expect(modeloEfetivo({ perfil: "poe", modelo: "sonnet", auto: true })).toBe("sonnet")
+  })
+
+  test("foco liga e desliga no executor e é ignorado no conselheiro", () => {
+    expect(lerFoco("alfred", "ticktask")).toBe("ticktask")
+    expect(lerFoco("alfred", "")).toBeNull()
+    expect(lerFoco("alfred", undefined)).toBeUndefined()
+    expect(lerFoco("poe", "ticktask")).toBeUndefined()
   })
 
   test("comando sensível pede aprovação mesmo no auto", () => {
