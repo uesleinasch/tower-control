@@ -4,7 +4,7 @@ import { origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import { migrarPendentes } from "./memoria/migracao"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
-import { PERFIS, ehConselheiro, type Anexo, type Perfil } from "./tipos"
+import { PERFIS, ehConselheiro, modeloEfetivo, type Anexo, type Perfil } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
 import { conversar } from "./sessions"
@@ -92,6 +92,8 @@ function resolverPermissao(id: string, permitido: boolean): void {
 // Em modo auto o comando não é barrado, mas aparece no chat: senão o auto seria caixa
 // preta e o Ueslei descobriria o que rodou pelo efeito colateral.
 function tratarComando(ws: Cliente, comando: string, aprovar: boolean): Promise<boolean> {
+  // Sem ninguém do outro lado, nem o auto roda: o comando ficaria sem testemunha.
+  if (ws.readyState !== WebSocket.OPEN) return Promise.resolve(false)
   if (!aprovar) {
     mandar(ws, { tipo: "comando", comando })
     return Promise.resolve(true)
@@ -144,7 +146,7 @@ async function responderNaConversa(
     perfil: meta.perfil,
     texto: textoParaModelo,
     sessionId: meta.sessionId,
-    modelo: meta.modelo,
+    modelo: modeloEfetivo(meta),
     auto: meta.auto,
     foco: meta.foco,
     memoria: MEMORIA,

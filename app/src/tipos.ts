@@ -5,6 +5,9 @@ export const PERFIS = [...CONSELHEIROS, ...EXECUTORES] as const
 // Sem isto o SDK resolve para claude-opus-5[1m] — medido em ~7x o custo do haiku
 // na mesma pergunta.
 export const MODELO_PADRAO = "haiku"
+// Com o auto ligado ninguém revisa cada comando; o modelo forte erra menos. Não é
+// gravado em MetaConversa.modelo: desligar o auto volta ao modelo escolhido.
+export const MODELO_DO_AUTO = "claude-opus-5-5"
 export type Conselheiro = (typeof CONSELHEIROS)[number]
 export type Executor = (typeof EXECUTORES)[number]
 export type Perfil = (typeof PERFIS)[number]
@@ -20,6 +23,10 @@ export function perfilExcluivel(perfil: Perfil): boolean {
 // O pedido de exclusão chega por WebSocket sem autenticação: esconder a opção na UI não basta.
 export function exigirPerfilExcluivel(perfil: Perfil): void {
   if (!perfilExcluivel(perfil)) throw new Error(`${perfil} é o executor da casa e não pode ser excluído`)
+}
+
+export function modeloEfetivo(meta: { perfil: Perfil; modelo?: string; auto?: boolean }): string | undefined {
+  return meta.auto && !ehConselheiro(meta.perfil) ? MODELO_DO_AUTO : meta.modelo
 }
 
 export type TipoAnexo = "imagem" | "texto" | "pdf"

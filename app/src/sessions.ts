@@ -4,6 +4,7 @@ import { montarSystemPrompt } from "./prompt"
 import { blocoDeEscrita, carregarRitmo, classificar, lembreteDeForma, normalizadorDeStream, orcamento } from "./ritmo"
 import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
 import { servidorTickTask } from "./ticktask"
+import { exigeAprovacaoSempre } from "./comandos"
 import type { Memoria } from "./memoria/tipos"
 import { montarBrief } from "./memoria/recuperacao"
 import { FERRAMENTAS_MEMORIA, servidorDeMemoria } from "./memoria/ferramentas"
@@ -76,7 +77,7 @@ function hookDeComando(
           async (entrada) => {
             const bruto = entrada as { tool_input?: { command?: unknown } }
             const comando = String(bruto.tool_input?.command ?? "")
-            const liberado = onComando ? await onComando(comando, !auto) : false
+            const liberado = onComando ? await onComando(comando, !auto || exigeAprovacaoSempre(comando)) : false
             return {
               hookSpecificOutput: {
                 hookEventName: "PreToolUse" as const,
