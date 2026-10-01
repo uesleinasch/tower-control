@@ -13,6 +13,11 @@ import { FERRAMENTAS_MEMORIA, servidorDeMemoria } from "./memoria/ferramentas"
 // canUseTool ser pulado e o comando rodar sem ninguém aprovar.
 const AUTO_APROVADAS = ["Read", "Write", "Edit", "Grep", "Glob"]
 
+// Restringe as ferramentas nativas do Claude Code. Sem isto a sessão expõe TaskList,
+// TaskCreate, Cron etc., e o Alfred no foco TickTask confunde "tasks" com o TaskList nativo.
+const NATIVAS_DO_CONSELHEIRO = AUTO_APROVADAS
+const NATIVAS_DO_EXECUTOR = [...AUTO_APROVADAS, "Bash"]
+
 // Nomeadas uma a uma porque não se sabe se allowedTools casa prefixo de MCP.
 const FERRAMENTAS_TICKTASK = [
   "mcp__ticktask",
@@ -136,6 +141,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       settingSources: [],
       model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
+      tools: conselheiro ? NATIVAS_DO_CONSELHEIRO : NATIVAS_DO_EXECUTOR,
       allowedTools: mcp ? [...AUTO_APROVADAS, ...extras] : AUTO_APROVADAS,
       mcpServers: mcp,
       // Executor fica em "default" para o canUseTool decidir tudo explicitamente, em vez
@@ -188,6 +194,7 @@ export async function perguntarUmaVez(opcoes: {
       pathToClaudeCodeExecutable: executavelDoClaude(),
       systemPrompt: opcoes.system,
       settingSources: [],
+      tools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
       allowedTools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
       permissionMode: "default",
       maxTurns: 8,
