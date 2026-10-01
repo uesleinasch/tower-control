@@ -103,10 +103,18 @@ function focarEntrada() {
   if (!compacto()) el.entrada.focus()
 }
 
+function refletirAuto() {
+  const ligado = estado.auto && EXECUTORES.includes(estado.perfil)
+  el.auto.setAttribute("aria-pressed", String(estado.auto))
+  el.auto.textContent = ligado ? "auto · Opus 5.5" : "auto"
+  el.modelo.disabled = ligado
+  el.modelo.title = ligado ? "no modo auto o Alfred usa Opus 5.5" : "modelo usado nas respostas desta conversa"
+}
+
 function ajustarAoModo() {
   el.clipe.hidden = estado.modo !== "chat"
   el.auto.hidden = !(estado.modo === "chat" && EXECUTORES.includes(estado.perfil))
-  el.auto.setAttribute("aria-pressed", String(estado.auto))
+  refletirAuto()
   limparAnexos()
   renderAtalhos()
 }
@@ -662,7 +670,7 @@ document.querySelectorAll(".perfil").forEach((b) => {
 
 el.auto.onclick = () => {
   estado.auto = !estado.auto
-  el.auto.setAttribute("aria-pressed", String(estado.auto))
+  refletirAuto()
 }
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
