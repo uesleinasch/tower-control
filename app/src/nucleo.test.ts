@@ -152,6 +152,7 @@ describe("conselheiro e executor", () => {
     expect(alfred).toContain("o executor do control-tower")
     expect(alfred).not.toContain("decisions/AAAA-MM-DD")
     expect(alfred).not.toContain("PODE atualizar")
+    expect(alfred).toContain("chame a ferramenta Bash direto")
   })
 
   test("o conselheiro recebe as tools de memória e o registro de decisão", async () => {

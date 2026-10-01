@@ -129,6 +129,10 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       cwd: opcoes.raiz,
       pathToClaudeCodeExecutable: executavelDoClaude(),
       resume: opcoes.sessionId,
+      // Sem isto o SDK carrega ~/.claude/settings.json do usuário: plugins, MCPs pessoais
+      // e hooks de PreToolUse que negam comando já aprovado na tela (o do context-mode
+      // nega curl e manda usar uma ferramenta que o Alfred não tem).
+      settingSources: [],
       model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
       allowedTools: mcp ? [...AUTO_APROVADAS, ...extras] : AUTO_APROVADAS,
@@ -182,6 +186,7 @@ export async function perguntarUmaVez(opcoes: {
       cwd: opcoes.raiz,
       pathToClaudeCodeExecutable: executavelDoClaude(),
       systemPrompt: opcoes.system,
+      settingSources: [],
       allowedTools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
       permissionMode: "default",
       maxTurns: 8,

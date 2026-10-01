@@ -46,6 +46,7 @@ export async function rodarPersona(opcoes: {
       cwd: opcoes.raiz,
       pathToClaudeCodeExecutable: executavelDoClaude(),
       model: MODELO_MEMORIA,
+      settingSources: [],
       systemPrompt: opcoes.system,
       mcpServers: { memoria: servidor },
       allowedTools: FERRAMENTAS_MEMORIA_CONSOLIDACAO,
