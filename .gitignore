@@ -5,3 +5,4 @@ conversations/*
 !conversations/.gitkeep
 conversas/
 scripts/saida-sonda/
+dist/
