@@ -75,6 +75,7 @@ export function memoriaHttp(url: string = URL_PADRAO): Memoria {
         project: projeto,
       }).catch((erro: Error) => {
         if (erro instanceof MemoriaIndisponivel) throw erro
+        if (!ehAusente(erro)) console.warn(`[memoria] busca em ${projeto} falhou — ${erro.message}`)
         return { hits: [] }
       })
       return (r.hits ?? []).map<Trecho>((h) => ({

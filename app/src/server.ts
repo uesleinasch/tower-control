@@ -346,7 +346,9 @@ const servidor = Bun.serve({
   websocket: {
     // Relido a cada conexão: editar atalhos.md e recarregar a página basta.
     open(ws: Cliente) {
-      void carregarAtalhos(RAIZ).then((lista) => mandar(ws, { tipo: "atalhos", lista }))
+      void carregarAtalhos(RAIZ)
+        .then((lista) => mandar(ws, { tipo: "atalhos", lista }))
+        .catch((erro: Error) => console.warn(`[atalhos] não carregaram — ${erro.message}`))
     },
     message(ws: Cliente, dados) {
       void tratar(ws, String(dados)).catch((erro: Error) => {
