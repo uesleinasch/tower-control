@@ -99,6 +99,12 @@ class _RaizState extends State<Raiz> {
           ? AppBar(
               title: const Text('Control Tower'),
               actions: [
+                if (widget.configuracao != null)
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined),
+                    tooltip: 'Configuração',
+                    onPressed: () => sala.ir(Tela.configuracao),
+                  ),
                 Padding(padding: const EdgeInsets.only(right: 16), child: PontoConexao(sala.canal.estado)),
               ],
             )

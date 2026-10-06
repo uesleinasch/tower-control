@@ -70,6 +70,11 @@ class Sala extends ChangeNotifier {
     ir(Tela.chat);
   }
 
+  void novaConversaNoTickTask() {
+    novaConversa('alfred');
+    if (!chat.ticktask) chat.alternarTicktask();
+  }
+
   void abrirConversa(String id) {
     chat.abrir(id);
     ir(Tela.chat);

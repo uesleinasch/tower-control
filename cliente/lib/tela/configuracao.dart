@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../conexao/http.dart';
 import '../estado/sala.dart';
@@ -11,6 +12,7 @@ import '../nucleo/acoes.dart';
 import '../nucleo/enderecos.dart';
 import '../sistema/desktop.dart';
 import '../sistema/executor.dart';
+import '../sistema/servico_avisos.dart';
 import 'comum.dart';
 
 class TelaConfiguracao extends StatelessWidget {
@@ -47,6 +49,96 @@ class TelaConfiguracao extends StatelessWidget {
           ),
         ),
       ]);
+}
+
+class TelaConfiguracaoCelular extends StatelessWidget {
+  const TelaConfiguracaoCelular({super.key, required this.sala, required this.servico, required this.prefs});
+
+  final Sala sala;
+  final ServicoDeAvisos servico;
+  final SharedPreferences prefs;
+
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: SafeArea(
+            bottom: false,
+            child: ListTile(
+              leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => sala.ir(Tela.conversas)),
+              title: const Text('Configuração'),
+            ),
+          ),
+        ),
+        const Divider(),
+        Expanded(
+          child: ListView(padding: const EdgeInsets.all(16), children: [
+            _BlocoAvisos(servico: servico, prefs: prefs),
+          ]),
+        ),
+      ]);
+}
+
+class _BlocoAvisos extends StatefulWidget {
+  const _BlocoAvisos({required this.servico, required this.prefs});
+
+  final ServicoDeAvisos servico;
+  final SharedPreferences prefs;
+
+  @override
+  State<_BlocoAvisos> createState() => _BlocoAvisosState();
+}
+
+class _BlocoAvisosState extends State<_BlocoAvisos> {
+  bool _rodando = false;
+  bool _permitidas = true;
+  bool _ocupado = false;
+
+  bool get _ligados => widget.prefs.getBool(chaveAvisosLigados) ?? true;
+
+  @override
+  void initState() {
+    super.initState();
+    _conferir();
+  }
+
+  Future<void> _conferir() async {
+    final rodando = await widget.servico.ligado();
+    final permitidas = await widget.servico.notificacoesPermitidas();
+    if (!mounted) return;
+    setState(() {
+      _rodando = rodando;
+      _permitidas = permitidas;
+    });
+  }
+
+  Future<void> _alternar(bool ligar) async {
+    setState(() => _ocupado = true);
+    await widget.prefs.setBool(chaveAvisosLigados, ligar);
+    await (ligar ? widget.servico.ligar() : widget.servico.desligar());
+    await _conferir();
+    if (mounted) setState(() => _ocupado = false);
+  }
+
+  @override
+  Widget build(BuildContext context) => _Bloco(
+        titulo: 'Avisos',
+        icone: Icons.notifications_outlined,
+        acao: _Etiqueta(_rodando ? 'escutando' : 'parado', _rodando ? _verde : _ambar),
+        filhos: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _ligados,
+            onChanged: _ocupado ? null : _alternar,
+            title: const Text('Avisos com o app fechado'),
+            subtitle: const Text(
+                'Respostas, aprovações do Alfred e lembretes do TickTask. Fica uma notificação fixa discreta enquanto escuta.'),
+          ),
+          if (!_permitidas)
+            const _Saida('As notificações estão bloqueadas para o Control Tower nas configurações do Android.',
+                erro: true),
+        ],
+      );
 }
 
 class _Bloco extends StatelessWidget {

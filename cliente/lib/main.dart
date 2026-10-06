@@ -8,7 +8,10 @@ import 'conexao/pareamento.dart';
 import 'estado/sala.dart';
 import 'estado/servidor.dart';
 import 'nucleo/autostart.dart';
+import 'sistema/aviso_na_tela.dart';
 import 'sistema/desktop.dart';
+import 'sistema/notificador.dart';
+import 'sistema/servico_avisos.dart';
 import 'tela/configuracao.dart';
 import 'tela/raiz.dart';
 import 'tela/sem_servidor.dart';
@@ -20,7 +23,27 @@ Future<void> main(List<String> argumentos) async {
   if (Platform.isAndroid) {
     final servidor = ServidorRemoto(prefs);
     final sala = Sala(servidor);
-    await ligarPareamento(servidor, aoParear: () => sala.canal..pausar()..iniciar());
+    const avisos = ServicoDeAvisos();
+    avisos.preparar();
+    final notificador = Notificador(aparelho: aparelhoCelular);
+    Future<String?> endereco() async => sala.canal.endereco ?? await servidor.resolver();
+    await notificador.iniciar(
+      aoResponder: (resposta) => responderAoAviso(resposta, sala, notificador, endereco),
+      emSegundoPlano: agirEmSegundoPlano,
+    );
+    Future<void> ligarAvisos() async {
+      final primeiraVez = !prefs.containsKey(chaveAvisosLigados);
+      if (!(prefs.getBool(chaveAvisosLigados) ?? true) || !servidor.pareado) return;
+      await prefs.setBool(chaveAvisosLigados, true);
+      await avisos.ligar(pedirPermissoes: primeiraVez);
+    }
+
+    await ligarPareamento(servidor, aoParear: () {
+      sala.canal
+        ..pausar()
+        ..iniciar();
+      unawaited(ligarAvisos());
+    });
     Timer? fechar;
     AppLifecycleListener(
       onPause: () => fechar = Timer(const Duration(seconds: 30), sala.canal.pausar),
@@ -31,7 +54,16 @@ Future<void> main(List<String> argumentos) async {
       onStateChange: (estado) => sala.presenca.definirPrimeiroPlano(estado == AppLifecycleState.resumed),
     );
     sala.iniciar();
-    runApp(ControlTower(sala: sala, bloqueio: (_) => bloqueioDoCelular(sala, servidor)));
+    runApp(ControlTower(
+      sala: sala,
+      bloqueio: (_) => bloqueioDoCelular(sala, servidor),
+      configuracao: (_) => TelaConfiguracaoCelular(sala: sala, servico: avisos, prefs: prefs),
+    ));
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ligarAvisos();
+      final abriu = await notificador.respostaQueAbriuOApp();
+      if (abriu != null) await responderAoAviso(abriu, sala, notificador, endereco);
+    });
     return;
   }
   final servidor = ServidorLocal(prefs);
