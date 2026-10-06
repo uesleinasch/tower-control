@@ -162,7 +162,9 @@ os avisos pelo `flutter_local_notifications` (libnotify), com os mesmos botões.
 de texto no Linux, "Responder" abre a conversa.
 
 **Presença:** o app manda `visivel` quando uma conversa está na tela com o app em primeiro
-plano, e `null` ao ir para segundo plano.
+plano, e `null` ao ir para segundo plano. No celular, primeiro plano vem do ciclo de vida;
+no desktop, do foco da janela (`window_manager`), porque o ciclo de vida do Flutter no
+Linux não distingue a janela escondida na bandeja.
 
 **Código:** `lib/nucleo/avisos.dart` puro e testado (linha NDJSON → aviso; tipo → canal,
 texto e ações) e a casca em `lib/sistema/` (serviço, notificador, chamada das ações).
