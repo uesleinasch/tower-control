@@ -1235,8 +1235,24 @@ describe("modo auto do executor", () => {
       "dd if=a.iso of=/dev/sdb",
       "pkill bun",
       "reboot",
+      "echo ok\nkill -9 1",
+      "echo ok\nshutdown now",
+      "rm --recursive --force /tmp/x",
+      "git -C repo push",
+      "git -c user.name=x push --force",
+      "git -C repo reset --hard",
+      "xargs kill",
+      "pgrep bun | xargs -r kill -9",
+      "nohup shutdown -h now",
+      "env FOO=1 kill 1",
+      "echo `reboot`",
+      "echo $(poweroff)",
+      "find / -delete",
+      "chmod 777 -R /srv",
+      "chown --recursive ueslei /srv",
+      "sudo -u root ls",
     ]) {
-      expect(exigeAprovacaoSempre(c)).toBe(true)
+      expect([c, exigeAprovacaoSempre(c)]).toEqual([c, true])
     }
   })
 
@@ -1250,8 +1266,15 @@ describe("modo auto do executor", () => {
       "systemctl --user status control-tower",
       "grep -rn termo src",
       "cat docs/reboot-notes.md",
+      "git commit -m 'fix push'",
+      "git -C repo status",
+      "find . -name '*.ts'",
+      "chmod +x scripts/servico.sh",
+      "ps aux | grep kill",
+      "echo ok\nls",
+      "rm -f arquivo.tmp",
     ]) {
-      expect(exigeAprovacaoSempre(c)).toBe(false)
+      expect([c, exigeAprovacaoSempre(c)]).toEqual([c, false])
     }
   })
 })
