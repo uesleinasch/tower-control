@@ -14,6 +14,7 @@ import { lerDecisoes, lerDecisao } from "./decisions"
 import { apagarSessao } from "./sessao-sdk"
 import { memoriaHttp } from "./memoria/cliente"
 import { espelharColetivo } from "./memoria/coletivo"
+import { MemoriaIndisponivel } from "./memoria/tipos"
 import { iniciarAgenda } from "./memoria/agenda"
 import { consolidarConversa, conversasPendentes } from "./memoria/consolidacao"
 import { sonhar } from "./memoria/sonho"
@@ -42,10 +43,28 @@ const PORTA = Number(process.env.TOWER_PORTA ?? 7878)
 const MEMORIA = memoriaHttp()
 const naFilaDaConversa = filaPorChave()
 
+const ESPELHADAS = new Map<string, string>()
+const TENTATIVAS_NA_SUBIDA = 20
+
 function espelharEmSegundoPlano(): void {
-  void espelharColetivo(RAIZ, MEMORIA).catch((erro: Error) =>
+  void espelharColetivo(RAIZ, MEMORIA, ESPELHADAS).catch((erro: Error) =>
     console.warn(`[memoria] espelho do coletivo falhou — ${erro.message}`),
   )
+}
+
+async function espelharNaSubida(): Promise<void> {
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      await espelharColetivo(RAIZ, MEMORIA, ESPELHADAS)
+      return
+    } catch (erro) {
+      if (!(erro instanceof MemoriaIndisponivel) || tentativa >= TENTATIVAS_NA_SUBIDA) {
+        console.warn(`[memoria] espelho do coletivo falhou — ${(erro as Error).message}`)
+        return
+      }
+      await Bun.sleep(3_000)
+    }
+  }
 }
 
 function versionarEmSegundoPlano(motivo: string): void {
@@ -363,7 +382,7 @@ const servidor = Bun.serve({
   },
 })
 
-espelharEmSegundoPlano()
+void espelharNaSubida()
 iniciarAgenda(RAIZ, {
   migrar: () => migrarPendentes(RAIZ, MEMORIA),
   pendentes: (agora) => conversasPendentes(RAIZ, agora),

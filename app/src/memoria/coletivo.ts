@@ -36,8 +36,11 @@ async function arquivos(raiz: string, origem: OrigemColetiva): Promise<string[]>
   }
 }
 
-// Reescrever conteúdo idêntico não gera versão no ai-memory, então espelhar tudo de novo é barato.
-export async function espelharColetivo(raiz: string, m: Memoria): Promise<number> {
+export async function espelharColetivo(
+  raiz: string,
+  m: Memoria,
+  jaEspelhadas: Map<string, string> = new Map(),
+): Promise<number> {
   let espelhadas = 0
   for (const origem of Object.keys(FONTES) as OrigemColetiva[]) {
     for (const nome of await arquivos(raiz, origem)) {
@@ -47,8 +50,10 @@ export async function espelharColetivo(raiz: string, m: Memoria): Promise<number
         console.warn(`[memoria] ${nome} fora do formato de caminho; não espelhado no coletivo`)
         continue
       }
+      if (jaEspelhadas.get(pagina.path) === pagina.corpo) continue
       try {
         await m.gravar(COLETIVO, pagina)
+        jaEspelhadas.set(pagina.path, pagina.corpo)
         espelhadas++
       } catch (erro) {
         if (erro instanceof MemoriaIndisponivel) throw erro

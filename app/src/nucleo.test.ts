@@ -838,6 +838,22 @@ describe("coletivo", () => {
     expect(gravacoes.every((g) => g.projeto === "coletivo")).toBe(true)
     await rm(raiz, { recursive: true, force: true })
   })
+
+  test("com o cache, só regrava o que mudou desde a última passada", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-coletivo-"))
+    await mkdir(join(raiz, "decisions"), { recursive: true })
+    await Bun.write(join(raiz, "decisions", "2026-08-22-a.md"), "---\ntitle: A\n---\ncorpo")
+    await Bun.write(join(raiz, "decisions", "2026-08-23-b.md"), "---\ntitle: B\n---\ncorpo")
+    const { memoria, gravacoes } = memoriaFalsa()
+    const cache = new Map<string, string>()
+    expect(await espelharColetivo(raiz, memoria, cache)).toBe(2)
+    expect(await espelharColetivo(raiz, memoria, cache)).toBe(0)
+    await Bun.write(join(raiz, "decisions", "2026-08-23-b.md"), "---\ntitle: B\n---\ncorpo revisto")
+    expect(await espelharColetivo(raiz, memoria, cache)).toBe(1)
+    expect(gravacoes).toHaveLength(3)
+    expect(gravacoes[2]!.pagina.path).toBe("decisoes/2026-08-23-b.md")
+    await rm(raiz, { recursive: true, force: true })
+  })
 })
 
 describe("migração", () => {
