@@ -28,6 +28,8 @@ import { CentralDeAvisos, caminhoDosAvisos, type Como } from "./avisos/central"
 import { Presenca, type Mudanca } from "./avisos/presenca"
 import { avisoDeAprovacao, avisoDeResposta } from "./avisos/fontes"
 import { executorDeAvisos, lerDesde, streamDeAvisos, tratarAcao } from "./avisos/http"
+import { Lembretes } from "./avisos/motor"
+import { chamarTickTask } from "./avisos/ticktask-cliente"
 import {
   idValido,
   criarConversa,
@@ -55,6 +57,7 @@ const MEMORIA = memoriaHttp()
 const naFilaDaConversa = filaPorChave()
 const AVISOS = new CentralDeAvisos(caminhoDosAvisos(RAIZ))
 await AVISOS.carregar().catch((erro: Error) => console.warn(`[avisos] histórico não carregou — ${erro.message}`))
+const LEMBRETES = new Lembretes(RAIZ, AVISOS, chamarTickTask)
 
 function avisar(promessa: Promise<unknown>): void {
   void promessa.catch((erro: Error) => console.warn(`[avisos] ${erro.message}`))
@@ -182,6 +185,8 @@ function tratarComando(ws: Cliente | undefined, conversaId: string, comando: str
 
 const executarAviso = executorDeAvisos({
   soltarPermissao,
+  concluir: (aviso) => LEMBRETES.concluir(aviso),
+  adiar: (aviso, para) => LEMBRETES.adiar(aviso, para),
   responder: (conversaId, texto) =>
     void naFilaDaConversa(conversaId, () => responderNaConversa(undefined, conversaId, texto)).catch((erro: Error) =>
       console.warn(`[avisos] resposta pelo aviso em ${conversaId} falhou — ${erro.message}`),
@@ -245,6 +250,7 @@ async function responderNaConversa(
     },
     onComando: (comando, aprovar) => tratarComando(ws, id, comando, aprovar),
     onSessao: (sessionId) => atualizarMeta(RAIZ, id, { sessionId }),
+    agendarLembrete: (pedido) => LEMBRETES.agendar(pedido),
   })
 
   await anexarMensagem(RAIZ, id, {
@@ -479,6 +485,7 @@ const servidor = Bun.serve({
 })
 
 void espelharNaSubida()
+LEMBRETES.iniciar()
 iniciarAgenda(RAIZ, {
   migrar: () => migrarPendentes(RAIZ, MEMORIA),
   pendentes: (agora) => conversasPendentes(RAIZ, agora),

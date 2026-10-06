@@ -9,6 +9,8 @@ import { exigeAprovacaoSempre } from "./comandos"
 import type { Memoria } from "./memoria/tipos"
 import { montarBrief } from "./memoria/recuperacao"
 import { FERRAMENTAS_MEMORIA, servidorDeMemoria } from "./memoria/ferramentas"
+import { FERRAMENTA_LEMBRETE, servidorDeLembretes } from "./avisos/ferramenta"
+import type { PedidoDeLembrete } from "./avisos/lembretes"
 
 // allowedTools é lista de AUTO-APROVADAS, não de disponíveis. Pôr "Bash" aqui faria o
 // canUseTool ser pulado e o comando rodar sem ninguém aprovar.
@@ -56,6 +58,7 @@ interface OpcoesConversa {
   onChunk: (texto: string) => void
   onComando?: (comando: string, aprovar: boolean) => Promise<boolean>
   onSessao?: (sessionId: string) => Promise<unknown>
+  agendarLembrete?: (pedido: PedidoDeLembrete) => Promise<string>
 }
 
 // O canUseTool chega como control request, e control request só existe em modo de
@@ -123,12 +126,17 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
   const system = await montarSystemPrompt(opcoes.raiz, perfil, escrita)
   const saida = conselheiro ? normalizadorDeStream(opcoes.onChunk) : undefined
   const emitir = (pedaco: string) => (saida ? saida.receber(pedaco) : opcoes.onChunk(pedaco))
-  const mcp = !conselheiro
+  const base = !conselheiro
     ? await servidorTickTask()
     : opcoes.memoria
       ? { memoria: servidorDeMemoria(opcoes.memoria, perfil, `conversa:${opcoes.conversaId ?? "avulsa"}`) }
       : undefined
-  const extras = !conselheiro ? FERRAMENTAS_TICKTASK : opcoes.memoria ? FERRAMENTAS_MEMORIA : []
+  const lembretes = opcoes.agendarLembrete ? { lembretes: servidorDeLembretes(opcoes.agendarLembrete) } : undefined
+  const mcp = base || lembretes ? { ...base, ...lembretes } : undefined
+  const extras = [
+    ...(!conselheiro ? FERRAMENTAS_TICKTASK : opcoes.memoria ? FERRAMENTAS_MEMORIA : []),
+    ...(lembretes ? [FERRAMENTA_LEMBRETE] : []),
+  ]
   let acumulado = ""
   let sessionId = opcoes.sessionId
 
