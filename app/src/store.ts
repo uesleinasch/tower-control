@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import { mkdir, readdir, rename, rm } from "node:fs/promises"
+import { appendFile, mkdir, readdir, rename, rm } from "node:fs/promises"
 import { excluirAnexos } from "./anexos"
 import type { Mensagem, MetaConversa, Perfil } from "./tipos"
 
@@ -65,10 +65,7 @@ export async function lerMeta(raiz: string, id: string): Promise<MetaConversa> {
 }
 
 export async function anexarMensagem(raiz: string, id: string, msg: Mensagem): Promise<void> {
-  const caminho = join(dirConversas(raiz), `${exigirId(id)}.jsonl`)
-  const arquivo = Bun.file(caminho)
-  const existente = (await arquivo.exists()) ? await arquivo.text() : ""
-  await Bun.write(caminho, existente + JSON.stringify(msg) + "\n")
+  await appendFile(join(dirConversas(raiz), `${exigirId(id)}.jsonl`), JSON.stringify(msg) + "\n")
 }
 
 export async function lerMensagens(raiz: string, id: string): Promise<Mensagem[]> {
