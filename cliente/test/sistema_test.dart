@@ -1,6 +1,10 @@
+import 'package:control_tower/conexao/avisos.dart';
 import 'package:control_tower/nucleo/acoes.dart';
+import 'package:control_tower/nucleo/avisos.dart';
 import 'package:control_tower/nucleo/autostart.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   group('ações', () {
@@ -103,6 +107,28 @@ emulator-5554          unauthorized transport_id:2
     test('argumento --bandeja', () {
       expect(pedeBandeja(['--bandeja']), isTrue);
       expect(pedeBandeja([]), isFalse);
+    });
+  });
+
+  group('escuta de avisos', () {
+    test('pede o backlog pelo desde, ignora keep-alive e lê avisos e resoluções', () async {
+      Uri? pedido;
+      final cliente = MockClient.streaming((req, _) async {
+        pedido = req.url;
+        const corpo = '{}\n'
+            '{"id":"a1","seq":5,"tipo":"resposta","titulo":"Poe respondeu","corpo":"oi","alvo":{},"acoes":[]}\n'
+            '{}\n'
+            '{"tipo":"resolvido","id":"a1","seq":6,"como":"lido","em":"x"}\n';
+        return http.StreamedResponse(Stream.value(corpo.codeUnits), 200);
+      });
+      final linhas = await escutarAvisos('127.0.0.1:7878', 4, cliente: cliente).toList();
+      expect(pedido.toString(), 'http://127.0.0.1:7878/avisos?desde=4');
+      expect(linhas.map((l) => (l.runtimeType, l.seq)), [(Notificacao, 5), (Resolucao, 6)]);
+    });
+
+    test('status diferente de 200 vira erro para religar', () async {
+      final cliente = MockClient.streaming((_, _) async => http.StreamedResponse(const Stream.empty(), 404));
+      expect(escutarAvisos('x:1', 0, cliente: cliente).toList(), throwsA(isA<http.ClientException>()));
     });
   });
 }

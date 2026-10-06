@@ -1,18 +1,15 @@
-import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../conexao/avisos.dart';
 import '../estado/servidor.dart';
-import '../nucleo/avisos.dart';
+import 'escuta_avisos.dart';
 import 'notificador.dart';
 
 const aparelhoCelular = 'celular';
 const chaveAvisosLigados = 'avisos_ligados';
-const _chaveSeq = 'avisos_seq';
 
 Future<SharedPreferences> _prefsFrescas() async {
   final prefs = await SharedPreferences.getInstance();
@@ -83,71 +80,23 @@ class ServicoDeAvisos {
 void iniciarEscuta() => FlutterForegroundTask.setTaskHandler(_Escuta());
 
 class _Escuta extends TaskHandler {
-  final _notificador = Notificador(aparelho: aparelhoCelular);
-  StreamSubscription<LinhaDeAviso>? _inscricao;
-  Timer? _religar;
-  Future<void> _fila = Future.value();
-  var _tentativa = 0;
-  var _ativo = true;
+  EscutaDeAvisos? _escuta;
 
   @override
   Future<void> onStart(DateTime hora, TaskStarter iniciador) async {
-    await _notificador.iniciar(emSegundoPlano: agirEmSegundoPlano);
-    await _conectar();
+    final notificador = Notificador(aparelho: aparelhoCelular);
+    await notificador.iniciar(emSegundoPlano: agirEmSegundoPlano);
+    _escuta = EscutaDeAvisos(
+      endereco: _endereco,
+      prefs: _prefsFrescas,
+      notificador: notificador,
+      aoMudar: (situacao) => FlutterForegroundTask.updateService(notificationText: situacao),
+    )..iniciar();
   }
-
-  Future<void> _conectar() async {
-    if (!_ativo) return;
-    final prefs = await _prefsFrescas();
-    final endereco = await ServidorRemoto(prefs).resolver();
-    if (endereco == null) {
-      _situacao('Procurando o Control Tower…');
-      _agendarReconexao();
-      return;
-    }
-    await _inscricao?.cancel();
-    _inscricao = escutarAvisos(endereco, prefs.getInt(_chaveSeq) ?? 0).listen(
-      (linha) => _fila = _fila.then((_) => _tratar(prefs, linha)).catchError((_) {}),
-      onError: (_) => _agendarReconexao(),
-      onDone: _agendarReconexao,
-      cancelOnError: true,
-    );
-    _situacao('Escutando avisos');
-  }
-
-  Future<void> _tratar(SharedPreferences prefs, LinhaDeAviso linha) async {
-    _tentativa = 0;
-    switch (linha) {
-      case Notificacao():
-        final alerta = alertaDe(linha, DateTime.now());
-        if (alerta != Alerta.ignorar) await _notificador.mostrar(linha, alerta);
-      case Resolucao(:final id, :final aparelho):
-        // Neste aparelho a ação já trocou o aviso pelo resultado; apagar esconderia a resposta.
-        if (aparelho != aparelhoCelular) await _notificador.apagar(id);
-    }
-    await prefs.setInt(_chaveSeq, linha.seq);
-  }
-
-  // Rede de celular derruba conexão longa o tempo todo; sem religar, o serviço ficaria de pé
-  // sem escutar nada.
-  void _agendarReconexao() {
-    if (!_ativo) return;
-    _situacao('Reconectando…');
-    _religar?.cancel();
-    final segundos = [2, 5, 15, 30, 60][_tentativa.clamp(0, 4)];
-    _tentativa++;
-    _religar = Timer(Duration(seconds: segundos), _conectar);
-  }
-
-  void _situacao(String texto) => FlutterForegroundTask.updateService(notificationText: texto);
 
   @override
   void onRepeatEvent(DateTime hora) {}
 
   @override
-  Future<void> onDestroy(DateTime hora, bool porTimeout) async {
-    _ativo = false;
-    _religar?.cancel();
-    await _inscricao?.cancel();
-  }
+  Future<void> onDestroy(DateTime hora, bool porTimeout) async => _escuta?.parar();
 }
