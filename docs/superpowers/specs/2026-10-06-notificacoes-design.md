@@ -49,25 +49,40 @@ interface Aviso {
 ```
 
 Resolver um aviso gera o evento `{ tipo: "resolvido", id, seq, como, em, aparelho? }`, em que
-`como` é `aprovado`, `negado`, `concluida`, `adiada`, `respondido` ou `expirado`.
+`como` é `aprovado`, `negado`, `concluida`, `adiada`, `respondido`, `lido` ou `expirado`.
 
 - **Persistência:** `conversations/avisos.jsonl` (fora do git), só append de avisos e
-  eventos de resolução. Poda de 7 dias na subida.
+  eventos de resolução. Poda de 7 dias na subida, que nunca remove a última linha: o
+  maior `seq` sobrevive e o contador não recomeça do zero.
 - **`GET /avisos?desde=<seq>`:** NDJSON, uma linha por aviso ou evento. Primeiro o backlog
-  depois de `seq`, depois ao vivo. Linha de keep-alive (`{}`) a cada 25 s.
-- **`POST /avisos/<id>/acao`** com `{ acao, texto?, adiarPara?: "1h" | "amanha" }`: `200`
-  com o resultado; `409` se o aviso já foi resolvido ou expirou; `404` se não existe;
-  `400` se a ação não está entre as do aviso.
+  depois de `seq`, depois ao vivo. Linha de keep-alive (`{}`) a cada 25 s. Se `desde` for
+  maior que o maior `seq` (arquivo apagado à mão, dados restaurados), vai o backlog
+  inteiro. A rota desliga o `idleTimeout` do Bun (`server.timeout(req, 0)`): o padrão de
+  10 s cortaria o stream antes do keep-alive.
+- **`POST /avisos/<id>/acao`** com `{ acao, texto?, adiarPara?: "1h" | "amanha",
+  aparelho?: string }`: `200` com o resultado; `409` se o aviso já foi resolvido ou
+  expirou, com `como` e `aparelho` de quem resolveu; `404` se não existe; `400` se a ação
+  não está entre as do aviso. O `aparelho` é um nome livre ("celular", "desktop") e vai
+  para o evento `resolvido`.
 - **Silêncio quando visível:** tipo novo no WebSocket, cliente → servidor:
   `visivel` com `{ conversaId: string | null }`. A web manda pelo `visibilityState`, o
   Flutter pelo ciclo de vida do app e pela tela aberta. O servidor guarda a conversa
   visível de cada socket e só gera `resposta` e `aprovacao` quando nenhum socket mostra
   aquela conversa. Entra em `docs/protocolo.json` e nos três clientes.
+- **`visivel` também resolve e revela:** ao mostrar uma conversa, os `resposta` abertos
+  dela viram `lido`. Quando a conversa deixa de estar visível em todos os sockets, cada
+  aprovação pendente dela que ainda não tem aviso ganha o aviso na hora: senão o comando
+  pedido com a tela aberta expiraria sem ninguém ver.
 - **Fontes:** fim do turno em `responderNaConversa` gera `resposta` (título com o perfil,
   corpo com o começo da resposta); `tratarComando` gera `aprovacao` com o mesmo id da
   permissão e o comando no corpo. Aprovar ou negar pelo aviso chama `resolverPermissao`;
   quando a permissão resolve por outro caminho (tela do chat, prazo de 120 s), o aviso é
-  resolvido junto.
+  resolvido junto. O board não gera aviso: ele é síncrono na tela.
+- **Conversa sem socket:** `responderNaConversa` e `tratarComando` passam a aceitar `ws`
+  ausente (resposta pelo aviso). Sem socket não há `chunk`, `fim` nem `comando`; outro
+  cliente com a conversa aberta só vê a resposta ao reabrir.
+- **Socket fechado com aprovação pendente:** hoje o `close` nega na hora. Passa a negar só
+  se ninguém escuta o stream de avisos; havendo alguém, a permissão espera o prazo de 120 s.
 - **Segurança:** mesmo modelo do resto do app (rede local, sem autenticação). As ações só
   funcionam com o UUID do aviso. Nenhuma ação mexe em systemd, adb ou arquivos do sistema.
 
@@ -79,7 +94,10 @@ existe enquanto o app do TickTask está aberto.
 
 - **Retrato, a cada 5 min:** tarefas não finalizadas com horário ou prazo nas próximas 48 h
   e as atrasadas, gravadas em `conversations/lembretes.json` com `atualizadoEm`. Com o
-  TickTask fechado, vale o último retrato.
+  TickTask fechado, vale o último retrato. O cliente MCP HTTP é o do
+  `@modelcontextprotocol/sdk`. Como `search_tasks` não filtra "não finalizada" nem
+  agendamento, o retrato junta `agenda` (agendadas) com `search_tasks` por prazo e filtra
+  o status no código.
 - **Disparo, a cada minuto:** função pura `disparos(retrato, agora, config, jaDisparados)`
   que devolve os avisos a gerar. Os disparados ficam registrados por
   `tarefaId + momento + tipo` no mesmo arquivo, então restart não repete; o registro é
@@ -90,19 +108,25 @@ existe enquanto o app do TickTask está aberto.
 Regras:
 
 - **Na hora agendada:** `antecedenciaMin` antes de `scheduled_time` e de `due_time`. Tarefa
-  só com data não gera aviso de horário; entra no resumo.
+  só com data não gera aviso de horário; entra no resumo. Com o servidor fora do ar no
+  momento do disparo, o lembrete ainda sai na subida se estiver até 30 min depois do
+  horário da tarefa; depois disso é pulado.
 - **Resumo do dia:** no horário configurado, um aviso `resumo` com o que está agendado para
   hoje, o que vence hoje e quantas estão atrasadas. Se o retrato tiver mais de 24 h, o
-  resumo diz que a agenda pode estar desatualizada e desde quando.
-- **Atrasada:** um aviso `atrasada` quando o prazo passa sem a tarefa ser finalizada, uma
-  vez só; depois ela só aparece no resumo.
+  resumo diz que a agenda pode estar desatualizada e desde quando. Perdido o horário, sai
+  na subida se ainda não saiu hoje e for antes das 12:00.
+- **Atrasada:** um aviso `atrasada` quando o prazo com hora passa sem a tarefa ser
+  finalizada, uma vez só, e só se o prazo venceu nas últimas 24 h (senão a primeira subida
+  avisaria cada atraso antigo); depois ela só aparece no resumo. Prazo só com data nunca
+  gera `atrasada`: entra como atrasada no resumo do dia seguinte.
 - **Pedido em conversa:** ferramenta `agendar_lembrete({ titulo, data: "AAAA-MM-DD",
   hora: "HH:MM" })` para todos os perfis, num MCP in-process como o da memória. O modelo
   resolve "amanhã às 9h" para data e hora; o código só valida o formato. Cria a tarefa no
   TickTask com `scheduled_date`, `scheduled_time` e a etiqueta `lembrete`. Com o TickTask
   fechado, a ferramenta devolve o erro e a persona avisa que não agendou.
 - **Ações:** `concluir` muda o status para `finalizada`; `adiar` regrava o horário para
-  agora + 1 h ou amanhã às 09:00 (o que remarca o lembrete). Com o TickTask fechado, a ação
+  agora + 1 h ou amanhã às 09:00 (o que remarca o lembrete), no campo que gerou o aviso:
+  `scheduled_*` para agendamento, `due_*` para prazo. Adiar uma `atrasada` move o prazo. Com o TickTask fechado, a ação
   devolve erro claro e o aviso continua aberto.
 
 ## 3. App Flutter
@@ -120,7 +144,8 @@ Regras:
 - Ações no aviso: Aprovar/Negar (com o comando à vista); Concluir, +1 h, Amanhã 09:00;
   Responder com o campo de texto do Android. Rodam em segundo plano, chamam
   `POST /avisos/<id>/acao` e trocam o aviso pelo resultado ou pelo erro.
-- Toque abre o app na conversa certa; lembrete abre o Alfred com o foco TickTask.
+- Toque abre o app na conversa certa; lembrete abre a tela de conversa nova com o Alfred,
+  foco TickTask ligado e caixa de texto vazia, sem enviar nada.
 - Evento `resolvido` apaga ou atualiza o aviso no aparelho.
 
 **Desktop Linux:** o app da bandeja assina o mesmo stream no processo principal e mostra
@@ -155,9 +180,10 @@ texto e ações) e a casca em `lib/sistema/` (serviço, notificador, chamada das
 Testes no núcleo puro:
 
 - Servidor (`bun test`): formato do aviso e do NDJSON; regra de silêncio; backlog pelo
-  `desde`; `409` na segunda ação; aprovações expiradas na subida; `disparos()` com
-  antecedência, tarefa só com data, atrasada uma vez, resumo no horário, sem repetir após
-  restart; novos horários de "+1 h" e "amanhã 09:00"; validação de data e hora do
+  `desde` (e `desde` além do maior `seq`); poda que preserva o `seq`; `409` na segunda
+  ação; aprovações expiradas na subida; `lido` ao mostrar a conversa; `disparos()` com
+  antecedência, tarefa só com data, atrasada uma vez e só nas últimas 24 h, resumo no
+  horário, tolerância de disparo perdido, sem repetir após restart; novos horários de "+1 h" e "amanhã 09:00"; validação de data e hora do
   `agendar_lembrete`. O `bun test` roda em TZ=UTC: os testes de horário fixam
   `process.env.TZ`.
 - Flutter (`flutter test`): linha NDJSON → aviso; tipo → canal, texto e ações; contrato do
