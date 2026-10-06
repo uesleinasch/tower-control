@@ -17,6 +17,7 @@ import {
   lerFoco,
   modeloEfetivo,
   perfilExcluivel,
+  type Perfil,
 } from "./tipos"
 import { exigeAprovacaoSempre } from "./comandos"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, filaPorChave, idValido, lerMensagens, lerMeta } from "./store"
@@ -47,7 +48,7 @@ import { LIMITE_BRIEF, LIMITE_JEITO, comporBrief, montarBrief } from "./memoria/
 import { acoesDaPersona, caminhoNovo, placarVazio } from "./memoria/ferramentas"
 import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memoria/agenda"
 import { montarPedidoSonho, precisaSonhar } from "./memoria/sonho"
-import { montarPedidoConsolidacao } from "./memoria/consolidacao"
+import { guardarParaConsolidar, montarPedidoConsolidacao } from "./memoria/consolidacao"
 import { dataLocal } from "./texto"
 import { agregarUso, caminhoDoUso, coletorDeUso, comUso, custosPorConsulta, type RegistroDeUso } from "./uso"
 import { lerExport, medirCorpus, rajadas } from "./ritmo-corpus"
@@ -895,6 +896,38 @@ describe("consolidação", () => {
   })
 })
 
+describe("conversa apagada antes de consolidar", () => {
+  async function conversa(raiz: string, perfil: Perfil, textos: string[], consolidadoAte?: number) {
+    const meta = await criarConversa(raiz, perfil, "teste")
+    for (const texto of textos) await anexarMensagem(raiz, meta.id, { role: "user", texto, ts: new Date().toISOString(), perfil })
+    if (consolidadoAte !== undefined) await atualizarMeta(raiz, meta.id, { consolidadoAte })
+    return meta.id
+  }
+  const guardada = (raiz: string, id: string) => Bun.file(join(raiz, "conversations", "a-consolidar", `${id}.json`))
+
+  test("guarda só o que ainda não foi consolidado, e sobrevive à exclusão", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-guardar-"))
+    const id = await conversa(raiz, "nati", ["go ou rust?", "e java?", "valeu"], 1)
+    await guardarParaConsolidar(raiz, id)
+    await excluirConversa(raiz, id)
+    const conteudo = await guardada(raiz, id).json()
+    expect(conteudo.meta.perfil).toBe("nati")
+    expect(conteudo.novas.map((m: { texto: string }) => m.texto)).toEqual(["e java?", "valeu"])
+    await rm(raiz, { recursive: true, force: true })
+  })
+
+  test("não guarda conversa do executor, conversa em dia nem id inválido", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-guardar-"))
+    const alfred = await conversa(raiz, "alfred", ["df -h"])
+    const emDia = await conversa(raiz, "poe", ["oi"], 1)
+    for (const id of [alfred, emDia, "../../etc/passwd"]) await guardarParaConsolidar(raiz, id)
+    expect(await guardada(raiz, alfred).exists()).toBe(false)
+    expect(await guardada(raiz, emDia).exists()).toBe(false)
+    expect(await Bun.file(join(raiz, "conversations", "a-consolidar")).exists()).toBe(false)
+    await rm(raiz, { recursive: true, force: true })
+  })
+})
+
 describe("coletivo", () => {
   test("decisão vira página sem frontmatter, com título e detalhes", () => {
     const nova = paginaDoColetivo(
@@ -1075,6 +1108,7 @@ describe("correções da revisão", () => {
     const metas = ["a", "b"].map((id) => ({ id, perfil: "poe", titulo: id, criadaEm: "" }) as MetaConversa)
     const trabalhos = {
       migrar: async () => {},
+      guardadas: async () => {},
       pendentes: async () => metas,
       consolidar: async (m: MetaConversa) => {
         tentadas.push(m.id)

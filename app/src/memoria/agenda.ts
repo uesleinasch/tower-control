@@ -79,6 +79,7 @@ export interface Trabalhos {
   migrar(): Promise<void>
   pendentes(agora: Date): Promise<MetaConversa[]>
   consolidar(meta: MetaConversa): Promise<void>
+  guardadas(): Promise<void>
   sonhar(persona: Conselheiro): Promise<void>
 }
 
@@ -123,6 +124,7 @@ export async function rodarUmaVez(
   for (const meta of await trabalhos.pendentes(agora)) {
     await tentar(espera, `consolidação de ${meta.id}`, agora, () => trabalhos.consolidar(meta))
   }
+  await tentar(espera, "consolidação das conversas apagadas", agora, () => trabalhos.guardadas())
   const estado = await lerEstado(raiz)
   for (const persona of CONSELHEIROS) {
     if (!sonhoDevido(estado.sonhos[persona], estado.atividade[persona], agora)) continue

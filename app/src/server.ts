@@ -16,7 +16,13 @@ import { memoriaHttp } from "./memoria/cliente"
 import { espelharColetivo } from "./memoria/coletivo"
 import { MemoriaIndisponivel } from "./memoria/tipos"
 import { iniciarAgenda } from "./memoria/agenda"
-import { consolidarConversa, conversasPendentes } from "./memoria/consolidacao"
+import {
+  consolidarConversa,
+  consolidarGuardadas,
+  consolidarPendentesDe,
+  conversasPendentes,
+  guardarParaConsolidar,
+} from "./memoria/consolidacao"
 import { sonhar } from "./memoria/sonho"
 import {
   criarConversa,
@@ -230,8 +236,13 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
         auto: msg.auto === true ? true : undefined,
         foco: msg.foco === "ticktask" ? "ticktask" : undefined,
       })
-      await naFilaDaConversa(meta.id, () => {
+      await naFilaDaConversa(meta.id, async () => {
         mandar(ws, { tipo: "criada", meta })
+        if (ehConselheiro(perfil)) {
+          await consolidarPendentesDe(RAIZ, MEMORIA, perfil, meta.id).catch((erro: Error) =>
+            console.warn(`[memoria] pendentes de ${perfil} não consolidadas antes da conversa nova — ${erro.message}`),
+          )
+        }
         return responderNaConversa(
           ws,
           meta.id,
@@ -269,10 +280,14 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "excluir": {
       const id = String(msg.conversaId ?? "")
-      const sessionId = await naFilaDaConversa(id, () => excluirConversa(RAIZ, id))
+      const sessionId = await naFilaDaConversa(id, async () => {
+        await guardarParaConsolidar(RAIZ, id)
+        return excluirConversa(RAIZ, id)
+      })
       await apagarSessao(RAIZ, sessionId)
       mandar(ws, { tipo: "excluida", id })
       mandar(ws, { tipo: "conversas", lista: await listarConversas(RAIZ) })
+      void consolidarGuardadas(RAIZ, MEMORIA).catch((erro: Error) => console.warn(`[memoria] ${erro.message}`))
       return
     }
     case "abrir": {
@@ -389,6 +404,7 @@ iniciarAgenda(RAIZ, {
   migrar: () => migrarPendentes(RAIZ, MEMORIA),
   pendentes: (agora) => conversasPendentes(RAIZ, agora),
   consolidar: (meta) => consolidarConversa(RAIZ, MEMORIA, meta),
+  guardadas: () => consolidarGuardadas(RAIZ, MEMORIA),
   sonhar: (persona) => sonhar(RAIZ, MEMORIA, persona),
 })
 

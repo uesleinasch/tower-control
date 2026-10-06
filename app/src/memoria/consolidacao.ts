@@ -1,6 +1,8 @@
+import { join } from "node:path"
+import { mkdir, readdir, rm } from "node:fs/promises"
 import { dataHoraLocal } from "../texto"
 import { NOMES, lerPerfil } from "../prompt"
-import { atualizarMeta, lerMensagens, listarConversas } from "../store"
+import { atualizarMeta, filaPorChave, lerMensagens, lerMeta, listarConversas } from "../store"
 import { ehConselheiro, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
 import { carregarRitmo, espelho } from "../ritmo"
 import { consolidacaoPendente, registrarAtividade } from "./agenda"
@@ -48,13 +50,26 @@ ${espelhoDaEscrita ? `\n${espelhoDaEscrita}\n` : ""}
 Repasse a conversa e guarde o que vale lembrar.`
 }
 
-export async function consolidarConversa(raiz: string, m: Memoria, meta: MetaConversa): Promise<void> {
+const naFilaDaConsolidacao = filaPorChave()
+
+// O meta é relido dentro da fila: a agenda, a conversa nova e a exclusão podem pedir a
+// mesma conversa ao mesmo tempo, e só a primeira encontra mensagens novas.
+export function consolidarConversa(raiz: string, m: Memoria, meta: MetaConversa): Promise<void> {
+  return naFilaDaConsolidacao(meta.id, async () => {
+    if (!ehConselheiro(meta.perfil)) return
+    const atual = await lerMeta(raiz, meta.id).catch(() => null)
+    if (!atual) return
+    const mensagens = await lerMensagens(raiz, meta.id)
+    const novas = mensagens.slice(atual.consolidadoAte ?? 0)
+    if (!novas.length) return
+    await consolidarMensagens(raiz, m, atual, novas)
+    await atualizarMeta(raiz, meta.id, { consolidadoAte: mensagens.length })
+  })
+}
+
+async function consolidarMensagens(raiz: string, m: Memoria, meta: MetaConversa, novas: Mensagem[]): Promise<void> {
   if (!ehConselheiro(meta.perfil)) return
   const persona = meta.perfil
-  const mensagens = await lerMensagens(raiz, meta.id)
-  const novas = mensagens.slice(meta.consolidadoAte ?? 0)
-  if (!novas.length) return
-
   const assunto = novas
     .filter((x) => x.role === "user")
     .map((x) => x.texto)
@@ -73,9 +88,61 @@ export async function consolidarConversa(raiz: string, m: Memoria, meta: MetaCon
     origem: `conversa:${meta.id}`,
     tipo: "consolidacao",
   })
-  await atualizarMeta(raiz, meta.id, { consolidadoAte: mensagens.length })
   await registrarAtividade(raiz, persona, new Date(novas[novas.length - 1]!.ts))
   console.log(`[memoria] ${persona} consolidou ${novas.length} mensagem(ns) de ${meta.id}`)
+}
+
+interface Guardada {
+  meta: MetaConversa
+  novas: Mensagem[]
+}
+
+function dirGuardadas(raiz: string): string {
+  return join(raiz, "conversations", "a-consolidar")
+}
+
+// Chamado antes de apagar a conversa: o que ainda não virou memória fica guardado fora
+// dela, e a persona repassa depois, mesmo que a memória esteja fora do ar agora.
+export function guardarParaConsolidar(raiz: string, id: string): Promise<void> {
+  return naFilaDaConsolidacao(id, async () => {
+    const meta = await lerMeta(raiz, id).catch(() => null)
+    if (!meta || !ehConselheiro(meta.perfil)) return
+    const novas = (await lerMensagens(raiz, id)).slice(meta.consolidadoAte ?? 0)
+    if (!novas.length) return
+    await mkdir(dirGuardadas(raiz), { recursive: true })
+    await Bun.write(join(dirGuardadas(raiz), `${id}.json`), JSON.stringify({ meta, novas } satisfies Guardada))
+  })
+}
+
+export async function consolidarGuardadas(raiz: string, m: Memoria, persona?: Conselheiro): Promise<void> {
+  let nomes: string[]
+  try {
+    nomes = (await readdir(dirGuardadas(raiz))).filter((n) => n.endsWith(".json"))
+  } catch {
+    return
+  }
+  const falhas: string[] = []
+  for (const nome of nomes) {
+    const id = nome.slice(0, -".json".length)
+    await naFilaDaConsolidacao(id, async () => {
+      const caminho = join(dirGuardadas(raiz), nome)
+      const arquivo = Bun.file(caminho)
+      if (!(await arquivo.exists())) return
+      const guardada = (await arquivo.json()) as Guardada
+      if (persona && guardada.meta.perfil !== persona) return
+      await consolidarMensagens(raiz, m, guardada.meta, guardada.novas)
+      await rm(caminho, { force: true })
+    }).catch((erro: Error) => falhas.push(`${id}: ${erro.message}`))
+  }
+  if (falhas.length) throw new Error(`conversas apagadas sem consolidar — ${falhas.join("; ")}`)
+}
+
+export async function consolidarPendentesDe(raiz: string, m: Memoria, persona: Conselheiro, exceto?: string): Promise<void> {
+  for (const meta of await listarConversas(raiz)) {
+    if (meta.perfil !== persona || meta.id === exceto) continue
+    await consolidarConversa(raiz, m, meta)
+  }
+  await consolidarGuardadas(raiz, m, persona)
 }
 
 export async function conversasPendentes(raiz: string, agora: Date): Promise<MetaConversa[]> {
