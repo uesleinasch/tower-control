@@ -16,8 +16,6 @@ export interface Trecho {
 export interface Resumo {
   path: string
   titulo: string
-  tier: string
-  atualizadaEm: string
 }
 
 export interface Pagina {
@@ -39,7 +37,7 @@ export interface NovaPagina {
 
 export interface Memoria {
   buscar(projeto: Projeto, consulta: string, limite: number): Promise<Trecho[]>
-  listar(projeto: Projeto): Promise<Resumo[]>
+  listar(projeto: Projeto): Promise<Resumo[]> // mais recente primeiro
   ler(projeto: Projeto, path: string): Promise<Pagina | null>
   gravar(projeto: Projeto, pagina: NovaPagina): Promise<void>
   frias(projeto: Projeto, limite: number): Promise<string[]>

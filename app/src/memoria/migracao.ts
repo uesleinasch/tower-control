@@ -106,8 +106,12 @@ export async function migrarUma(
   const arquivo = Bun.file(caminho)
   if (!(await arquivo.exists())) return "sem-arquivo"
   const memoriaMd = await arquivo.text()
-  if (!opcoes.soVerificar) await migrarPersona(raiz, m, persona, memoriaMd)
-  const faltando = itensNaoCobertos(memoriaMd, await corposDaPersona(m, persona))
+  let faltando = itensNaoCobertos(memoriaMd, await corposDaPersona(m, persona))
+  if (faltando.length && !opcoes.soVerificar) {
+    const nenhumCoberto = faltando.length === itensDaMemoria(memoriaMd).length
+    await migrarPersona(raiz, m, persona, nenhumCoberto ? memoriaMd : faltando.join("\n"))
+    faltando = itensNaoCobertos(memoriaMd, await corposDaPersona(m, persona))
+  }
   if (faltando.length) return { faltando }
   if (!opcoes.soVerificar) await rm(caminho)
   return "migrada"

@@ -82,9 +82,7 @@ export function comporBrief(partes: PartesDoBrief, limite: number = LIMITE_BRIEF
 
 async function paginasComPrefixo(m: Memoria, persona: Conselheiro, prefixo: string) {
   const todas = await m.listar(persona)
-  return todas
-    .filter((r) => r.path.startsWith(prefixo) && !ehFundida(r.titulo))
-    .sort((a, b) => b.atualizadaEm.localeCompare(a.atualizadaEm))
+  return todas.filter((r) => r.path.startsWith(prefixo) && !ehFundida(r.titulo))
 }
 
 export async function lerJeito(m: Memoria, persona: Conselheiro): Promise<Pagina[]> {

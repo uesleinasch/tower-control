@@ -7,7 +7,6 @@ import {
   type Memoria,
   type NovaPagina,
   type Pagina,
-  type Projeto,
   type Resumo,
   type Trecho,
 } from "./tipos"
@@ -20,8 +19,17 @@ export function limparTrecho(snippet: string): string {
   return snippet.replace(/<\/?mark>/g, "").replace(/\s+/g, " ").trim()
 }
 
-function caminhoNaUrl(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/")
+const LIMITE_LISTAGEM = 100
+
+export function ehAusente(erro: Error): boolean {
+  return !(erro instanceof MemoriaIndisponivel) && /not found in (resolved scope|workspace)/.test(erro.message)
+}
+
+function ausenteComo<T>(vazio: T) {
+  return (erro: Error): T => {
+    if (ehAusente(erro)) return vazio
+    throw erro
+  }
 }
 
 export function memoriaHttp(url: string = URL_PADRAO): Memoria {
@@ -56,21 +64,6 @@ export function memoriaHttp(url: string = URL_PADRAO): Memoria {
     return JSON.parse(texto) as T
   }
 
-  async function rest<T>(caminho: string): Promise<T | null> {
-    let resposta: Response
-    try {
-      resposta = await fetch(new URL(caminho, url))
-    } catch (erro) {
-      throw new MemoriaIndisponivel((erro as Error).message)
-    }
-    if (resposta.status === 404) return null
-    if (!resposta.ok) throw new Error(`${caminho}: HTTP ${resposta.status}`)
-    return (await resposta.json()) as T
-  }
-
-  const base = (projeto: Projeto) =>
-    `/api/v1/workspaces/${encodeURIComponent(WORKSPACE)}/projects/${encodeURIComponent(projeto)}/pages`
-
   return {
     // Projeto que ainda não recebeu nenhuma página faz o memory_query falhar fechado;
     // para quem busca, isso é só "nada lembrado".
@@ -91,29 +84,30 @@ export function memoriaHttp(url: string = URL_PADRAO): Memoria {
       }))
     },
 
+    // O memory_recent ordena por updated_at e não pagina: acima de 100 páginas a lista vem cortada.
     async listar(projeto) {
-      const r = await rest<{ pages?: { path: string; title?: string; tier?: string; updated_at?: string }[] }>(
-        base(projeto),
-      )
-      return (r?.pages ?? []).map<Resumo>((p) => ({
-        path: p.path,
-        titulo: p.title ?? p.path,
-        tier: p.tier ?? "",
-        atualizadaEm: p.updated_at ?? "",
-      }))
+      const r = await chamar<{ hits?: { path: string; title?: string }[] }>("memory_recent", {
+        limit: LIMITE_LISTAGEM,
+        workspace: WORKSPACE,
+        project: projeto,
+      }).catch(ausenteComo({ hits: [] }))
+      return (r.hits ?? []).map<Resumo>((h) => ({ path: h.path, titulo: h.title ?? h.path }))
     },
 
     async ler(projeto, path) {
-      const r = await rest<{ path: string; title?: string; body?: string; tier?: string; pinned?: boolean }>(
-        `${base(projeto)}/${caminhoNaUrl(path)}`,
-      )
+      const r = await chamar<{
+        path: string
+        title?: string
+        body?: string
+        frontmatter?: { tier?: string; pinned?: boolean }
+      } | null>("memory_read_page", { path, workspace: WORKSPACE, project: projeto }).catch(ausenteComo(null))
       if (!r) return null
       return {
         path: r.path,
         titulo: r.title ?? r.path,
         corpo: r.body ?? "",
-        tier: r.tier ?? "",
-        pinned: r.pinned === true,
+        tier: r.frontmatter?.tier ?? "",
+        pinned: r.frontmatter?.pinned === true,
       } satisfies Pagina
     },
 

@@ -42,7 +42,7 @@ import {
   type NovaPagina,
   type Projeto,
 } from "./memoria/tipos"
-import { limparTrecho } from "./memoria/cliente"
+import { ehAusente, limparTrecho } from "./memoria/cliente"
 import { LIMITE_BRIEF, LIMITE_JEITO, comporBrief, montarBrief } from "./memoria/recuperacao"
 import { acoesDaPersona, caminhoNovo, placarVazio } from "./memoria/ferramentas"
 import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memoria/agenda"
@@ -64,7 +64,7 @@ import {
   reacaoDoUeslei,
 } from "./ritmo"
 import { espelharColetivo, paginaDoColetivo } from "./memoria/coletivo"
-import { itensDaMemoria, itensNaoCobertos } from "./memoria/migracao"
+import { itensDaMemoria, itensNaoCobertos, migrarUma } from "./memoria/migracao"
 import type { Mensagem, MetaConversa } from "./tipos"
 import type { Pagina } from "./memoria/tipos"
 
@@ -397,7 +397,9 @@ function memoriaFalsa(inicial: Partial<Record<Projeto, NovaPagina[]>> = {}) {
         .map((p) => ({ path: p.path, titulo: titulo(p.corpo, p.path), trecho: p.corpo.slice(0, 80) }))
     },
     async listar(projeto) {
-      return doProjeto(projeto).map((p) => ({ path: p.path, titulo: titulo(p.corpo, p.path), tier: p.tier, atualizadaEm: p.atualizadaEm }))
+      return doProjeto(projeto)
+        .sort((a, b) => b.atualizadaEm.localeCompare(a.atualizadaEm))
+        .map((p) => ({ path: p.path, titulo: titulo(p.corpo, p.path) }))
     },
     async ler(projeto, path) {
       const p = paginas.get(chave(projeto, path))
@@ -793,6 +795,31 @@ _(vazio por enquanto)_
       "- Ueslei é desenvolvedor na Jacto e mantém projetos pessoais em paralelo.",
       "- O control-tower nasceu como ferramenta pessoal.",
     ])
+  })
+
+  test("com tudo já coberto, remove o memory.md sem rodar a persona de novo", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-"))
+    await mkdir(join(raiz, "profiles", "lucas"), { recursive: true })
+    await Bun.write(join(raiz, "profiles", "lucas", "memory.md"), md)
+    const { memoria, gravacoes } = memoriaFalsa({
+      lucas: [
+        { path: "fatos/trabalho.md", corpo: "# Trabalho\n\nUeslei é desenvolvedor na Jacto e mantém projetos pessoais em paralelo.", tier: "semantic", pinned: false, tags: [] },
+        { path: "fatos/origem.md", corpo: "# Origem\n\nO control-tower nasceu como ferramenta pessoal.", tier: "semantic", pinned: false, tags: [] },
+      ],
+    })
+    expect(await migrarUma(raiz, memoria, "lucas")).toBe("migrada")
+    expect(gravacoes).toEqual([])
+    expect(await Bun.file(join(raiz, "profiles", "lucas", "memory.md")).exists()).toBe(false)
+    await rm(raiz, { recursive: true, force: true })
+  })
+})
+
+describe("ehAusente", () => {
+  test("página ou projeto inexistente é ausência; o resto é erro", () => {
+    expect(ehAusente(new Error("memory_read_page: MCP error -32603: page fatos/x.md not found in resolved scope control-tower/nati"))).toBe(true)
+    expect(ehAusente(new Error("memory_recent: MCP error -32602: project 'pami' not found in workspace 'control-tower'"))).toBe(true)
+    expect(ehAusente(new Error("memory_read_page: invalid path: .."))).toBe(false)
+    expect(ehAusente(new MemoriaIndisponivel("not found in workspace"))).toBe(false)
   })
 })
 
