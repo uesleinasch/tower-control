@@ -19,7 +19,7 @@ import {
   perfilExcluivel,
 } from "./tipos"
 import { exigeAprovacaoSempre } from "./comandos"
-import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, idValido } from "./store"
+import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, idValido, lerMensagens } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
 import { raizDosDados } from "./caminhos"
 import { MARCADOR, origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
@@ -317,6 +317,17 @@ describe("excluirConversa", () => {
     expect(await Bun.file(join(raiz, "profiles", "poe", "memory.md")).text()).toBe(
       "o que o Poe aprendeu",
     )
+    await rm(raiz, { recursive: true, force: true })
+  })
+
+  test("linha truncada no .jsonl não impede ler nem excluir a conversa", async () => {
+    const { raiz, id } = await conversaComAnexo()
+    const transcricao = join(raiz, "conversations", `${id}.jsonl`)
+    await Bun.write(transcricao, (await Bun.file(transcricao).text()) + '{"role":"assist')
+    expect((await lerMensagens(raiz, id)).map((m) => m.texto)).toEqual(["olha o log"])
+    await excluirConversa(raiz, id)
+    expect(await existe(transcricao)).toBe(false)
+    expect(await existe(join(raiz, anexo.arquivo))).toBe(false)
     await rm(raiz, { recursive: true, force: true })
   })
 

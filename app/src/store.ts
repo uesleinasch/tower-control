@@ -75,7 +75,14 @@ export async function lerMensagens(raiz: string, id: string): Promise<Mensagem[]
   return texto
     .split("\n")
     .filter((linha) => linha.trim())
-    .map((linha) => JSON.parse(linha) as Mensagem)
+    .flatMap((linha, i) => {
+      try {
+        return [JSON.parse(linha) as Mensagem]
+      } catch {
+        console.warn(`[store] linha ${i + 1} de ${id}.jsonl ilegível; ignorada`)
+        return []
+      }
+    })
 }
 
 // Devolve o sessionId do meta: o histórico que o Agent SDK mantém fora daqui é
