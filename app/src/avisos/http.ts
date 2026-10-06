@@ -18,6 +18,8 @@ export class AvisoVencido extends Error {}
 export interface Dependencias {
   soltarPermissao: (id: string, permitido: boolean) => boolean
   responder: (conversaId: string, texto: string) => void
+  concluir?: (aviso: Aviso) => Promise<void>
+  adiar?: (aviso: Aviso, para: Adiamento) => Promise<void>
 }
 
 export function executorDeAvisos(deps: Dependencias): Executor {
@@ -33,7 +35,15 @@ export function executorDeAvisos(deps: Dependencias): Executor {
       deps.responder(conversaId, pedido.texto!)
       return "respondido"
     }
-    throw new Error(`a ação "${pedido.acao}" ainda não está disponível`)
+    if (pedido.acao === "concluir" && deps.concluir) {
+      await deps.concluir(aviso)
+      return "concluida"
+    }
+    if (pedido.acao === "adiar" && deps.adiar) {
+      await deps.adiar(aviso, pedido.adiarPara!)
+      return "adiada"
+    }
+    throw new Error(`a ação "${pedido.acao}" não está disponível`)
   }
 }
 
