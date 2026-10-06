@@ -1,5 +1,6 @@
 import { join } from "node:path"
-import { rename } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { link, rm } from "node:fs/promises"
 import { CONSELHEIROS, type Conselheiro } from "./tipos"
 import { montarSystemPromptParecer, montarPautaParecer, montarPromptSintese } from "./prompt"
 import { perguntarUmaVez } from "./sessions"
@@ -54,8 +55,6 @@ async function gravarAta(
   sintese: string,
 ): Promise<string> {
   const data = dataLocal()
-  const nome = `${data}-${slug(pauta) || "convocacao"}.md`
-  const caminho = join(raiz, "board", "minutes", nome)
   const corpo = [
     `# Ata do board — ${data}`,
     ``,
@@ -67,8 +66,24 @@ async function gravarAta(
     sintese.trim(),
     ``,
   ].join("\n")
-  const temporario = `${caminho}.tmp`
-  await Bun.write(temporario, corpo)
-  await rename(temporario, caminho)
+  const nome = await gravarSemSobrescrever(join(raiz, "board", "minutes"), `${data}-${slug(pauta) || "convocacao"}`, corpo)
   return `board/minutes/${nome}`
+}
+
+export async function gravarSemSobrescrever(dir: string, base: string, conteudo: string): Promise<string> {
+  const temporario = join(dir, `.${base}.${randomUUID()}.tmp`)
+  await Bun.write(temporario, conteudo)
+  try {
+    for (let n = 1; ; n++) {
+      const nome = n === 1 ? `${base}.md` : `${base}-${n}.md`
+      try {
+        await link(temporario, join(dir, nome))
+        return nome
+      } catch (erro) {
+        if ((erro as NodeJS.ErrnoException).code !== "EEXIST") throw erro
+      }
+    }
+  } finally {
+    await rm(temporario, { force: true })
+  }
 }

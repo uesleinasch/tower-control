@@ -1,10 +1,10 @@
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
 import { parseFrontmatter, linhaIndice } from "./decisions"
 import { montarPautaParecer, montarSystemPrompt } from "./prompt"
-import { slug } from "./board"
+import { gravarSemSobrescrever, slug } from "./board"
 import { lerAtalhos } from "./atalhos"
 import { tiposEmitidos, tiposTratados, type Protocolo } from "./protocolo"
 import { respostaEnderecos } from "./rede"
@@ -350,6 +350,21 @@ describe("excluirConversa", () => {
     expect(idValido("../../etc/passwd")).toBe(false)
     expect(idValido("2026-08-22-poe-mt4/../x")).toBe(false)
     await expect(excluirConversa("/tmp", "../../etc/passwd")).rejects.toThrow("conversa inválida")
+  })
+})
+
+describe("gravarSemSobrescrever", () => {
+  test("mesmo nome no mesmo dia ganha sufixo em vez de apagar a ata anterior", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "tower-"))
+    const nomes = [
+      await gravarSemSobrescrever(dir, "2026-10-06-pauta", "primeira"),
+      await gravarSemSobrescrever(dir, "2026-10-06-pauta", "segunda"),
+      await gravarSemSobrescrever(dir, "2026-10-06-pauta", "terceira"),
+    ]
+    expect(nomes).toEqual(["2026-10-06-pauta.md", "2026-10-06-pauta-2.md", "2026-10-06-pauta-3.md"])
+    expect(await Bun.file(join(dir, nomes[0]!)).text()).toBe("primeira")
+    expect((await readdir(dir)).sort()).toEqual([...nomes].sort())
+    await rm(dir, { recursive: true, force: true })
   })
 })
 
