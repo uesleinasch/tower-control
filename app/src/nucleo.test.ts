@@ -676,6 +676,22 @@ describe("fundir lembranças", () => {
     expect(gravacoes.every((g) => g.projeto === "poe")).toBe(true)
   })
 
+  test("texto que já começa com o título não duplica o título na página", async () => {
+    const { memoria, gravacoes } = memoriaFalsa({
+      poe: [pagina("episodios/2026-09-01-transito.md", "# Trânsito\n\nreclamou da BR", "episodic")],
+    })
+    const acoes = acoesDaPersona(memoria, "poe", "sonho:2026-09-30")
+    await acoes.fundirLembrancas({
+      destino: "fatos/transito-na-br.md",
+      titulo: "Trânsito na BR",
+      texto: "# Trânsito na BR\n\nToda semana ele pega trânsito na BR.",
+      origens: ["episodios/2026-09-01-transito.md"],
+    })
+    await acoes.lembrar({ titulo: "Café", texto: "# Café\n\nPrefere coado.", tipo: "fato" })
+    expect(gravacoes[0]!.pagina.corpo).toBe("# Trânsito na BR\n\nToda semana ele pega trânsito na BR.\n")
+    expect(gravacoes.at(-1)!.pagina.corpo).toBe("# Café\n\nPrefere coado.\n")
+  })
+
   test("recusa fundir o que não é da persona", async () => {
     const { memoria, gravacoes } = memoriaFalsa({ nati: [pagina("fatos/x.md", "# X\n\nx")] })
     const texto = await acoesDaPersona(memoria, "poe", "t").fundirLembrancas({

@@ -36,6 +36,11 @@ export function caminhoNovo(tipo: TipoLembranca, titulo: string, data: string = 
   return `${prefixoDe(tipo)}${tipo === "episodio" ? `${data}-` : ""}${base}.md`
 }
 
+export function corpoDaLembranca(titulo: string, texto: string): string {
+  const semTitulo = texto.trim().replace(/^(#\s+.*\n*)+/, "").trim()
+  return `# ${titulo.trim()}\n\n${semTitulo}\n`
+}
+
 export interface Placar {
   gravacoes: number
   indisponivel: number
@@ -102,7 +107,7 @@ export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string,
         const path = await caminhoLivre(tipo, titulo)
         await gravar({
           path,
-          corpo: `# ${titulo.trim()}\n\n${texto.trim()}\n`,
+          corpo: corpoDaLembranca(titulo, texto),
           tier: tierDe(tipo),
           pinned: tipo === "jeito",
           tags,
@@ -135,7 +140,7 @@ export function acoesDaPersona(m: Memoria, persona: Conselheiro, origem: string,
         if (ausentes.length) return `Não existem lembranças suas em: ${ausentes.join(", ")}`
         await gravar({
           path: destino,
-          corpo: `# ${titulo.trim()}\n\n${texto.trim()}\n`,
+          corpo: corpoDaLembranca(titulo, texto),
           tier: tierDe(tipo),
           pinned: tipo === "jeito",
           tags,
