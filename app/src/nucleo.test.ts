@@ -74,6 +74,22 @@ import { CentralDeAvisos, backlog, caminhoDosAvisos, lerLinhas, podar, type Avis
 import { Presenca } from "./avisos/presenca"
 import { avisoDeAprovacao, avisoDeResposta } from "./avisos/fontes"
 import { AvisoVencido, executorDeAvisos, lerDesde, lerPedido, streamDeAvisos, tratarAcao } from "./avisos/http"
+import {
+  CONFIG_PADRAO,
+  avisoDeResumo,
+  camposDoAdiamento,
+  disparos,
+  lerConfig,
+  momentoLocal,
+  novoHorario,
+  podarDisparados,
+  retratoDe,
+  validarLembrete,
+  type Retrato,
+  type Tarefa,
+} from "./avisos/lembretes"
+import { Lembretes } from "./avisos/motor"
+import { TickTaskFechado } from "./avisos/ticktask-cliente"
 
 describe("parseFrontmatter", () => {
   test("extrai campos simples e listas", () => {
@@ -1717,7 +1733,7 @@ describe("stream de avisos", () => {
       expect(texto.startsWith("{}\n")).toBe(true)
       expect(central.escutando).toBe(1)
       await central.criar(avisoDeResposta("poe", "c3", "três"))
-      await ler((t) => t.includes('"seq":3') && t.includes("{}\n"))
+      await ler((t) => t.includes('"seq":3') && (t.match(/\{\}\n/g) ?? []).length >= 2)
       const linhas = texto.trim().split("\n").map((l) => JSON.parse(l))
       expect(linhas.filter((l) => l.seq).map((l) => l.seq)).toEqual([2, 3])
 
@@ -1727,4 +1743,318 @@ describe("stream de avisos", () => {
       await rm(raiz, { recursive: true, force: true })
     }
   })
+})
+
+function noFuso<T>(teste: () => T): T {
+  const antes = process.env.TZ
+  process.env.TZ = "America/Sao_Paulo"
+  try {
+    return teste()
+  } finally {
+    process.env.TZ = antes
+  }
+}
+
+async function noFusoAssincrono(teste: () => Promise<void>): Promise<void> {
+  const antes = process.env.TZ
+  process.env.TZ = "America/Sao_Paulo"
+  try {
+    await teste()
+  } finally {
+    process.env.TZ = antes
+  }
+}
+
+function tarefa(id: number, extra: Partial<Tarefa> = {}): Tarefa {
+  return {
+    id,
+    nome: `tarefa ${id}`,
+    status: "proximas",
+    lembrete: false,
+    scheduled_date: null,
+    scheduled_time: null,
+    scheduled_end_time: null,
+    due_date: null,
+    due_time: null,
+    ...extra,
+  }
+}
+
+const retratoCom = (tarefas: Tarefa[], atualizadoEm = "2026-10-06T12:00:00Z"): Retrato => ({ atualizadoEm, tarefas })
+const local = (data: string, hora: string) => momentoLocal(data, hora)!
+const tiposDos = (lista: { aviso: { tipo: string } }[]) => lista.map((d) => d.aviso.tipo)
+const SEM_RESUMO = { ...CONFIG_PADRAO, resumoDiario: "23:59" }
+
+describe("lembretes: disparos", () => {
+  test("hora local respeita o fuso e recusa data impossível", () =>
+    noFuso(() => {
+      expect(local("2026-10-06", "10:00").toISOString()).toBe("2026-10-06T13:00:00.000Z")
+      expect(momentoLocal("2026-02-30", "10:00")).toBeNull()
+      expect(momentoLocal("2026-10-06", "24:00")).toBeNull()
+      expect(momentoLocal("2026-10-06", null)).toBeNull()
+    }))
+
+  test("agendada avisa com a antecedência, uma vez, e pula depois de 30 min do horário", () =>
+    noFuso(() => {
+      const retrato = retratoCom([tarefa(1, { scheduled_date: "2026-10-06", scheduled_time: "10:00" })])
+      expect(disparos(retrato, local("2026-10-06", "09:49"), SEM_RESUMO, {})).toEqual([])
+      const [d] = disparos(retrato, local("2026-10-06", "09:50"), SEM_RESUMO, {})
+      expect(d!.aviso).toMatchObject({
+        tipo: "lembrete",
+        corpo: "Agendada para 10:00",
+        alvo: { tarefaId: 1, campo: "agendamento" },
+        acoes: ["concluir", "adiar"],
+      })
+      expect(disparos(retrato, local("2026-10-06", "09:51"), SEM_RESUMO, { [d!.chave]: d!.momento })).toEqual([])
+      expect(tiposDos(disparos(retrato, local("2026-10-06", "10:29"), SEM_RESUMO, {}))).toEqual(["lembrete"])
+      expect(disparos(retrato, local("2026-10-06", "10:31"), SEM_RESUMO, {})).toEqual([])
+    }))
+
+  test("tarefa só com data não gera aviso de horário", () =>
+    noFuso(() => {
+      const retrato = retratoCom([tarefa(1, { scheduled_date: "2026-10-06", due_date: "2026-10-06" })])
+      for (const hora of ["00:00", "09:00", "23:58"]) {
+        expect(disparos(retrato, local("2026-10-06", hora), SEM_RESUMO, {})).toEqual([])
+      }
+      expect(disparos(retrato, local("2026-10-07", "09:00"), SEM_RESUMO, {})).toEqual([])
+    }))
+
+  test("lembrete pedido em conversa dispara na hora exata, sem antecedência", () =>
+    noFuso(() => {
+      const retrato = retratoCom([tarefa(1, { lembrete: true, scheduled_date: "2026-10-06", scheduled_time: "10:00" })])
+      expect(disparos(retrato, local("2026-10-06", "09:55"), SEM_RESUMO, {})).toEqual([])
+      expect(tiposDos(disparos(retrato, local("2026-10-06", "10:00"), SEM_RESUMO, {}))).toEqual(["lembrete"])
+    }))
+
+  test("atrasada avisa uma vez, só nas 24 h depois do prazo com hora", () =>
+    noFuso(() => {
+      const retrato = retratoCom([tarefa(1, { due_date: "2026-10-06", due_time: "10:00" })])
+      const logoDepois = disparos(retrato, local("2026-10-06", "10:40"), SEM_RESUMO, {})
+      expect(tiposDos(logoDepois)).toEqual(["atrasada"])
+      expect(logoDepois[0]!.aviso).toMatchObject({ corpo: "O prazo era 06/10 às 10:00", alvo: { campo: "prazo" } })
+      const ja = { [logoDepois[0]!.chave]: logoDepois[0]!.momento }
+      expect(disparos(retrato, local("2026-10-06", "15:00"), SEM_RESUMO, ja)).toEqual([])
+      expect(disparos(retrato, local("2026-10-07", "10:01"), SEM_RESUMO, {})).toEqual([])
+    }))
+
+  test("finalizada não avisa", () =>
+    noFuso(() => {
+      const retrato = retratoCom([
+        tarefa(1, { status: "finalizada", scheduled_date: "2026-10-06", scheduled_time: "10:00", due_date: "2026-10-06", due_time: "10:00" }),
+      ])
+      expect(disparos(retrato, local("2026-10-06", "10:05"), SEM_RESUMO, {})).toEqual([])
+    }))
+
+  test("sem retrato não há disparo", () => {
+    expect(disparos(null, new Date(), CONFIG_PADRAO, {})).toEqual([])
+  })
+
+  test("resumo sai no horário, uma vez por dia, e na subida até o meio-dia", () =>
+    noFuso(() => {
+      const retrato = retratoCom([])
+      expect(disparos(retrato, local("2026-10-06", "07:59"), CONFIG_PADRAO, {})).toEqual([])
+      const [d] = disparos(retrato, local("2026-10-06", "08:00"), CONFIG_PADRAO, {})
+      expect(d!.chave).toBe("resumo|2026-10-06")
+      expect(disparos(retrato, local("2026-10-06", "09:00"), CONFIG_PADRAO, { [d!.chave]: d!.momento })).toEqual([])
+      expect(tiposDos(disparos(retrato, local("2026-10-06", "11:59"), CONFIG_PADRAO, {}))).toEqual(["resumo"])
+      expect(disparos(retrato, local("2026-10-06", "12:00"), CONFIG_PADRAO, {})).toEqual([])
+      const tarde = { ...CONFIG_PADRAO, resumoDiario: "18:00" }
+      expect(tiposDos(disparos(retrato, local("2026-10-06", "18:59"), tarde, {}))).toEqual(["resumo"])
+      expect(disparos(retrato, local("2026-10-06", "19:00"), tarde, {})).toEqual([])
+    }))
+
+  test("resumo lista agenda, prazos de hoje e atrasadas, e avisa retrato velho", () =>
+    noFuso(() => {
+      const retrato = retratoCom(
+        [
+          tarefa(1, { nome: "Reunião", scheduled_date: "2026-10-06", scheduled_time: "14:00" }),
+          tarefa(2, { nome: "Café", scheduled_date: "2026-10-06", scheduled_time: "09:00" }),
+          tarefa(3, { nome: "Relatório", due_date: "2026-10-06", due_time: "18:00" }),
+          tarefa(4, { nome: "Antiga", due_date: "2026-10-01" }),
+          tarefa(5, { nome: "Feita", status: "finalizada", due_date: "2026-10-01" }),
+        ],
+        "2026-10-04T10:00:00Z",
+      )
+      const aviso = avisoDeResumo(retrato, local("2026-10-06", "08:00"))
+      expect(aviso).toMatchObject({ tipo: "resumo", titulo: "Seu dia", acoes: [] })
+      expect(aviso.corpo.split("\n")).toEqual([
+        "Agenda: 09:00 Café; 14:00 Reunião",
+        "Vencem hoje: Relatório (18:00)",
+        "Atrasadas: 1",
+        "A agenda pode estar desatualizada: o último retrato é de 04/10 às 07:00.",
+      ])
+      expect(avisoDeResumo(retratoCom([], "2026-10-06T10:00:00Z"), local("2026-10-06", "08:00")).corpo).toBe(
+        "Nada agendado para hoje.",
+      )
+    }))
+
+  test("registro de disparados é podado 48 h depois do momento", () => {
+    const agora = new Date("2026-10-06T12:00:00Z")
+    expect(
+      podarDisparados({ velho: "2026-10-04T11:59:00Z", recente: "2026-10-05T12:00:00Z" }, agora),
+    ).toEqual({ recente: "2026-10-05T12:00:00Z" })
+  })
+})
+
+describe("lembretes: adiar, agendar e configuração", () => {
+  test("+1 h e amanhã às 09:00, inclusive virando o dia", () =>
+    noFuso(() => {
+      expect(novoHorario("1h", local("2026-10-06", "23:30"))).toEqual({ data: "2026-10-07", hora: "00:30" })
+      expect(novoHorario("amanha", local("2026-10-31", "08:00"))).toEqual({ data: "2026-11-01", hora: "09:00" })
+    }))
+
+  test("adiar agendamento mantém a duração; prazo mexe só no prazo", () =>
+    noFuso(() => {
+      const t = tarefa(1, { scheduled_date: "2026-10-06", scheduled_time: "10:00", scheduled_end_time: "11:30" })
+      expect(camposDoAdiamento(t, "agendamento", { data: "2026-10-07", hora: "09:00" })).toEqual({
+        scheduled_date: "2026-10-07",
+        scheduled_time: "09:00",
+        scheduled_end_time: "10:30",
+      })
+      expect(camposDoAdiamento(t, "agendamento", { data: "2026-10-06", hora: "23:00" })).toMatchObject({
+        scheduled_end_time: null,
+      })
+      expect(camposDoAdiamento(tarefa(2), "agendamento", { data: "2026-10-07", hora: "09:00" })).toEqual({
+        scheduled_date: "2026-10-07",
+        scheduled_time: "09:00",
+      })
+      expect(camposDoAdiamento(t, "prazo", { data: "2026-10-07", hora: "09:00" })).toEqual({
+        due_date: "2026-10-07",
+        due_time: "09:00",
+      })
+    }))
+
+  test("agendar_lembrete valida formato, passado e em_minutos", () =>
+    noFuso(() => {
+      const agora = local("2026-10-06", "18:50")
+      expect(validarLembrete({ titulo: "x", data: "06/10/2026", hora: "09:00" }, agora)).toHaveProperty("erro")
+      expect(validarLembrete({ titulo: "x", data: "2026-10-07", hora: "9h" }, agora)).toHaveProperty("erro")
+      expect(validarLembrete({ titulo: "x", data: "2026-02-30", hora: "09:00" }, agora)).toHaveProperty("erro")
+      expect(validarLembrete({ titulo: " ", data: "2026-10-07", hora: "09:00" }, agora)).toHaveProperty("erro")
+      expect(validarLembrete({ titulo: "x", data: "2026-10-06", hora: "18:00" }, agora)).toEqual({
+        erro: "Esse horário já passou: agora são 18:50 de 2026-10-06.",
+      })
+      expect(validarLembrete({ titulo: " remédio ", data: "2026-10-07", hora: "09:00" }, agora)).toEqual({
+        titulo: "remédio",
+        data: "2026-10-07",
+        hora: "09:00",
+      })
+      expect(validarLembrete({ titulo: "x", em_minutos: 80 }, agora)).toEqual({ titulo: "x", data: "2026-10-06", hora: "20:10" })
+      expect(validarLembrete({ titulo: "x", em_minutos: 0 }, agora)).toHaveProperty("erro")
+    }))
+
+  test("configuração inválida cai nos padrões", () => {
+    expect(lerConfig(null)).toEqual(CONFIG_PADRAO)
+    expect(lerConfig({ antecedenciaMin: 5, resumoDiario: "07:15" })).toEqual({ antecedenciaMin: 5, resumoDiario: "07:15" })
+    expect(lerConfig({ antecedenciaMin: -1, resumoDiario: "8h" })).toEqual(CONFIG_PADRAO)
+  })
+
+  test("retrato junta agenda e buscas, sem repetir e sem finalizadas, marcando a etiqueta lembrete", () => {
+    const bruta = (id: number, extra: Record<string, unknown> = {}) => ({ id, name: `t${id}`, status: "proximas", tags: [], ...extra })
+    const agenda = { schedule: [{ date: "2026-10-06", tasks: [bruta(1), bruta(2, { tags: [{ name: "lembrete" }] })] }] }
+    const buscas = [{ tasks: [bruta(1), bruta(3, { status: "finalizada" })] }, { tasks: [bruta(4, { due_date: "2026-10-01" })] }]
+    const retrato = retratoDe(agenda, buscas, new Date("2026-10-06T12:00:00Z"))
+    expect(retrato.tarefas.map((t) => [t.id, t.lembrete])).toEqual([
+      [1, false],
+      [2, true],
+      [4, false],
+    ])
+    expect(retrato.tarefas[2]!.due_date).toBe("2026-10-01")
+  })
+})
+
+describe("lembretes: motor", () => {
+  async function montar(chamar: (f: string, a: Record<string, unknown>) => Promise<unknown>, agora: () => Date) {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-lembretes-"))
+    const central = new CentralDeAvisos(caminhoDosAvisos(raiz), agora)
+    return { raiz, central, motor: new Lembretes(raiz, central, chamar, agora) }
+  }
+
+  test("dispara uma vez e não repete depois do restart", () =>
+    noFusoAssincrono(async () => {
+      const agora = () => local("2026-10-06", "09:55")
+      const chamar = async (f: string) =>
+        f === "agenda"
+          ? { schedule: [{ tasks: [{ id: 7, name: "Dentista", status: "proximas", scheduled_date: "2026-10-06", scheduled_time: "10:00" }] }] }
+          : { tasks: [] }
+      const { raiz, central, motor } = await montar(chamar, agora)
+      try {
+        await motor.atualizarRetrato()
+        await motor.disparar()
+        await motor.disparar()
+        expect(central.abertos().map((a) => [a.tipo, a.titulo])).toEqual([
+          ["lembrete", "Dentista"],
+          ["resumo", "Seu dia"],
+        ])
+
+        const outro = new Lembretes(raiz, central, chamar, agora)
+        await outro.carregar()
+        await outro.disparar()
+        expect(central.abertos()).toHaveLength(2)
+      } finally {
+        await rm(raiz, { recursive: true, force: true })
+      }
+    }))
+
+  test("com o TickTask fechado vale o último retrato e o agendamento diz que não agendou", () =>
+    noFusoAssincrono(async () => {
+      let aberto = true
+      const chamar = async (f: string) => {
+        if (!aberto) throw new TickTaskFechado()
+        return f === "agenda" ? { schedule: [{ tasks: [{ id: 1, name: "a", status: "inbox" }] }] } : { tasks: [] }
+      }
+      const { raiz, motor } = await montar(chamar, () => local("2026-10-06", "18:50"))
+      try {
+        await motor.atualizarRetrato()
+        aberto = false
+        await motor.atualizarRetrato()
+        expect(motor.retrato?.tarefas.map((t) => t.id)).toEqual([1])
+        expect(await motor.agendar({ titulo: "x", data: "2026-10-07", hora: "09:00" })).toStartWith("Não agendei: O TickTask está fechado")
+        expect(await motor.agendar({ titulo: "x", data: "ontem", hora: "09:00" })).toContain("AAAA-MM-DD")
+      } finally {
+        await rm(raiz, { recursive: true, force: true })
+      }
+    }))
+
+  test("agendar cria a tarefa com a etiqueta; concluir e adiar mexem no TickTask e no retrato", () =>
+    noFusoAssincrono(async () => {
+      const chamadas: [string, Record<string, unknown>][] = []
+      const chamar = async (f: string, a: Record<string, unknown>) => {
+        chamadas.push([f, a])
+        if (f === "create_task") return { task: { id: 99 } }
+        if (f === "agenda") {
+          return {
+            schedule: [
+              { tasks: [{ id: 5, name: "b", status: "inbox", scheduled_date: "2026-10-06", scheduled_time: "19:00", scheduled_end_time: "19:30" }] },
+            ],
+          }
+        }
+        return { tasks: [] }
+      }
+      const { raiz, motor } = await montar(chamar, () => local("2026-10-06", "18:50"))
+      try {
+        expect(await motor.agendar({ titulo: "remédio", em_minutos: 10 })).toBe(
+          "Lembrete agendado para 2026-10-06 às 19:00 (tarefa #99 no TickTask).",
+        )
+        expect(chamadas[0]).toEqual([
+          "create_task",
+          { name: "remédio", scheduled_date: "2026-10-06", scheduled_time: "19:00", tags: ["lembrete"] },
+        ])
+        await motor.atualizarRetrato()
+        chamadas.length = 0
+
+        const aviso = avisoDeTeste(1, "2026-10-06T21:50:00Z", { tipo: "lembrete", alvo: { tarefaId: 5, campo: "agendamento" } })
+        await motor.adiar(aviso, "1h")
+        expect(chamadas).toEqual([
+          ["update_task", { id: 5, scheduled_date: "2026-10-06", scheduled_time: "19:50", scheduled_end_time: "20:20" }],
+        ])
+        expect(motor.retrato?.tarefas[0]?.scheduled_time).toBe("19:50")
+
+        await motor.concluir(aviso)
+        expect(chamadas.at(-1)).toEqual(["update_task", { id: 5, status: "finalizada" }])
+        expect(motor.retrato?.tarefas).toEqual([])
+      } finally {
+        await rm(raiz, { recursive: true, force: true })
+      }
+    }))
 })
