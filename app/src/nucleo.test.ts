@@ -49,7 +49,7 @@ import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memori
 import { montarPedidoSonho, precisaSonhar } from "./memoria/sonho"
 import { montarPedidoConsolidacao } from "./memoria/consolidacao"
 import { dataLocal } from "./texto"
-import { caminhoDoUso, coletorDeUso, comUso } from "./uso"
+import { agregarUso, caminhoDoUso, coletorDeUso, comUso, custosPorConsulta, type RegistroDeUso } from "./uso"
 import { lerExport, medirCorpus, rajadas } from "./ritmo-corpus"
 import {
   RITMO_NEUTRO,
@@ -390,6 +390,38 @@ describe("registro de uso", () => {
     expect(linhas).toHaveLength(1)
     expect([linhas[0].tipo, linhas[0].perfil, linhas[0].entrada]).toEqual(["sonho", "nati", 3])
     await rm(raiz, { recursive: true, force: true })
+  })
+})
+
+describe("relatório de uso", () => {
+  const registro = (r: Partial<RegistroDeUso>): RegistroDeUso => ({
+    ts: "2026-10-06T10:00:00Z", tipo: "chat", chamadas: 1, entrada: 0, escritaCache: 0, leituraCache: 0,
+    saida: 0, retomada: false, duracaoMs: 0, ...r,
+  })
+
+  test("custo de cada consulta é a diferença do acumulado da sessão", () => {
+    const custos = custosPorConsulta([
+      registro({ ts: "2026-10-06T10:02:00Z", sessionId: "a", custoAcumuladoUSD: 0.05, retomada: true }),
+      registro({ ts: "2026-10-06T10:00:00Z", sessionId: "a", custoAcumuladoUSD: 0.02 }),
+      registro({ ts: "2026-10-06T10:01:00Z", sessionId: "b", custoAcumuladoUSD: 0.9, retomada: true }),
+      registro({ ts: "2026-10-06T10:03:00Z", sessionId: "b", custoAcumuladoUSD: 1.0, retomada: true }),
+    ])
+    expect(custos.map((c) => (c === undefined ? undefined : Number(c.toFixed(4))))).toEqual([0.03, 0.02, undefined, 0.1])
+  })
+
+  test("agrega por chave com a taxa de acerto do cache", () => {
+    const g = agregarUso(
+      [
+        registro({ perfil: "poe", sessionId: "a", custoAcumuladoUSD: 0.01, entrada: 10, escritaCache: 90, leituraCache: 900, saida: 5 }),
+        registro({ perfil: "poe", ts: "2026-10-06T10:05:00Z", sessionId: "a", custoAcumuladoUSD: 0.03, retomada: true, entrada: 10, escritaCache: 10, leituraCache: 980, saida: 7 }),
+        registro({ perfil: "nati", sessionId: "c", custoAcumuladoUSD: 0.5, retomada: true }),
+      ],
+      (r) => r.perfil!,
+    )
+    const poe = g.get("poe")!
+    expect([poe.consultas, Number(poe.custoUSD.toFixed(4)), poe.semCusto, poe.saida]).toEqual([2, 0.03, 0, 12])
+    expect(poe.acertoCache).toBeCloseTo(1880 / 2000)
+    expect(g.get("nati")!.semCusto).toBe(1)
   })
 })
 

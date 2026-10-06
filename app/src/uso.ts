@@ -111,6 +111,52 @@ export async function* comUso<T>(
   }
 }
 
+export function custosPorConsulta(registros: RegistroDeUso[]): (number | undefined)[] {
+  const ultimoDaSessao = new Map<string, number>()
+  const ordem = registros.map((r, i) => ({ r, i })).sort((a, b) => a.r.ts.localeCompare(b.r.ts))
+  const custos: (number | undefined)[] = new Array(registros.length).fill(undefined)
+  for (const { r, i } of ordem) {
+    if (r.custoAcumuladoUSD === undefined) continue
+    const anterior = r.sessionId ? ultimoDaSessao.get(r.sessionId) : undefined
+    if (anterior !== undefined) custos[i] = Math.max(0, r.custoAcumuladoUSD - anterior)
+    else if (!r.retomada) custos[i] = r.custoAcumuladoUSD
+    if (r.sessionId) ultimoDaSessao.set(r.sessionId, r.custoAcumuladoUSD)
+  }
+  return custos
+}
+
+export interface Agregado {
+  consultas: number
+  custoUSD: number
+  semCusto: number
+  entrada: number
+  escritaCache: number
+  leituraCache: number
+  saida: number
+  acertoCache: number
+}
+
+export function agregarUso(registros: RegistroDeUso[], chave: (r: RegistroDeUso) => string): Map<string, Agregado> {
+  const custos = custosPorConsulta(registros)
+  const grupos = new Map<string, Agregado>()
+  registros.forEach((r, i) => {
+    const g = grupos.get(chave(r)) ?? {
+      consultas: 0, custoUSD: 0, semCusto: 0, entrada: 0, escritaCache: 0, leituraCache: 0, saida: 0, acertoCache: 0,
+    }
+    g.consultas++
+    if (custos[i] === undefined) g.semCusto++
+    else g.custoUSD += custos[i]!
+    g.entrada += r.entrada
+    g.escritaCache += r.escritaCache
+    g.leituraCache += r.leituraCache
+    g.saida += r.saida
+    const lido = g.entrada + g.escritaCache + g.leituraCache
+    g.acertoCache = lido ? g.leituraCache / lido : 0
+    grupos.set(chave(r), g)
+  })
+  return grupos
+}
+
 export function caminhoDoUso(raiz: string): string {
   return join(raiz, "conversations", "uso.jsonl")
 }
