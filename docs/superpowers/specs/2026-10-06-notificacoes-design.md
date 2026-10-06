@@ -108,20 +108,26 @@ existe enquanto o app do TickTask está aberto.
 Regras:
 
 - **Na hora agendada:** `antecedenciaMin` antes de `scheduled_time` e de `due_time`. Tarefa
-  só com data não gera aviso de horário; entra no resumo. Com o servidor fora do ar no
+  só com data não gera aviso de horário; entra no resumo. Tarefa com a etiqueta `lembrete`
+  dispara na hora exata, sem antecedência: senão "me lembra daqui a 5 minutos" avisaria na
+  mesma hora. Com o servidor fora do ar no
   momento do disparo, o lembrete ainda sai na subida se estiver até 30 min depois do
   horário da tarefa; depois disso é pulado.
 - **Resumo do dia:** no horário configurado, um aviso `resumo` com o que está agendado para
   hoje, o que vence hoje e quantas estão atrasadas. Se o retrato tiver mais de 24 h, o
   resumo diz que a agenda pode estar desatualizada e desde quando. Perdido o horário, sai
-  na subida se ainda não saiu hoje e for antes das 12:00.
+  na subida se ainda não saiu hoje e for antes das 12:00 (ou até 1 h depois do horário,
+  se ele for configurado para depois das 11:00).
 - **Atrasada:** um aviso `atrasada` quando o prazo com hora passa sem a tarefa ser
   finalizada, uma vez só, e só se o prazo venceu nas últimas 24 h (senão a primeira subida
   avisaria cada atraso antigo); depois ela só aparece no resumo. Prazo só com data nunca
   gera `atrasada`: entra como atrasada no resumo do dia seguinte.
 - **Pedido em conversa:** ferramenta `agendar_lembrete({ titulo, data: "AAAA-MM-DD",
   hora: "HH:MM" })` para todos os perfis, num MCP in-process como o da memória. O modelo
-  resolve "amanhã às 9h" para data e hora; o código só valida o formato. Cria a tarefa no
+  resolve "amanhã às 9h" para data e hora; o código só valida o formato (e recusa horário
+  já passado). O Claude Code injeta a data de hoje no contexto, mas não a hora: para
+  pedidos relativos ("daqui a 40 minutos") a ferramenta aceita `em_minutos` no lugar de
+  `data` e `hora`, e o código calcula o horário. Cria a tarefa no
   TickTask com `scheduled_date`, `scheduled_time` e a etiqueta `lembrete`. Com o TickTask
   fechado, a ferramenta devolve o erro e a persona avisa que não agendou.
 - **Ações:** `concluir` muda o status para `finalizada`; `adiar` regrava o horário para
