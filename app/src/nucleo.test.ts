@@ -70,6 +70,10 @@ import { espelharColetivo, paginaDoColetivo } from "./memoria/coletivo"
 import { itensDaMemoria, itensNaoCobertos, migrarUma } from "./memoria/migracao"
 import type { Mensagem, MetaConversa } from "./tipos"
 import type { Pagina } from "./memoria/tipos"
+import { CentralDeAvisos, backlog, caminhoDosAvisos, lerLinhas, podar, type Aviso, type Linha } from "./avisos/central"
+import { Presenca } from "./avisos/presenca"
+import { avisoDeAprovacao, avisoDeResposta } from "./avisos/fontes"
+import { AvisoVencido, executorDeAvisos, lerDesde, lerPedido, streamDeAvisos, tratarAcao } from "./avisos/http"
 
 describe("parseFrontmatter", () => {
   test("extrai campos simples e listas", () => {
@@ -1466,6 +1470,261 @@ describe("modo auto do executor", () => {
       "rm -f arquivo.tmp",
     ]) {
       expect([c, exigeAprovacaoSempre(c)]).toEqual([c, false])
+    }
+  })
+})
+
+function avisoDeTeste(seq: number, criadoEm: string, extra: Partial<Aviso> = {}): Aviso {
+  return {
+    id: `a${seq}`,
+    seq,
+    tipo: "resposta",
+    titulo: "t",
+    corpo: "c",
+    alvo: { conversaId: "2026-10-06-poe-abc" },
+    acoes: ["responder"],
+    criadoEm,
+    ...extra,
+  }
+}
+
+async function centralTemporaria(agora = () => new Date("2026-10-06T12:00:00Z")) {
+  const raiz = await mkdtemp(join(tmpdir(), "tower-avisos-"))
+  return { raiz, central: new CentralDeAvisos(caminhoDosAvisos(raiz), agora) }
+}
+
+describe("central de avisos", () => {
+  test("poda de 7 dias mantém a última linha para o seq não recomeçar", () => {
+    const linhas: Linha[] = [
+      avisoDeTeste(1, "2026-09-01T00:00:00Z"),
+      avisoDeTeste(2, "2026-10-05T00:00:00Z"),
+      { tipo: "resolvido", id: "a1", seq: 3, como: "lido", em: "2026-09-02T00:00:00Z" },
+    ]
+    expect(podar(linhas, new Date("2026-10-06T00:00:00Z")).map((l) => l.seq)).toEqual([2, 3])
+  })
+
+  test("backlog entrega só o que veio depois do seq, e tudo se o seq é maior que o maior", () => {
+    const linhas = [1, 2, 3].map((n) => avisoDeTeste(n, "2026-10-06T00:00:00Z"))
+    expect(backlog(linhas, 1).map((l) => l.seq)).toEqual([2, 3])
+    expect(backlog(linhas, 3)).toEqual([])
+    expect(backlog(linhas, 99).map((l) => l.seq)).toEqual([1, 2, 3])
+  })
+
+  test("linha ilegível ou sem seq é ignorada", () => {
+    const texto = `${JSON.stringify(avisoDeTeste(1, "2026-10-06T00:00:00Z"))}\nlixo\n{"id":"x"}\n`
+    expect(lerLinhas(texto).map((l) => l.seq)).toEqual([1])
+  })
+
+  test("seq cresce, persiste e continua depois da poda e da recarga", async () => {
+    let agora = new Date("2026-10-01T12:00:00Z")
+    const { raiz, central } = await centralTemporaria(() => agora)
+    try {
+      await central.criar(avisoDeResposta("poe", "2026-10-01-poe-abc", "oi"))
+      const segundo = await central.criar(avisoDeResposta("nati", "2026-10-01-nati-abc", "olá"))
+      expect(segundo.seq).toBe(2)
+
+      agora = new Date("2026-10-20T12:00:00Z")
+      const recarregada = new CentralDeAvisos(caminhoDosAvisos(raiz), () => agora)
+      await recarregada.carregar()
+      expect(recarregada.desde(0).map((l) => l.seq)).toEqual([2])
+      expect((await recarregada.criar(avisoDeResposta("poe", "2026-10-20-poe-abc", "x"))).seq).toBe(3)
+      expect(lerLinhas(await Bun.file(caminhoDosAvisos(raiz)).text()).map((l) => l.seq)).toEqual([2, 3])
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("aprovação aberta vira expirada na subida; resposta aberta continua aberta", async () => {
+    const { raiz, central } = await centralTemporaria()
+    try {
+      const expira = new Date("2026-10-06T12:02:00Z")
+      await central.criar(avisoDeAprovacao("perm-1", "2026-10-06-alfred-abc", "ls", expira))
+      await central.criar(avisoDeResposta("poe", "2026-10-06-poe-abc", "oi"))
+
+      const recarregada = new CentralDeAvisos(caminhoDosAvisos(raiz), () => new Date("2026-10-06T12:05:00Z"))
+      await recarregada.carregar()
+      expect(recarregada.resolucao("perm-1")?.como).toBe("expirado")
+      expect(recarregada.abertos().map((a) => a.tipo)).toEqual(["resposta"])
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("resolver duas vezes recusa a segunda com a resolução da primeira", async () => {
+    const { raiz, central } = await centralTemporaria()
+    try {
+      const aviso = await central.criar(avisoDeResposta("poe", "2026-10-06-poe-abc", "oi"))
+      const primeira = await central.resolver(aviso.id, "lido", "celular")
+      expect(primeira).toMatchObject({ tipo: "resolvido", id: aviso.id, como: "lido", aparelho: "celular" })
+      expect(await central.resolver(aviso.id, "respondido")).toMatchObject({
+        recusado: "resolvido",
+        resolucao: { como: "lido", aparelho: "celular" },
+      })
+      expect(await central.resolver("nao-existe", "lido")).toEqual({ recusado: "inexistente" })
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("presença", () => {
+  test("conversa só deixa de estar visível quando nenhum socket a mostra", () => {
+    const presenca = new Presenca<string>()
+    expect(presenca.definir("web", "c1")).toEqual({ mostrada: "c1", deixadas: [] })
+    expect(presenca.definir("celular", "c1")).toEqual({ mostrada: "c1", deixadas: [] })
+    expect(presenca.estaVisivel("c1")).toBe(true)
+    expect(presenca.definir("web", null)).toEqual({ mostrada: null, deixadas: [] })
+    expect(presenca.remover("celular")).toEqual({ mostrada: null, deixadas: ["c1"] })
+    expect(presenca.estaVisivel("c1")).toBe(false)
+  })
+
+  test("trocar de conversa deixa a anterior e mostra a nova", () => {
+    const presenca = new Presenca<string>()
+    presenca.definir("web", "c1")
+    expect(presenca.definir("web", "c2")).toEqual({ mostrada: "c2", deixadas: ["c1"] })
+    expect(presenca.definir("web", "c2")).toEqual({ mostrada: null, deixadas: [] })
+  })
+})
+
+describe("fontes de aviso", () => {
+  test("resposta resume o texto, tira os separadores de balão e corta longo", () => {
+    const aviso = avisoDeResposta("lucas", "c1", `Primeiro.\n---\nSegundo ${"x".repeat(300)}`)
+    expect(aviso.titulo).toBe("Lucas respondeu")
+    expect(aviso.corpo.startsWith("Primeiro. Segundo")).toBe(true)
+    expect(aviso.corpo.length).toBe(180)
+    expect(aviso.corpo.endsWith("…")).toBe(true)
+    expect(aviso.acoes).toEqual(["responder"])
+  })
+
+  test("aprovação usa o id da permissão e o prazo dela", () => {
+    const aviso = avisoDeAprovacao("perm-9", "c1", "git status", new Date("2026-10-06T12:02:00Z"))
+    expect(aviso).toMatchObject({
+      id: "perm-9",
+      tipo: "aprovacao",
+      corpo: "git status",
+      alvo: { conversaId: "c1", permissaoId: "perm-9" },
+      acoes: ["aprovar", "negar"],
+      expiraEm: "2026-10-06T12:02:00.000Z",
+    })
+  })
+})
+
+describe("ações de aviso", () => {
+  const aprovacao = avisoDeTeste(1, "2026-10-06T00:00:00Z", { tipo: "aprovacao", acoes: ["aprovar", "negar"] })
+
+  test("lerPedido valida ação, texto da resposta e adiamento", () => {
+    expect(lerPedido({ acao: "concluir" }, aprovacao)).toHaveProperty("erro")
+    expect(lerPedido({ acao: "aprovar", aparelho: " celular " }, aprovacao)).toEqual({ acao: "aprovar", aparelho: "celular" })
+    const resposta = avisoDeTeste(2, "2026-10-06T00:00:00Z")
+    expect(lerPedido({ acao: "responder", texto: "  " }, resposta)).toHaveProperty("erro")
+    expect(lerPedido({ acao: "responder", texto: " oi " }, resposta)).toEqual({ acao: "responder", texto: "oi" })
+    const lembrete = avisoDeTeste(3, "2026-10-06T00:00:00Z", { tipo: "lembrete", acoes: ["concluir", "adiar"] })
+    expect(lerPedido({ acao: "adiar", adiarPara: "semana" }, lembrete)).toHaveProperty("erro")
+    expect(lerPedido({ acao: "adiar", adiarPara: "amanha" }, lembrete)).toEqual({ acao: "adiar", adiarPara: "amanha" })
+    expect(lerPedido(null, lembrete)).toHaveProperty("erro")
+  })
+
+  test("lerDesde aceita só inteiro positivo", () => {
+    expect([lerDesde("12"), lerDesde(null), lerDesde("-3"), lerDesde("abc"), lerDesde("1.5")]).toEqual([12, 0, 0, 0, 0])
+  })
+
+  test("200 na primeira ação, 409 com quem resolveu na segunda, 404 e 400", async () => {
+    const { raiz, central } = await centralTemporaria()
+    try {
+      const soltas: [string, boolean][] = []
+      const executar = executorDeAvisos({
+        soltarPermissao: (id, permitido) => {
+          soltas.push([id, permitido])
+          return true
+        },
+        responder: () => {},
+      })
+      const aviso = await central.criar(avisoDeAprovacao("perm-1", "c1", "ls", new Date("2026-10-06T12:02:00Z")))
+
+      expect((await tratarAcao(central, "nada", { acao: "aprovar" }, executar)).status).toBe(404)
+      expect((await tratarAcao(central, aviso.id, { acao: "responder", texto: "x" }, executar)).status).toBe(400)
+
+      const ok = await tratarAcao(central, aviso.id, { acao: "aprovar", aparelho: "celular" }, executar)
+      expect(ok.status).toBe(200)
+      expect(await ok.json()).toMatchObject({ ok: true, como: "aprovado", resolucao: { aparelho: "celular" } })
+      expect(soltas).toEqual([["perm-1", true]])
+
+      const segunda = await tratarAcao(central, aviso.id, { acao: "negar", aparelho: "desktop" }, executar)
+      expect(segunda.status).toBe(409)
+      expect(await segunda.json()).toMatchObject({ como: "aprovado", aparelho: "celular" })
+      expect(soltas).toHaveLength(1)
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("permissão que já não existe resolve o aviso como expirado e devolve 409", async () => {
+    const { raiz, central } = await centralTemporaria()
+    try {
+      const executar = executorDeAvisos({ soltarPermissao: () => false, responder: () => {} })
+      const aviso = await central.criar(avisoDeAprovacao("perm-2", "c1", "ls", new Date("2026-10-06T12:02:00Z")))
+      const resposta = await tratarAcao(central, aviso.id, { acao: "aprovar" }, executar)
+      expect(resposta.status).toBe(409)
+      expect(await resposta.json()).toMatchObject({ como: "expirado" })
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("falha do executor devolve 503 e o aviso continua aberto", async () => {
+    const { raiz, central } = await centralTemporaria()
+    try {
+      const aviso = await central.criar(avisoDeResposta("poe", "c1", "oi"))
+      const resposta = await tratarAcao(central, aviso.id, { acao: "responder", texto: "e aí" }, async () => {
+        throw new Error("TickTask fechado")
+      })
+      expect(resposta.status).toBe(503)
+      expect(await resposta.json()).toEqual({ erro: "TickTask fechado" })
+      expect(central.abertos().map((a) => a.id)).toEqual([aviso.id])
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("responder pelo aviso manda o texto para a conversa do aviso", async () => {
+    const respostas: [string, string][] = []
+    const executar = executorDeAvisos({ soltarPermissao: () => true, responder: (c, t) => respostas.push([c, t]) })
+    const aviso = avisoDeTeste(5, "2026-10-06T00:00:00Z")
+    expect(await executar(aviso, { acao: "responder", texto: "segue" })).toBe("respondido")
+    expect(respostas).toEqual([["2026-10-06-poe-abc", "segue"]])
+    await expect(executar(aviso, { acao: "concluir" })).rejects.toThrow()
+    const semPermissao = executorDeAvisos({ soltarPermissao: () => false, responder: () => {} })
+    await expect(semPermissao(aviso, { acao: "negar" })).rejects.toBeInstanceOf(AvisoVencido)
+  })
+})
+
+describe("stream de avisos", () => {
+  test("manda o backlog, depois o ao vivo, com keep-alive, e solta o ouvinte ao cancelar", async () => {
+    const { raiz, central } = await centralTemporaria()
+    try {
+      await central.criar(avisoDeResposta("poe", "c1", "um"))
+      await central.criar(avisoDeResposta("poe", "c2", "dois"))
+      const resposta = streamDeAvisos(central, 1, undefined, 20)
+      expect(resposta.headers.get("content-type")).toContain("application/x-ndjson")
+      const leitor = resposta.body!.getReader()
+      const decodificador = new TextDecoder()
+      let texto = ""
+      const ler = async (ate: (t: string) => boolean) => {
+        while (!ate(texto)) texto += decodificador.decode((await leitor.read()).value)
+      }
+
+      await ler((t) => t.includes('"seq":2'))
+      expect(texto.startsWith("{}\n")).toBe(true)
+      expect(central.escutando).toBe(1)
+      await central.criar(avisoDeResposta("poe", "c3", "três"))
+      await ler((t) => t.includes('"seq":3') && t.includes("{}\n"))
+      const linhas = texto.trim().split("\n").map((l) => JSON.parse(l))
+      expect(linhas.filter((l) => l.seq).map((l) => l.seq)).toEqual([2, 3])
+
+      await leitor.cancel()
+      expect(central.escutando).toBe(0)
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
     }
   })
 })
