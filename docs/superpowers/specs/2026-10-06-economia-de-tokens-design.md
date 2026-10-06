@@ -58,6 +58,27 @@ perfil e modelo: número de queries, custo (pelas diferenças do acumulado), tok
 entrada, escrita e leitura de cache, saída e a **taxa de acerto do cache**
 (`leitura / (entrada + escrita + leitura)`), que é o indicador do item 3.
 
+## Correção da premissa (descoberta na implementação)
+
+A quebra de cache do item acima é do Claude Code **2.1.239**, a versão daquela conversa. No
+**2.1.286** (SDK 0.3.286, o instalado hoje) o comportamento é outro: o system prompt fica
+**congelado no da primeira chamada da sessão** e o `systemPrompt` novo do resume é ignorado.
+Teste direto: system pedindo para terminar com ALFA, depois BRAVO, depois CHARLIE, e o
+modelo terminou com ALFA nas três, lendo do cache todo o turno anterior.
+
+Então, na versão atual, o cache já funciona, e o problema é de funcionamento, não de custo:
+
+- o conselheiro só via o brief da **primeira** mensagem da conversa (teste com `conversar`
+  e uma memória que devolve ALFA no turno 1 e BRAVO no turno 2: a resposta do turno 2 era
+  ALFA antes da mudança e BRAVO depois);
+- o modo `profundidade` pedido no meio da conversa não mudava o "Como escrever";
+- o foco TickTask ligado ou desligado no meio da conversa do Alfred (#442) não mudava as
+  instruções.
+
+O item 3 resolve as duas versões: no 2.1.239 evita regravar o histórico; no 2.1.286 faz o
+que muda por turno chegar ao modelo. A regra passa a ser: **nada que mude de um turno para
+outro vai no system prompt**.
+
 ## 3. System prompt estável nos conselheiros
 
 O brief sai do system prompt e vai para a mensagem do turno, antes do texto do Ueslei,
@@ -74,9 +95,12 @@ marcado como bastidor:
 <lembrete de forma>
 ```
 
-- O system prompt dos conselheiros fica com `profile.md` e as instruções da casa (com o
-  bloco "Como escrever"). O "Como escrever" continua lá: ele só muda quando o turno troca
-  entre `padrao` e `profundidade`, o que é raro, e mexer nele arrisca o ritmo das personas.
+- O system prompt dos conselheiros fica com `profile.md` e as instruções da casa, com o
+  bloco "Como escrever" sempre no modo `padrao`. O modo do turno (`profundidade` quando
+  pedido) chega pelo lembrete de forma, que já ia na mensagem.
+- O Alfred segue a mesma regra: o foco TickTask sai das instruções do executor e vai num
+  bloco `<modo>` no começo da mensagem enquanto estiver ligado; no turno em que é
+  desligado, o bloco avisa que o modo acabou, porque o histórico ainda guarda as instruções.
 - As instruções da casa ganham uma linha dizendo que o bloco `<memória>` é dela mesma, não
   fala do Ueslei, e que ela não o cita nem comenta.
 - Custo aceito: o brief de cada turno passa a ficar no histórico da sessão (até 4.000
