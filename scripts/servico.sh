@@ -22,7 +22,7 @@ cat >"$UNIT_MEMORIA" <<EOF
 Description=ai-memory — memória das personas do Control Tower (127.0.0.1:49374)
 
 [Service]
-ExecStart=$MEMORIA_BIN --data-dir $MEMORIA_DADOS --config $RAIZ/scripts/memoria-config.toml serve --transport http
+ExecStart=$MEMORIA_BIN --data-dir $MEMORIA_DADOS --config $RAIZ/scripts/memoria-config.toml serve --transport http --enable-web
 Restart=on-failure
 RestartSec=3
 

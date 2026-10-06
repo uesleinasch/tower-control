@@ -7,6 +7,7 @@ import {
   type Memoria,
   type NovaPagina,
   type Pagina,
+  type Projeto,
   type Resumo,
   type Trecho,
 } from "./tipos"
@@ -32,8 +33,32 @@ function ausenteComo<T>(vazio: T) {
   }
 }
 
+export function resumosPorRecencia(paginas: { path: string; title?: string; updated_at?: string }[]): Resumo[] {
+  return [...paginas]
+    .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
+    .map((p) => ({ path: p.path, titulo: p.title ?? p.path }))
+}
+
 export function memoriaHttp(url: string = URL_PADRAO): Memoria {
   let conexao: Promise<Client> | null = null
+  let avisouSemWeb = false
+
+  // A rota só existe com --enable-web; sem ela o 404 vem sem corpo, e o de projeto
+  // inexistente vem com {"error": "project '…' not found"}.
+  async function listarPeloRest(projeto: Projeto): Promise<Resumo[] | null> {
+    const caminho = `/api/v1/workspaces/${encodeURIComponent(WORKSPACE)}/projects/${encodeURIComponent(projeto)}/pages`
+    let resposta: Response
+    try {
+      resposta = await fetch(new URL(caminho, url))
+    } catch (erro) {
+      throw new MemoriaIndisponivel((erro as Error).message)
+    }
+    if (resposta.ok) return resumosPorRecencia(await resposta.json())
+    const corpo = await resposta.text()
+    if (resposta.status === 404 && /project '.*' not found/.test(corpo)) return []
+    if (resposta.status === 404) return null
+    throw new Error(`listar ${projeto}: HTTP ${resposta.status} ${corpo.slice(0, 200)}`)
+  }
 
   function conectar(): Promise<Client> {
     conexao ??= (async () => {
@@ -85,8 +110,13 @@ export function memoriaHttp(url: string = URL_PADRAO): Memoria {
       }))
     },
 
-    // O memory_recent ordena por updated_at e não pagina: acima de 100 páginas a lista vem cortada.
     async listar(projeto) {
+      const completa = await listarPeloRest(projeto)
+      if (completa) return completa
+      if (!avisouSemWeb) {
+        avisouSemWeb = true
+        console.warn("[memoria] ai-memory sem --enable-web; listagem limitada às 100 páginas mais recentes")
+      }
       const r = await chamar<{ hits?: { path: string; title?: string }[] }>("memory_recent", {
         limit: LIMITE_LISTAGEM,
         workspace: WORKSPACE,

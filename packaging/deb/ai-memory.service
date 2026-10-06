@@ -3,7 +3,7 @@ Description=ai-memory — memória das personas do Control Tower (127.0.0.1:4937
 
 [Service]
 ExecStartPre=/usr/bin/mkdir -p %h/.local/share/control-tower/memoria
-ExecStart=/opt/control-tower/bin/ai-memory --data-dir %h/.local/share/control-tower/memoria --config /opt/control-tower/memoria-config.toml serve --transport http
+ExecStart=/opt/control-tower/bin/ai-memory --data-dir %h/.local/share/control-tower/memoria --config /opt/control-tower/memoria-config.toml serve --transport http --enable-web
 Restart=on-failure
 RestartSec=3
 

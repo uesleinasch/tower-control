@@ -42,7 +42,7 @@ import {
   type NovaPagina,
   type Projeto,
 } from "./memoria/tipos"
-import { ehAusente, limparTrecho } from "./memoria/cliente"
+import { ehAusente, limparTrecho, resumosPorRecencia } from "./memoria/cliente"
 import { LIMITE_BRIEF, LIMITE_JEITO, comporBrief, montarBrief } from "./memoria/recuperacao"
 import { acoesDaPersona, caminhoNovo, placarVazio } from "./memoria/ferramentas"
 import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memoria/agenda"
@@ -892,6 +892,22 @@ _(vazio por enquanto)_
     expect(gravacoes).toEqual([])
     expect(await Bun.file(join(raiz, "profiles", "lucas", "memory.md")).exists()).toBe(false)
     await rm(raiz, { recursive: true, force: true })
+  })
+})
+
+describe("resumosPorRecencia", () => {
+  test("a listagem completa sai da mais recente para a mais antiga", () => {
+    expect(
+      resumosPorRecencia([
+        { path: "fatos/a.md", title: "A", updated_at: "2026-09-30T10:00:00Z" },
+        { path: "jeito/b.md", updated_at: "2026-10-06T10:00:00Z" },
+        { path: "fatos/c.md", title: "C", updated_at: "2026-10-01T10:00:00Z" },
+      ]),
+    ).toEqual([
+      { path: "jeito/b.md", titulo: "jeito/b.md" },
+      { path: "fatos/c.md", titulo: "C" },
+      { path: "fatos/a.md", titulo: "A" },
+    ])
   })
 })
 
