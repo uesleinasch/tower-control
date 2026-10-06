@@ -142,7 +142,10 @@ Regras:
 - Serviço em primeiro plano com notificação fixa discreta ("Control Tower: escutando
   avisos"), ligado por um interruptor na Configuração, ativo por padrão após o pareamento,
   com reinício no boot. Pede a permissão de notificações (Android 13+) e a exceção de
-  otimização de bateria. `foregroundServiceType=dataSync` (Android 14).
+  otimização de bateria. `foregroundServiceType=remoteMessaging`: o `dataSync` previsto
+  antes para no Android 15 depois de 6 h por dia. O celular não tinha Configuração; ganhou
+  uma enxuta (engrenagem na barra da lista) só com esse interruptor. As permissões são
+  pedidas na primeira subida e a cada vez que o interruptor é ligado.
 - No isolate do serviço: `GET /avisos?desde=<último seq salvo>`, disputando os endereços
   (LAN e Tailscale) como o app já faz; reconexão com espera crescente de 2 s a 60 s.
 - Canais: *Aprovações* e *Lembretes* (alta, heads-up), *Respostas* (normal), *Resumo*
