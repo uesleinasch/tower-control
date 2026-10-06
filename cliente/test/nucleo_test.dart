@@ -49,6 +49,7 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
   'excluida': {'id': 'c'},
   'fim': {'conversaId': 'c'},
   'permissao': {'id': 'p1', 'comando': 'git status'},
+  'permissao-resolvida': {'id': 'p1', 'como': 'aprovado'},
 };
 
 final _saidas = <Saida>[

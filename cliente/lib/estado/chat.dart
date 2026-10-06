@@ -252,6 +252,15 @@ class EstadoChat extends ChangeNotifier {
           p.situacao = SituacaoPermissao.expirado;
           notifyListeners();
         });
+      case PermissaoResolvida(:final id, :final como):
+        final p = itens.whereType<Permissao>().where((p) => p.id == id).firstOrNull;
+        if (p == null || p.situacao != SituacaoPermissao.pendente) return;
+        _prazos.remove(id)?.cancel();
+        p.situacao = switch (como) {
+          'aprovado' => SituacaoPermissao.permitido,
+          'negado' => SituacaoPermissao.negado,
+          _ => SituacaoPermissao.expirado,
+        };
       case ComandoExecutado(:final comando):
         itens.add(Registro(comando));
       case Aviso(:final texto):

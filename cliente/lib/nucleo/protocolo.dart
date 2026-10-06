@@ -35,6 +35,7 @@ sealed class Entrada {
       'excluida' => Excluida(texto('id')),
       'fim' => Fim(texto('conversaId')),
       'permissao' => PedidoDePermissao(texto('id'), texto('comando')),
+      'permissao-resolvida' => PermissaoResolvida(texto('id'), texto('como')),
       _ => Desconhecida(tipo, bruto),
     };
   }
@@ -119,6 +120,12 @@ class PedidoDePermissao extends Entrada {
   const PedidoDePermissao(this.id, this.comando);
   final String id;
   final String comando;
+}
+
+class PermissaoResolvida extends Entrada {
+  const PermissaoResolvida(this.id, this.como);
+  final String id;
+  final String como;
 }
 
 class Desconhecida extends Entrada {

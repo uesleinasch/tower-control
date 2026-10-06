@@ -105,6 +105,22 @@ void main() {
       expect(enviados.last, {'tipo': 'abrir', 'conversaId': 'c1'});
     });
 
+    test('permissão resolvida por fora (aviso ou prazo) fecha o cartão sem responder de novo', () {
+      final chat = EstadoChat(enviar)..tratar(const ConversaAberta(_meta, []));
+      chat
+        ..tratar(const PedidoDePermissao('p1', 'ls'))
+        ..tratar(const PedidoDePermissao('p2', 'rm x'))
+        ..tratar(const PedidoDePermissao('p3', 'df'))
+        ..tratar(const PermissaoResolvida('p1', 'aprovado'))
+        ..tratar(const PermissaoResolvida('p2', 'expirado'))
+        ..tratar(const PermissaoResolvida('p3', 'negado'))
+        ..tratar(const PermissaoResolvida('outra', 'aprovado'));
+      final situacoes = [for (final p in chat.itens.whereType<Permissao>()) p.situacao];
+      expect(situacoes, [SituacaoPermissao.permitido, SituacaoPermissao.expirado, SituacaoPermissao.negado]);
+      chat.responderPermissao(chat.itens.first as Permissao, permitido: false);
+      expect(enviados.where((m) => m['tipo'] == 'permissao-resposta'), isEmpty);
+    });
+
     test('reabrir a mesma conversa preserva citação e anexos do compositor', () {
       const anexo = Anexo(id: 'a1', nome: 'f.png', tipo: TipoAnexo.imagem, mime: 'image/png', bytes: 1);
       final chat = EstadoChat(enviar)
