@@ -1,4 +1,4 @@
-import { executavelDoClaude } from "./caminhos"
+import { ambienteDoClaude, executavelDoClaude } from "./caminhos"
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
 import { blocoDeEscrita, carregarRitmo, classificar, lembreteDeForma, normalizadorDeStream, orcamento } from "./ritmo"
@@ -135,6 +135,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     options: {
       cwd: opcoes.raiz,
       pathToClaudeCodeExecutable: executavelDoClaude(),
+      env: ambienteDoClaude(),
       resume: opcoes.sessionId,
       // Sem isto o SDK carrega ~/.claude/settings.json do usuário: plugins, MCPs pessoais
       // e hooks de PreToolUse que negam comando já aprovado na tela (o do context-mode
@@ -197,6 +198,7 @@ export async function perguntarUmaVez(opcoes: {
     options: {
       cwd: opcoes.raiz,
       pathToClaudeCodeExecutable: executavelDoClaude(),
+      env: ambienteDoClaude(),
       systemPrompt: opcoes.system,
       settingSources: [],
       tools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],

@@ -30,3 +30,9 @@ export function dirModelos(codigo: string): string {
 export function executavelDoClaude(): string | undefined {
   return process.env.CT_CLAUDE || undefined
 }
+
+// settingSources: [] não cobre os conectores da conta claude.ai: sem isto o Claude Code
+// os carrega sozinho em toda sessão das personas.
+export function ambienteDoClaude(): Record<string, string | undefined> {
+  return { ...process.env, ENABLE_CLAUDEAI_MCP_SERVERS: "false" }
+}
