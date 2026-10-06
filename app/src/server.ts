@@ -24,7 +24,12 @@ import {
   guardarParaConsolidar,
 } from "./memoria/consolidacao"
 import { sonhar } from "./memoria/sonho"
+import { CentralDeAvisos, caminhoDosAvisos, type Como } from "./avisos/central"
+import { Presenca, type Mudanca } from "./avisos/presenca"
+import { avisoDeAprovacao, avisoDeResposta } from "./avisos/fontes"
+import { executorDeAvisos, lerDesde, streamDeAvisos, tratarAcao } from "./avisos/http"
 import {
+  idValido,
   criarConversa,
   atualizarMeta,
   lerMeta,
@@ -48,6 +53,12 @@ try {
 const PORTA = Number(process.env.TOWER_PORTA ?? 7878)
 const MEMORIA = memoriaHttp()
 const naFilaDaConversa = filaPorChave()
+const AVISOS = new CentralDeAvisos(caminhoDosAvisos(RAIZ))
+await AVISOS.carregar().catch((erro: Error) => console.warn(`[avisos] histórico não carregou — ${erro.message}`))
+
+function avisar(promessa: Promise<unknown>): void {
+  void promessa.catch((erro: Error) => console.warn(`[avisos] ${erro.message}`))
+}
 
 const ESPELHADAS = new Map<string, string>()
 const TENTATIVAS_NA_SUBIDA = 20
@@ -92,50 +103,93 @@ const ESTATICOS: Record<string, string> = {
 
 type Cliente = ServerWebSocket<undefined>
 
+const PRESENCA = new Presenca<Cliente>()
+
 function mandar(ws: Cliente, msg: Record<string, unknown>): void {
   ws.send(JSON.stringify(msg))
 }
+
+const abertoOuNada = (ws?: Cliente) => (ws?.readyState === WebSocket.OPEN ? ws : undefined)
 
 // ── permissão de comando do executor ───────────────────────────────
 
 const PRAZO_PERMISSAO = 120_000
 
 interface Pendente {
-  ws: Cliente
+  ws?: Cliente
+  conversaId: string
+  comando: string
+  expiraEm: Date
+  avisado: boolean
   resolver: (permitido: boolean) => void
   prazo: ReturnType<typeof setTimeout>
 }
 
 const pendentes = new Map<string, Pendente>()
 
-function resolverPermissao(id: string, permitido: boolean): void {
+function soltarPermissao(id: string, permitido: boolean): boolean {
   const pendente = pendentes.get(id)
-  if (!pendente) return
+  if (!pendente) return false
   clearTimeout(pendente.prazo)
   pendentes.delete(id)
   pendente.resolver(permitido)
+  return true
+}
+
+function resolverPermissao(id: string, permitido: boolean, como: Como = permitido ? "aprovado" : "negado"): void {
+  if (soltarPermissao(id, permitido)) avisar(AVISOS.resolver(id, como))
+}
+
+function avisarAprovacao(id: string, pendente: Pendente): void {
+  if (pendente.avisado) return
+  pendente.avisado = true
+  avisar(AVISOS.criar(avisoDeAprovacao(id, pendente.conversaId, pendente.comando, pendente.expiraEm)))
+}
+
+function aplicarPresenca({ mostrada, deixadas }: Mudanca): void {
+  if (mostrada) {
+    for (const aviso of AVISOS.abertos()) {
+      if (aviso.tipo === "resposta" && aviso.alvo.conversaId === mostrada) avisar(AVISOS.resolver(aviso.id, "lido"))
+    }
+  }
+  for (const [id, pendente] of pendentes) {
+    if (deixadas.includes(pendente.conversaId)) avisarAprovacao(id, pendente)
+  }
 }
 
 // Em modo auto o comando não é barrado, mas aparece no chat: senão o auto seria caixa
 // preta e o Ueslei descobriria o que rodou pelo efeito colateral.
-function tratarComando(ws: Cliente, comando: string, aprovar: boolean): Promise<boolean> {
-  // Sem ninguém do outro lado, nem o auto roda: o comando ficaria sem testemunha.
-  if (ws.readyState !== WebSocket.OPEN) return Promise.resolve(false)
+function tratarComando(ws: Cliente | undefined, conversaId: string, comando: string, aprovar: boolean): Promise<boolean> {
+  const aberto = abertoOuNada(ws)
+  // Sem ninguém do outro lado (chat ou stream de avisos), nem o auto roda: o comando
+  // ficaria sem testemunha.
+  if (!aberto && AVISOS.escutando === 0) return Promise.resolve(false)
   if (!aprovar) {
-    mandar(ws, { tipo: "comando", comando })
+    if (aberto) mandar(aberto, { tipo: "comando", comando })
     return Promise.resolve(true)
   }
   const id = randomUUID()
   return new Promise((resolver) => {
     // Sem prazo, uma aba fechada deixaria o executor esperando para sempre.
-    const prazo = setTimeout(() => resolverPermissao(id, false), PRAZO_PERMISSAO)
-    pendentes.set(id, { ws, resolver, prazo })
-    mandar(ws, { tipo: "permissao", id, comando })
+    const prazo = setTimeout(() => resolverPermissao(id, false, "expirado"), PRAZO_PERMISSAO)
+    const expiraEm = new Date(Date.now() + PRAZO_PERMISSAO)
+    const pendente: Pendente = { ws: aberto, conversaId, comando, expiraEm, avisado: false, resolver, prazo }
+    pendentes.set(id, pendente)
+    if (aberto) mandar(aberto, { tipo: "permissao", id, comando })
+    if (!PRESENCA.estaVisivel(conversaId)) avisarAprovacao(id, pendente)
   })
 }
 
+const executarAviso = executorDeAvisos({
+  soltarPermissao,
+  responder: (conversaId, texto) =>
+    void naFilaDaConversa(conversaId, () => responderNaConversa(undefined, conversaId, texto)).catch((erro: Error) =>
+      console.warn(`[avisos] resposta pelo aviso em ${conversaId} falhou — ${erro.message}`),
+    ),
+})
+
 async function responderNaConversa(
-  ws: Cliente,
+  ws: Cliente | undefined,
   id: string,
   texto: string,
   citacao?: string,
@@ -186,8 +240,10 @@ async function responderNaConversa(
     memoria: MEMORIA,
     conversaId: id,
     consulta: texto,
-    onChunk: (pedaco) => mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco }),
-    onComando: (comando, aprovar) => tratarComando(ws, comando, aprovar),
+    onChunk: (pedaco) => {
+      if (ws) mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco })
+    },
+    onComando: (comando, aprovar) => tratarComando(ws, id, comando, aprovar),
     onSessao: (sessionId) => atualizarMeta(RAIZ, id, { sessionId }),
   })
 
@@ -197,7 +253,8 @@ async function responderNaConversa(
     ts: new Date().toISOString(),
     perfil: meta.perfil,
   })
-  mandar(ws, { tipo: "fim", conversaId: id })
+  if (ws) mandar(ws, { tipo: "fim", conversaId: id })
+  if (!PRESENCA.estaVisivel(id)) avisar(AVISOS.criar(avisoDeResposta(meta.perfil, id, resposta.texto)))
   if (ehConselheiro(meta.perfil)) {
     espelharEmSegundoPlano()
     versionarEmSegundoPlano(`conversa com ${meta.perfil}`)
@@ -276,6 +333,11 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "permissao-resposta": {
       resolverPermissao(String(msg.id ?? ""), Boolean(msg.permitido))
+      return
+    }
+    case "visivel": {
+      const conversaId = typeof msg.conversaId === "string" && idValido(msg.conversaId) ? msg.conversaId : null
+      aplicarPresenca(PRESENCA.definir(ws, conversaId))
       return
     }
     case "excluir": {
@@ -365,6 +427,16 @@ const servidor = Bun.serve({
       return server.upgrade(req) ? undefined : new Response("upgrade falhou", { status: 400 })
     }
     if (url.pathname === "/enderecos") return Response.json(respostaEnderecos(PORTA))
+    if (url.pathname === "/avisos" && req.method === "GET") {
+      // O idleTimeout padrão (10 s) cortaria o stream antes do keep-alive de 25 s.
+      server.timeout(req, 0)
+      return streamDeAvisos(AVISOS, lerDesde(url.searchParams.get("desde")), req.signal)
+    }
+    const rotaDeAcao = url.pathname.match(/^\/avisos\/([^/]+)\/acao$/)
+    if (rotaDeAcao && req.method === "POST") {
+      const corpo: unknown = await req.json().catch(() => null)
+      return tratarAcao(AVISOS, decodeURIComponent(rotaDeAcao[1]!), corpo, executarAviso)
+    }
     if (url.pathname === "/anexo" && req.method === "POST") return receberAnexo(req)
     if (url.pathname.startsWith("/anexo/")) {
       return entregarAnexo(decodeURIComponent(url.pathname.slice("/anexo/".length)))
@@ -392,8 +464,15 @@ const servidor = Bun.serve({
       })
     },
     close(ws: Cliente) {
+      aplicarPresenca(PRESENCA.remover(ws))
       for (const [id, pendente] of pendentes) {
-        if (pendente.ws === ws) resolverPermissao(id, false)
+        if (pendente.ws !== ws) continue
+        if (AVISOS.escutando === 0) {
+          resolverPermissao(id, false, "expirado")
+          continue
+        }
+        pendente.ws = undefined
+        avisarAprovacao(id, pendente)
       }
     },
   },

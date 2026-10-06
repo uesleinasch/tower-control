@@ -73,6 +73,20 @@ const rolarAoFim = () => {
 function mostrarTela(tela) {
   document.body.dataset.tela = tela
   if (tela === "conversa") requestAnimationFrame(rolarAoFim)
+  informarVisivel()
+}
+
+// O servidor só avisa no celular e no desktop quando nenhum cliente mostra a conversa.
+let visivelInformado
+function informarVisivel() {
+  const naTela =
+    document.visibilityState === "visible" &&
+    estado.modo === "chat" &&
+    (!compacto() || document.body.dataset.tela === "conversa")
+  const conversaId = naTela ? estado.conversaId : null
+  if (conversaId === visivelInformado || estado.ws?.readyState !== WebSocket.OPEN) return
+  visivelInformado = conversaId
+  enviar({ tipo: "visivel", conversaId })
 }
 
 function irParaConversa() {
@@ -314,6 +328,8 @@ function conectar() {
   ws.onopen = () => {
     el.conexao.classList.add("ok")
     enviar({ tipo: "listar" })
+    visivelInformado = undefined
+    informarVisivel()
   }
   ws.onclose = () => {
     el.conexao.classList.remove("ok")
@@ -419,6 +435,7 @@ function abrirPerfil(perfil) {
   limparTela()
   adicionarMensagem("aviso", `Você está falando com ${NOMES[perfil]}. A conversa é criada na primeira mensagem.`)
   irParaConversa()
+  informarVisivel()
   focarEntrada()
 }
 
@@ -436,6 +453,7 @@ function abrirBoard() {
   )
   el.entrada.placeholder = "Pauta para o board…"
   irParaConversa()
+  informarVisivel()
   focarEntrada()
 }
 
@@ -446,6 +464,7 @@ function abrirDecisoes() {
   definirCabecalho("decisoes", "Decisões registradas")
   limparTela()
   irParaConversa()
+  informarVisivel()
   enviar({ tipo: "decisoes" })
 }
 
@@ -573,6 +592,7 @@ function tratar(msg) {
         selecionarBotao(null)
         definirCabecalho(null, "Escolha um perfil para começar")
         irParaLista()
+        informarVisivel()
       }
       break
     }
@@ -580,6 +600,7 @@ function tratar(msg) {
       estado.conversaId = msg.meta.id
       definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
       enviar({ tipo: "listar" })
+      informarVisivel()
       break
     }
     case "conversa": {
@@ -593,6 +614,7 @@ function tratar(msg) {
       definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
       el.modelo.value = msg.meta.modelo ?? "haiku"
       irParaConversa()
+      informarVisivel()
       limparTela()
       for (const m of msg.mensagens) {
         if (m.role === "user") {
@@ -692,6 +714,7 @@ window.addEventListener("popstate", () => {
   if (!history.state?.folha) ocultarFolha()
   mostrarTela(history.state?.tela === "conversa" ? "conversa" : "lista")
 })
+document.addEventListener("visibilitychange", informarVisivel)
 
 // ── menu do balão: toque longo no celular, clique direito no desktop ──
 
