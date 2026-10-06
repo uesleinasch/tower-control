@@ -61,6 +61,8 @@ async function abrirSocket(): Promise<WebSocket> {
 }
 
 let ws = await abrirSocket()
+const doChat: Record<string, any>[] = []
+ws.addEventListener("message", (ev) => doChat.push(JSON.parse(String(ev.data))))
 const criada = new Promise<string>((resolver) =>
   ws.addEventListener("message", (ev) => {
     const msg = JSON.parse(String(ev.data))
@@ -105,6 +107,13 @@ ok("aprovado pelo aviso (200)")
 const resolvido = await esperar("evento resolvido", (l) => l.tipo === "resolvido" && l.id === aprovacao.id)
 if (resolvido.como !== "aprovado" || resolvido.aparelho !== "smoke") throw new Error(`resolvido inesperado: ${JSON.stringify(resolvido)}`)
 ok("evento resolvido com aparelho")
+
+if (!fecharChat) {
+  await Bun.sleep(300)
+  const noCartao = doChat.find((m) => m.tipo === "permissao-resolvida" && m.id === aprovacao.id)
+  if (noCartao?.como !== "aprovado") throw new Error(`o chat não soube da aprovação: ${JSON.stringify(noCartao)}`)
+  ok("o cartão do chat recebeu permissao-resolvida")
+}
 
 const segunda = await acao({ acao: "negar", aparelho: "outro" })
 const corpoSegunda = await segunda.json()
