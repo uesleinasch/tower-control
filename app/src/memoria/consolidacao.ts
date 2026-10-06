@@ -71,6 +71,7 @@ export async function consolidarConversa(raiz: string, m: Memoria, meta: MetaCon
     memoria: m,
     exigirGravacao: true,
     origem: `conversa:${meta.id}`,
+    tipo: "consolidacao",
   })
   await atualizarMeta(raiz, meta.id, { consolidadoAte: mensagens.length })
   await registrarAtividade(raiz, persona, new Date(novas[novas.length - 1]!.ts))

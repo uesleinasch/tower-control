@@ -29,7 +29,13 @@ export async function convocarBoard(
       const brief = memoria ? await montarBrief(memoria, perfil, pauta) : ""
       const system = await montarSystemPromptParecer(raiz, perfil, brief)
       try {
-        const texto = await perguntarUmaVez({ raiz, system, prompt: pautaFormatada, permitirLeitura: true })
+        const texto = await perguntarUmaVez({
+          raiz,
+          system,
+          prompt: pautaFormatada,
+          permitirLeitura: true,
+          uso: { tipo: "board-parecer", perfil },
+        })
         return { perfil, texto }
       } catch (erro) {
         return { perfil, texto: `_(parecer indisponível: ${(erro as Error).message})_` }
@@ -42,7 +48,7 @@ export async function convocarBoard(
   onStatus(`Pareceres recebidos (${validos.length}/${CONSELHEIROS.length}) — sintetizando…`)
 
   const { system, prompt } = montarPromptSintese(pauta, pareceres)
-  const sintese = await perguntarUmaVez({ raiz, system, prompt })
+  const sintese = await perguntarUmaVez({ raiz, system, prompt, uso: { tipo: "board-sintese" } })
 
   const ata = await gravarAta(raiz, pauta, pareceres, sintese)
   return { sintese, ata }

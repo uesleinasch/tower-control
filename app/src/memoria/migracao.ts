@@ -85,6 +85,7 @@ export async function migrarPersona(raiz: string, m: Memoria, persona: Conselhei
     memoria: m,
     exigirGravacao: true,
     origem: ORIGEM_MIGRACAO,
+    tipo: "migracao",
   })
 }
 

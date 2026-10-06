@@ -1,4 +1,5 @@
 import { ambienteDoClaude, executavelDoClaude } from "./caminhos"
+import { comUso } from "./uso"
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { montarSystemPrompt } from "./prompt"
 import { blocoDeEscrita, carregarRitmo, classificar, lembreteDeForma, normalizadorDeStream, orcamento } from "./ritmo"
@@ -130,7 +131,14 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
   let acumulado = ""
   let sessionId = opcoes.sessionId
 
-  for await (const msg of query({
+  const uso = {
+    tipo: "chat" as const,
+    perfil,
+    conversaId: opcoes.conversaId,
+    modelo: opcoes.modelo ?? MODELO_PADRAO,
+    retomada: Boolean(opcoes.sessionId),
+  }
+  for await (const msg of comUso(opcoes.raiz, uso, query({
     prompt: conselheiro ? prompt : comoStream(opcoes.texto),
     options: {
       cwd: opcoes.raiz,
@@ -152,7 +160,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       hooks: conselheiro ? undefined : hookDeComando(opcoes.auto === true, opcoes.onComando),
       includePartialMessages: true,
     },
-  })) {
+  }))) {
     const daMensagem = (msg as { session_id?: string }).session_id
     if (daMensagem && daMensagem !== sessionId) {
       sessionId = daMensagem
@@ -189,11 +197,12 @@ export async function perguntarUmaVez(opcoes: {
   system: string
   prompt: string
   permitirLeitura?: boolean
+  uso: { tipo: "board-parecer" | "board-sintese"; perfil?: string }
 }): Promise<string> {
   let resposta = ""
   // Sem "model" de propósito: o board delibera no padrão do SDK (Opus), e não no
   // MODELO_PADRAO do chat. Deliberação é onde o modelo forte se paga.
-  for await (const msg of query({
+  for await (const msg of comUso(opcoes.raiz, opcoes.uso, query({
     prompt: opcoes.prompt,
     options: {
       cwd: opcoes.raiz,
@@ -205,8 +214,9 @@ export async function perguntarUmaVez(opcoes: {
       allowedTools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
       permissionMode: "default",
       maxTurns: 8,
+      includePartialMessages: true,
     },
-  })) {
+  }))) {
     if (msg.type === "result") {
       const resultado = msg as { subtype?: string; result?: string }
       if (resultado.subtype !== "success") {

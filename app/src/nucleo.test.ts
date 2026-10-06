@@ -49,6 +49,7 @@ import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memori
 import { montarPedidoSonho, precisaSonhar } from "./memoria/sonho"
 import { montarPedidoConsolidacao } from "./memoria/consolidacao"
 import { dataLocal } from "./texto"
+import { caminhoDoUso, coletorDeUso, comUso } from "./uso"
 import { lerExport, medirCorpus, rajadas } from "./ritmo-corpus"
 import {
   RITMO_NEUTRO,
@@ -350,6 +351,45 @@ describe("excluirConversa", () => {
     expect(idValido("../../etc/passwd")).toBe(false)
     expect(idValido("2026-08-22-poe-mt4/../x")).toBe(false)
     await expect(excluirConversa("/tmp", "../../etc/passwd")).rejects.toThrow("conversa inválida")
+  })
+})
+
+describe("registro de uso", () => {
+  const inicio = (id: string, usage: object) => ({ type: "stream_event", session_id: "s1", event: { type: "message_start", message: { id, usage } } })
+  const delta = (output_tokens: number) => ({ type: "stream_event", session_id: "s1", event: { type: "message_delta", usage: { output_tokens } } })
+  const assistente = (id: string, usage: object) => ({ type: "assistant", session_id: "s1", message: { id, usage } })
+
+  test("soma cada resposta uma vez, com a saída final do message_delta", () => {
+    const c = coletorDeUso({ tipo: "chat", perfil: "poe", retomada: true })
+    for (const msg of [
+      inicio("m1", { input_tokens: 10, cache_creation_input_tokens: 500, cache_read_input_tokens: 9000, output_tokens: 1 }),
+      assistente("m1", { input_tokens: 10, cache_creation_input_tokens: 500, cache_read_input_tokens: 9000, output_tokens: 1 }),
+      assistente("m1", { input_tokens: 10, cache_creation_input_tokens: 500, cache_read_input_tokens: 9000, output_tokens: 1 }),
+      delta(120),
+      inicio("m2", { input_tokens: 4, cache_creation_input_tokens: 80, cache_read_input_tokens: 9500, output_tokens: 1 }),
+      delta(40),
+      { type: "result", session_id: "s1", total_cost_usd: 0.0123 },
+    ]) c.receber(msg)
+    const r = c.registro()
+    expect([r.chamadas, r.entrada, r.escritaCache, r.leituraCache, r.saida]).toEqual([2, 14, 580, 18500, 160])
+    expect([r.sessionId, r.custoAcumuladoUSD, r.retomada, r.tipo, r.perfil]).toEqual(["s1", 0.0123, true, "chat", "poe"])
+  })
+
+  test("grava a linha mesmo quando o turno lança erro no meio", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "tower-uso-"))
+    async function* fluxo() {
+      yield inicio("m1", { input_tokens: 3, output_tokens: 1 })
+      throw new Error("caiu")
+    }
+    await expect(
+      (async () => {
+        for await (const _ of comUso(raiz, { tipo: "sonho", perfil: "nati" }, fluxo()));
+      })(),
+    ).rejects.toThrow("caiu")
+    const linhas = (await Bun.file(caminhoDoUso(raiz)).text()).trim().split("\n").map((l) => JSON.parse(l))
+    expect(linhas).toHaveLength(1)
+    expect([linhas[0].tipo, linhas[0].perfil, linhas[0].entrada]).toEqual(["sonho", "nati", 3])
+    await rm(raiz, { recursive: true, force: true })
   })
 })
 

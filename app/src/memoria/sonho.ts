@@ -61,6 +61,7 @@ export async function sonhar(raiz: string, m: Memoria, persona: Conselheiro): Pr
       memoria: m,
       exigirGravacao: false,
       origem: `sonho:${data}`,
+      tipo: "sonho",
     })
     console.log(`[memoria] ${persona} sonhou sobre ${frias.length} lembrança(s) fria(s)`)
   }

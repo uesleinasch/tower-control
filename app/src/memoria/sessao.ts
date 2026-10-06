@@ -4,6 +4,7 @@ import type { Conselheiro } from "../tipos"
 import { NOMES } from "../prompt"
 import { FERRAMENTAS_MEMORIA_CONSOLIDACAO, placarVazio, servidorDeMemoria, type Placar } from "./ferramentas"
 import type { Memoria } from "./tipos"
+import { comUso, type TipoDeUso } from "../uso"
 
 export const MODELO_MEMORIA = "sonnet"
 
@@ -36,11 +37,13 @@ export async function rodarPersona(opcoes: {
   memoria: Memoria
   origem: string
   exigirGravacao: boolean
+  tipo: Extract<TipoDeUso, "consolidacao" | "sonho" | "migracao">
 }): Promise<Placar> {
   await opcoes.memoria.listar(opcoes.persona)
   const placar = placarVazio()
   const servidor = servidorDeMemoria(opcoes.memoria, opcoes.persona, opcoes.origem, { atualizar: true, placar })
-  for await (const msg of query({
+  const uso = { tipo: opcoes.tipo, perfil: opcoes.persona, modelo: MODELO_MEMORIA }
+  for await (const msg of comUso(opcoes.raiz, uso, query({
     prompt: opcoes.prompt,
     options: {
       cwd: opcoes.raiz,
@@ -54,8 +57,9 @@ export async function rodarPersona(opcoes: {
       tools: [],
       permissionMode: "default",
       maxTurns: 40,
+      includePartialMessages: true,
     },
-  })) {
+  }))) {
     if (msg.type === "result") {
       const resultado = msg as { subtype?: string }
       if (resultado.subtype !== "success") {
