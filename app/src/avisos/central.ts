@@ -61,10 +61,14 @@ export function podar(linhas: Linha[], agora: Date): Linha[] {
   })
 }
 
+// Aviso criado e resolvido dentro da janela fica de fora, com a resolução: o aparelho nunca o
+// mostrou, e mostrar para apagar em seguida só faria barulho na volta da rede.
 export function backlog(linhas: Linha[], desde: number): Linha[] {
   const maior = linhas.at(-1)?.seq ?? 0
-  if (desde > maior) return linhas
-  return linhas.filter((linha) => linha.seq > desde)
+  const janela = linhas.filter((linha) => linha.seq > (desde > maior ? 0 : desde))
+  const avisos = new Set(janela.filter((l) => !ehResolvido(l)).map((l) => l.id))
+  const resolvidos = new Set(janela.filter(ehResolvido).map((l) => l.id))
+  return janela.filter((l) => (ehResolvido(l) ? !avisos.has(l.id) : !resolvidos.has(l.id)))
 }
 
 export function abertos(linhas: Linha[]): Aviso[] {

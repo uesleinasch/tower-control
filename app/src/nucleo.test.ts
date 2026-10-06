@@ -1526,6 +1526,18 @@ describe("central de avisos", () => {
     expect(backlog(linhas, 99).map((l) => l.seq)).toEqual([1, 2, 3])
   })
 
+  test("backlog omite aviso criado e resolvido na janela, mas manda a resolução de aviso anterior", () => {
+    const linhas: Linha[] = [
+      avisoDeTeste(1, "2026-10-06T00:00:00Z"),
+      avisoDeTeste(2, "2026-10-06T00:00:00Z"),
+      { tipo: "resolvido", id: "a2", seq: 3, como: "lido", em: "2026-10-06T00:01:00Z" },
+      { tipo: "resolvido", id: "a1", seq: 4, como: "lido", em: "2026-10-06T00:02:00Z" },
+      avisoDeTeste(5, "2026-10-06T00:03:00Z"),
+    ]
+    expect(backlog(linhas, 0).map((l) => l.seq)).toEqual([5])
+    expect(backlog(linhas, 1).map((l) => l.seq)).toEqual([4, 5])
+  })
+
   test("linha ilegível ou sem seq é ignorada", () => {
     const texto = `${JSON.stringify(avisoDeTeste(1, "2026-10-06T00:00:00Z"))}\nlixo\n{"id":"x"}\n`
     expect(lerLinhas(texto).map((l) => l.seq)).toEqual([1])
