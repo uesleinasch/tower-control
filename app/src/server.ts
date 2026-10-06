@@ -161,6 +161,7 @@ async function responderNaConversa(
     consulta: texto,
     onChunk: (pedaco) => mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco }),
     onComando: (comando, aprovar) => tratarComando(ws, comando, aprovar),
+    onSessao: (sessionId) => atualizarMeta(RAIZ, id, { sessionId }),
   })
 
   await anexarMensagem(RAIZ, id, {
@@ -169,9 +170,6 @@ async function responderNaConversa(
     ts: new Date().toISOString(),
     perfil: meta.perfil,
   })
-  if (resposta.sessionId && resposta.sessionId !== meta.sessionId) {
-    await atualizarMeta(RAIZ, id, { sessionId: resposta.sessionId })
-  }
   mandar(ws, { tipo: "fim", conversaId: id })
   if (ehConselheiro(meta.perfil)) {
     espelharEmSegundoPlano()

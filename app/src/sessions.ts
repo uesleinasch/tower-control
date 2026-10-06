@@ -53,6 +53,7 @@ interface OpcoesConversa {
   consulta?: string
   onChunk: (texto: string) => void
   onComando?: (comando: string, aprovar: boolean) => Promise<boolean>
+  onSessao?: (sessionId: string) => Promise<unknown>
 }
 
 // O canUseTool chega como control request, e control request só existe em modo de
@@ -151,6 +152,11 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       includePartialMessages: true,
     },
   })) {
+    const daMensagem = (msg as { session_id?: string }).session_id
+    if (daMensagem && daMensagem !== sessionId) {
+      sessionId = daMensagem
+      await opcoes.onSessao?.(daMensagem)
+    }
     if (msg.type === "stream_event") {
       const evento = (
         msg as { event?: { type?: string; delta?: { type?: string; text?: string }; content_block?: { type?: string } } }
@@ -164,8 +170,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
         emitir(evento.delta.text)
       }
     } else if (msg.type === "result") {
-      const resultado = msg as { session_id?: string; subtype?: string; result?: string }
-      sessionId = resultado.session_id ?? sessionId
+      const resultado = msg as { subtype?: string; result?: string }
       if (resultado.subtype !== "success") {
         throw new Error(`a sessão do perfil terminou com "${resultado.subtype}"`)
       }
