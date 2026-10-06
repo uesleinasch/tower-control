@@ -18,8 +18,9 @@ function instrucoesDaCasa(perfil: Perfil, escrita: string): string {
   return `# Instruções da casa (control-tower)
 
 Você é ${NOMES[perfil]}, um dos perfis do control-tower — a sala de decisões do Ueslei.
-Sua personalidade e sua memória estão acima; encarne-as por completo. A seção "Como eu
-escrevo" da sua memória, quando existe, é o seu jeito de falar: siga-o.
+Sua personalidade está acima e sua memória chega no bloco <memória> de cada mensagem;
+encarne as duas por completo. A lembrança "Como eu escrevo", quando existe, é o seu jeito
+de falar: siga-o.
 
 - Responda sempre em português brasileiro.
 - Você NUNCA edita arquivos em profiles/ nem qualquer outro arquivo fora dos citados
@@ -34,9 +35,10 @@ escrevo" da sua memória, quando existe, é o seu jeito de falar: siga-o.
 
 ## Sua memória
 
-A seção "Minha memória", quando aparece acima, traz o que você lembra que tem a ver com
-esta conversa. Ela é sua e de mais ninguém: os outros perfis não sabem o que o Ueslei
-conta a você.
+O bloco <memória>, quando vem no começo da mensagem do Ueslei, traz o que você lembra que
+tem a ver com aquele momento da conversa; a cada mensagem ele vem atualizado. Ele é seu e de
+mais ninguém: os outros perfis não sabem o que o Ueslei conta a você. Não é fala dele, então
+não o cite nem comente que o recebeu.
 
 - Quando o que está ali não bastar, use a ferramenta recordar antes de dizer que não
   lembra. Para ler uma lembrança inteira, use ler_lembranca.
@@ -63,7 +65,7 @@ mcp__ticktask__*.
 - Responda em uma linha, com o id do que foi criado ou alterado.
 - Se as ferramentas mcp__ticktask__* não existirem, o app está fechado. Diga isso e pare.`
 
-function instrucoesDoExecutor(perfil: Perfil, foco?: string): string {
+function instrucoesDoExecutor(perfil: Perfil): string {
   return `# Instruções da casa (control-tower)
 
 Você é ${NOMES[perfil]}, o executor do control-tower. Você não é conselheiro: não opina
@@ -80,10 +82,12 @@ sem ser perguntado, não sugere melhorias, não pergunta se o Ueslei quer mais a
 - Se falhar, diga o erro e pare. Não tente três caminhos alternativos por conta própria.
 - Comando negado é resposta final, não obstáculo: diga que foi negado e pare. Não tente
   o mesmo comando de outra forma nem parta para um caminho alternativo.
+- Um bloco <modo> no começo da mensagem traz o modo ativo neste turno e vale por cima
+  destas instruções. Ele não é fala do Ueslei: não o cite.
 
 ## Tamanho da resposta
 
-${POLITICA_ALFRED}${foco === "ticktask" ? `\n\n${FOCO_TICKTASK}` : ""}`
+${POLITICA_ALFRED}`
 }
 
 function instrucoesParecer(perfil: Conselheiro): string {
@@ -105,19 +109,34 @@ export async function lerPerfil(raiz: string, perfil: Perfil): Promise<string> {
   return lerArquivo(join(raiz, "profiles", perfil, "profile.md"))
 }
 
+// O Claude Code congela o system prompt na primeira chamada da sessão e ignora o novo no
+// resume: tudo o que muda de um turno para outro vai na mensagem (mensagemDoConselheiro,
+// mensagemDoExecutor), nunca aqui.
 export async function montarSystemPrompt(
   raiz: string,
   perfil: Perfil,
-  foco?: string,
-  brief = "",
   escrita = blocoDeEscrita(orcamento("padrao", RITMO_NEUTRO), RITMO_NEUTRO),
 ): Promise<string> {
   const perfilMd = await lerPerfil(raiz, perfil)
   if (!ehConselheiro(perfil)) {
-    return [perfilMd, instrucoesDoExecutor(perfil, foco)].filter(Boolean).join("\n\n---\n\n")
+    return [perfilMd, instrucoesDoExecutor(perfil)].filter(Boolean).join("\n\n---\n\n")
   }
   const legado = await memoriaLegada(raiz, perfil)
-  return [perfilMd, legado, brief, instrucoesDaCasa(perfil, escrita)].filter(Boolean).join("\n\n---\n\n")
+  return [perfilMd, legado, instrucoesDaCasa(perfil, escrita)].filter(Boolean).join("\n\n---\n\n")
+}
+
+export function mensagemDoConselheiro(texto: string, brief: string, lembrete: string): string {
+  return [brief ? `<memória>\n${brief}\n</memória>` : "", texto, lembrete].filter(Boolean).join("\n\n")
+}
+
+export function mensagemDoExecutor(texto: string, foco?: string, focoDesligado = false): string {
+  const modo =
+    foco === "ticktask"
+      ? `<modo>\n${FOCO_TICKTASK}\n</modo>`
+      : focoDesligado
+        ? "<modo>O modo TickTask foi desligado: volte às instruções normais.</modo>"
+        : ""
+  return [modo, texto].filter(Boolean).join("\n\n")
 }
 
 // Até scripts/migrar-memoria.ts rodar, o memory.md antigo segue valendo; a migração o apaga.

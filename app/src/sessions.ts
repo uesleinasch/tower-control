@@ -1,7 +1,7 @@
 import { ambienteDoClaude, executavelDoClaude } from "./caminhos"
 import { comUso } from "./uso"
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
-import { montarSystemPrompt } from "./prompt"
+import { mensagemDoConselheiro, mensagemDoExecutor, montarSystemPrompt } from "./prompt"
 import { blocoDeEscrita, carregarRitmo, classificar, lembreteDeForma, normalizadorDeStream, orcamento } from "./ritmo"
 import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
 import { servidorTickTask } from "./ticktask"
@@ -49,6 +49,7 @@ interface OpcoesConversa {
   modelo?: string
   auto?: boolean
   foco?: "ticktask"
+  focoDesligado?: boolean
   memoria?: Memoria
   conversaId?: string
   consulta?: string
@@ -112,14 +113,14 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       ? await montarBrief(opcoes.memoria, perfil, opcoes.consulta ?? opcoes.texto)
       : ""
   let escrita: string | undefined
-  let prompt = opcoes.texto
+  let prompt = mensagemDoExecutor(opcoes.texto, opcoes.foco, opcoes.focoDesligado)
   if (conselheiro) {
     const ritmo = await carregarRitmo(opcoes.raiz, perfil)
     const o = orcamento(classificar(opcoes.consulta ?? opcoes.texto), ritmo)
-    escrita = blocoDeEscrita(o, ritmo)
-    prompt = `${opcoes.texto}\n\n${lembreteDeForma(o)}`
+    escrita = blocoDeEscrita(orcamento("padrao", ritmo), ritmo)
+    prompt = mensagemDoConselheiro(opcoes.texto, brief, lembreteDeForma(o))
   }
-  const system = await montarSystemPrompt(opcoes.raiz, perfil, opcoes.foco, brief, escrita)
+  const system = await montarSystemPrompt(opcoes.raiz, perfil, escrita)
   const saida = conselheiro ? normalizadorDeStream(opcoes.onChunk) : undefined
   const emitir = (pedaco: string) => (saida ? saida.receber(pedaco) : opcoes.onChunk(pedaco))
   const mcp = !conselheiro
@@ -139,7 +140,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     retomada: Boolean(opcoes.sessionId),
   }
   for await (const msg of comUso(opcoes.raiz, uso, query({
-    prompt: conselheiro ? prompt : comoStream(opcoes.texto),
+    prompt: conselheiro ? prompt : comoStream(prompt),
     options: {
       cwd: opcoes.raiz,
       pathToClaudeCodeExecutable: executavelDoClaude(),

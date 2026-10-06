@@ -140,6 +140,7 @@ async function responderNaConversa(
 ): Promise<void> {
   let meta = await lerMeta(RAIZ, id)
   const focoPedido = lerFoco(meta.perfil, foco)
+  const focoDesligado = focoPedido === null && meta.foco !== undefined
   if (focoPedido !== undefined && focoPedido !== (meta.foco ?? null)) {
     meta = await atualizarMeta(RAIZ, id, { foco: focoPedido ?? undefined })
   }
@@ -175,6 +176,7 @@ async function responderNaConversa(
     modelo: modeloEfetivo(meta),
     auto: meta.auto,
     foco: meta.foco,
+    focoDesligado,
     memoria: MEMORIA,
     conversaId: id,
     consulta: texto,

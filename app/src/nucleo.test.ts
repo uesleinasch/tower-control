@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
 import { parseFrontmatter, linhaIndice } from "./decisions"
-import { montarPautaParecer, montarSystemPrompt } from "./prompt"
+import { mensagemDoConselheiro, mensagemDoExecutor, montarPautaParecer, montarSystemPrompt } from "./prompt"
 import { gravarSemSobrescrever, slug } from "./board"
 import { lerAtalhos } from "./atalhos"
 import { tiposEmitidos, tiposTratados, type Protocolo } from "./protocolo"
@@ -140,7 +140,7 @@ describe("lerAtalhos", () => {
 
 test("montarSystemPrompt troca a política antiga pelo bloco de escrita", async () => {
   const raiz = join(import.meta.dir, "..", "modelos")
-  const poe = await montarSystemPrompt(raiz, "poe", undefined, "", "## Como escrever\n\nBLOCO-DE-TESTE")
+  const poe = await montarSystemPrompt(raiz, "poe", "## Como escrever\n\nBLOCO-DE-TESTE")
   expect(poe).toContain("BLOCO-DE-TESTE")
   expect(poe).not.toContain("## Tamanho da resposta")
   const padrao = await montarSystemPrompt(raiz, "nati")
@@ -182,20 +182,24 @@ describe("conselheiro e executor", () => {
     expect(poe).not.toContain("memory.md")
   })
 
-  test("o brief entra entre o perfil e as instruções da casa", async () => {
+  test("o brief vai na mensagem do turno, antes do texto e do lembrete, e não no system prompt", async () => {
     const raiz = join(import.meta.dir, "..", "modelos")
-    const poe = await montarSystemPrompt(raiz, "poe", undefined, "# Minha memória\n\nBRIEF-DE-TESTE")
-    const perfil = poe.indexOf("# ")
-    const brief = poe.indexOf("BRIEF-DE-TESTE")
-    const casa = poe.indexOf("# Instruções da casa")
-    expect(perfil).toBeLessThan(brief)
-    expect(brief).toBeLessThan(casa)
+    const mensagem = mensagemDoConselheiro("TEXTO-DO-UESLEI", "# Minha memória\n\nBRIEF-DE-TESTE", "(LEMBRETE)")
+    expect(mensagem.startsWith("<memória>\n# Minha memória")).toBe(true)
+    expect(mensagem.indexOf("</memória>")).toBeLessThan(mensagem.indexOf("TEXTO-DO-UESLEI"))
+    expect(mensagem.indexOf("TEXTO-DO-UESLEI")).toBeLessThan(mensagem.indexOf("(LEMBRETE)"))
+    expect(mensagemDoConselheiro("só texto", "", "(LEMBRETE)")).toBe("só texto\n\n(LEMBRETE)")
+    const poe = await montarSystemPrompt(raiz, "poe")
+    expect(poe).not.toContain("# Minha memória")
+    expect(poe).toContain("bloco <memória>")
   })
 
-  test("o executor não recebe brief", async () => {
+  test("o foco do executor vai na mensagem do turno, nunca no system prompt", async () => {
     const raiz = join(import.meta.dir, "..", "modelos")
-    const alfred = await montarSystemPrompt(raiz, "alfred", undefined, "BRIEF-DE-TESTE")
-    expect(alfred).not.toContain("BRIEF-DE-TESTE")
+    expect(await montarSystemPrompt(raiz, "alfred")).not.toContain("## Modo TickTask")
+    expect(mensagemDoExecutor("crie a tarefa", "ticktask")).toMatch(/^<modo>\n## Modo TickTask[\s\S]*<\/modo>\n\ncrie a tarefa$/)
+    expect(mensagemDoExecutor("ls", undefined, true)).toContain("modo TickTask foi desligado")
+    expect(mensagemDoExecutor("ls")).toBe("ls")
   })
 })
 
