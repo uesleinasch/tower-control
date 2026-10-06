@@ -5,6 +5,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../conexao/avisos.dart';
 import '../nucleo/avisos.dart';
 
+const aparelhoDesktop = 'desktop';
+
 class Notificador {
   Notificador({required this.aparelho}) : campoDeTexto = Platform.isAndroid;
 

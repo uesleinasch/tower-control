@@ -8,8 +8,10 @@ import 'conexao/pareamento.dart';
 import 'estado/sala.dart';
 import 'estado/servidor.dart';
 import 'nucleo/autostart.dart';
+import 'nucleo/avisos.dart';
 import 'sistema/aviso_na_tela.dart';
 import 'sistema/desktop.dart';
+import 'sistema/escuta_avisos.dart';
 import 'sistema/notificador.dart';
 import 'sistema/servico_avisos.dart';
 import 'tela/configuracao.dart';
@@ -71,9 +73,12 @@ Future<void> main(List<String> argumentos) async {
   final desktop = Desktop(sala);
   if (!await assumirInstanciaUnica(desktop.mostrar)) exit(0);
   sala.iniciar();
-  AppLifecycleListener(
-    onStateChange: (estado) => sala.presenca.definirPrimeiroPlano(estado == AppLifecycleState.resumed),
-  );
+  final notificador = Notificador(aparelho: aparelhoDesktop);
+  await notificador.iniciar(aoResponder: (resposta) async {
+    if (resposta.actionId == null || resposta.actionId == abrirConversa) await desktop.mostrar();
+    await responderAoAviso(resposta, sala, notificador, servidor.resolver);
+  });
+  EscutaDeAvisos(endereco: servidor.resolver, prefs: () async => prefs, notificador: notificador).iniciar();
   final autostart = Autostart();
   runApp(ControlTower(
     sala: sala,

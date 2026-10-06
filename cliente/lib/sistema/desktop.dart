@@ -60,6 +60,7 @@ class Desktop with WindowListener {
   String? _iconeAtual;
 
   Future<void> iniciar({required bool naBandeja}) async {
+    sala.presenca.definirPrimeiroPlano(!naBandeja);
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
       const WindowOptions(size: Size(1180, 780), minimumSize: Size(420, 560), center: true, title: 'Control Tower'),
@@ -88,7 +89,16 @@ class Desktop with WindowListener {
   }
 
   @override
-  void onWindowClose() => windowManager.hide();
+  void onWindowClose() {
+    sala.presenca.definirPrimeiroPlano(false);
+    windowManager.hide();
+  }
+
+  @override
+  void onWindowFocus() => sala.presenca.definirPrimeiroPlano(true);
+
+  @override
+  void onWindowBlur() => sala.presenca.definirPrimeiroPlano(false);
 
   void _montarBandeja() {
     final icone = bandeja.TrayIcon.create();
