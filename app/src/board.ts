@@ -3,7 +3,7 @@ import { rename } from "node:fs/promises"
 import { CONSELHEIROS, type Conselheiro } from "./tipos"
 import { montarSystemPromptParecer, montarPautaParecer, montarPromptSintese } from "./prompt"
 import { perguntarUmaVez } from "./sessions"
-import { slug } from "./texto"
+import { dataLocal, slug } from "./texto"
 import type { Memoria } from "./memoria/tipos"
 import { montarBrief } from "./memoria/recuperacao"
 
@@ -53,7 +53,7 @@ async function gravarAta(
   pareceres: { perfil: Conselheiro; texto: string }[],
   sintese: string,
 ): Promise<string> {
-  const data = new Date().toISOString().slice(0, 10)
+  const data = dataLocal()
   const nome = `${data}-${slug(pauta) || "convocacao"}.md`
   const caminho = join(raiz, "board", "minutes", nome)
   const corpo = [

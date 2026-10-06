@@ -1,3 +1,4 @@
+import { dataLocal } from "../texto"
 import { lerPerfil } from "../prompt"
 import type { Conselheiro } from "../tipos"
 import { alterarEstado } from "./agenda"
@@ -51,7 +52,7 @@ export async function sonhar(raiz: string, m: Memoria, persona: Conselheiro): Pr
 
   if (precisaSonhar(frias, jeito)) {
     const perfil = await lerPerfil(raiz, persona)
-    const data = new Date().toISOString().slice(0, 10)
+    const data = dataLocal()
     await rodarPersona({
       raiz,
       persona,

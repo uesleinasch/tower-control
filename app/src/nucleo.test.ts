@@ -48,6 +48,7 @@ import { acoesDaPersona, caminhoNovo, placarVazio } from "./memoria/ferramentas"
 import { Espera, consolidacaoPendente, rodarUmaVez, sonhoDevido } from "./memoria/agenda"
 import { montarPedidoSonho, precisaSonhar } from "./memoria/sonho"
 import { montarPedidoConsolidacao } from "./memoria/consolidacao"
+import { dataLocal } from "./texto"
 import { lerExport, medirCorpus, rajadas } from "./ritmo-corpus"
 import {
   RITMO_NEUTRO,
@@ -767,6 +768,23 @@ describe("consolidação", () => {
     expect(pedido).toContain("[2026-09-30 10:00] Ueslei: o deploy caiu")
     expect(pedido).toContain("[2026-09-30 10:01] Nati: que log apareceu?")
     expect(pedido).toContain("- Deploy: usa GitLab (fatos/deploy.md)")
+  })
+
+  test("a hora da conversa vem no fuso local, não em UTC", () => {
+    const antes = process.env.TZ
+    process.env.TZ = "America/Sao_Paulo"
+    try {
+      const pedido = montarPedidoConsolidacao(
+        "poe",
+        { id: "2026-09-30-poe-abc", perfil: "poe", titulo: "Hub", criadaEm: "" },
+        [{ role: "user", texto: "e aí", ts: "2026-10-01T01:55:30.321Z", perfil: "poe" }],
+        [],
+      )
+      expect(pedido).toContain("[2026-09-30 22:55] Ueslei: e aí")
+      expect(dataLocal(new Date("2026-10-01T01:55:30Z"))).toBe("2026-09-30")
+    } finally {
+      process.env.TZ = antes
+    }
   })
 })
 

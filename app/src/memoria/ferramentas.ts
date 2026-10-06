@@ -1,7 +1,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
 import type { Conselheiro } from "../tipos"
-import { slug } from "../texto"
+import { dataLocal, slug } from "../texto"
 import {
   COLETIVO,
   MemoriaIndisponivel,
@@ -28,7 +28,7 @@ export const FERRAMENTAS_MEMORIA_CONSOLIDACAO = [
 const INDISPONIVEL = "Memória indisponível agora. Siga a conversa sem ela."
 
 function hoje(): string {
-  return new Date().toISOString().slice(0, 10)
+  return dataLocal()
 }
 
 export function caminhoNovo(tipo: TipoLembranca, titulo: string, data: string = hoje()): string {

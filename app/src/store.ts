@@ -1,6 +1,7 @@
 import { join } from "node:path"
 import { randomUUID } from "node:crypto"
 import { appendFile, mkdir, readdir, rename, rm } from "node:fs/promises"
+import { dataLocal } from "./texto"
 import { excluirAnexos } from "./anexos"
 import type { Mensagem, MetaConversa, Perfil } from "./tipos"
 
@@ -50,7 +51,7 @@ export async function criarConversa(
   extras?: Partial<MetaConversa>,
 ): Promise<MetaConversa> {
   const agora = new Date()
-  const id = `${agora.toISOString().slice(0, 10)}-${perfil}-${agora.getTime().toString(36)}`
+  const id = `${dataLocal(agora)}-${perfil}-${agora.getTime().toString(36)}`
   const meta: MetaConversa = {
     id,
     perfil,

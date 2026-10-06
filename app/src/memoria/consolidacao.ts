@@ -1,3 +1,4 @@
+import { dataHoraLocal } from "../texto"
 import { NOMES, lerPerfil } from "../prompt"
 import { atualizarMeta, lerMensagens, listarConversas } from "../store"
 import { ehConselheiro, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
@@ -22,7 +23,7 @@ o que vale lembrar.
 
 function linha(m: Mensagem, persona: Conselheiro): string {
   const quem = m.role === "user" ? "Ueslei" : NOMES[persona]
-  const quando = m.ts.slice(0, 16).replace("T", " ")
+  const quando = dataHoraLocal(new Date(m.ts))
   return `[${quando}] ${quem}: ${m.texto.trim()}`
 }
 
