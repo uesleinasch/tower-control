@@ -19,7 +19,7 @@ import {
   perfilExcluivel,
 } from "./tipos"
 import { exigeAprovacaoSempre } from "./comandos"
-import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, idValido, lerMensagens } from "./store"
+import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, filaPorChave, idValido, lerMensagens, lerMeta } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
 import { raizDosDados } from "./caminhos"
 import { MARCADOR, origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
@@ -331,11 +331,48 @@ describe("excluirConversa", () => {
     await rm(raiz, { recursive: true, force: true })
   })
 
+  test("atualizações concorrentes do meta não se perdem", async () => {
+    const { raiz, id } = await conversaComAnexo()
+    await Promise.all([
+      atualizarMeta(raiz, id, { modelo: "sonnet" }),
+      atualizarMeta(raiz, id, { consolidadoAte: 7 }),
+      atualizarMeta(raiz, id, { auto: true }),
+    ])
+    const meta = await lerMeta(raiz, id)
+    expect(meta.sessionId).toBe("11111111-2222-3333-4444-555555555555")
+    expect([meta.modelo, meta.consolidadoAte, meta.auto]).toEqual(["sonnet", 7, true])
+    await rm(raiz, { recursive: true, force: true })
+  })
+
   test("id fora do formato não vira caminho de arquivo", async () => {
     expect(idValido("2026-08-22-poe-mt49tr4j")).toBe(true)
     expect(idValido("../../etc/passwd")).toBe(false)
     expect(idValido("2026-08-22-poe-mt4/../x")).toBe(false)
     await expect(excluirConversa("/tmp", "../../etc/passwd")).rejects.toThrow("conversa inválida")
+  })
+})
+
+describe("filaPorChave", () => {
+  test("serializa a mesma chave, segue depois de erro e não prende chaves diferentes", async () => {
+    const naFila = filaPorChave()
+    const ordem: string[] = []
+    const passo = (rotulo: string, ms: number) => async () => {
+      ordem.push(`${rotulo}:início`)
+      await Bun.sleep(ms)
+      ordem.push(`${rotulo}:fim`)
+    }
+    const falha = naFila("a", async () => {
+      throw new Error("x")
+    })
+    await Promise.all([
+      falha.catch(() => {}),
+      naFila("a", passo("a1", 20)),
+      naFila("a", passo("a2", 1)),
+      naFila("b", passo("b", 1)),
+    ])
+    await expect(falha).rejects.toThrow("x")
+    expect(ordem.indexOf("a1:fim")).toBeLessThan(ordem.indexOf("a2:início"))
+    expect(ordem.indexOf("b:fim")).toBeLessThan(ordem.indexOf("a1:fim"))
   })
 })
 

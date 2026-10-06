@@ -25,6 +25,7 @@ import {
   lerMensagens,
   listarConversas,
   excluirConversa,
+  filaPorChave,
 } from "./store"
 
 const CODIGO = raizDoCodigo()
@@ -39,6 +40,7 @@ try {
 }
 const PORTA = Number(process.env.TOWER_PORTA ?? 7878)
 const MEMORIA = memoriaHttp()
+const naFilaDaConversa = filaPorChave()
 
 function espelharEmSegundoPlano(): void {
   void espelharColetivo(RAIZ, MEMORIA).catch((erro: Error) =>
@@ -209,15 +211,17 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
         auto: msg.auto === true ? true : undefined,
         foco: msg.foco === "ticktask" ? "ticktask" : undefined,
       })
-      mandar(ws, { tipo: "criada", meta })
-      await responderNaConversa(
-        ws,
-        meta.id,
-        texto,
-        msg.citacao ? String(msg.citacao) : undefined,
-        undefined,
-        anexos,
-      )
+      await naFilaDaConversa(meta.id, () => {
+        mandar(ws, { tipo: "criada", meta })
+        return responderNaConversa(
+          ws,
+          meta.id,
+          texto,
+          msg.citacao ? String(msg.citacao) : undefined,
+          undefined,
+          anexos,
+        )
+      })
       return
     }
     case "mensagem": {
@@ -226,15 +230,17 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const anexos = await resolverAnexos(ws, msg.anexos)
       if (!id) throw new Error("conversa inválida")
       if (!texto && !anexos.length) throw new Error("mensagem vazia")
-      await responderNaConversa(
-        ws,
-        id,
-        texto,
-        msg.citacao ? String(msg.citacao) : undefined,
-        msg.modelo !== undefined ? String(msg.modelo) : undefined,
-        anexos,
-        msg.auto !== undefined ? msg.auto === true : undefined,
-        msg.foco,
+      await naFilaDaConversa(id, () =>
+        responderNaConversa(
+          ws,
+          id,
+          texto,
+          msg.citacao ? String(msg.citacao) : undefined,
+          msg.modelo !== undefined ? String(msg.modelo) : undefined,
+          anexos,
+          msg.auto !== undefined ? msg.auto === true : undefined,
+          msg.foco,
+        ),
       )
       return
     }
@@ -244,7 +250,7 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "excluir": {
       const id = String(msg.conversaId ?? "")
-      const sessionId = await excluirConversa(RAIZ, id)
+      const sessionId = await naFilaDaConversa(id, () => excluirConversa(RAIZ, id))
       await apagarSessao(RAIZ, sessionId)
       mandar(ws, { tipo: "excluida", id })
       mandar(ws, { tipo: "conversas", lista: await listarConversas(RAIZ) })

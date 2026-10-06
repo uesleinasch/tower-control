@@ -1,4 +1,5 @@
 import { join } from "node:path"
+import { randomUUID } from "node:crypto"
 import { appendFile, mkdir, readdir, rename, rm } from "node:fs/promises"
 import { excluirAnexos } from "./anexos"
 import type { Mensagem, MetaConversa, Perfil } from "./tipos"
@@ -20,8 +21,23 @@ function dirConversas(raiz: string): string {
   return join(raiz, "conversations")
 }
 
+export function filaPorChave() {
+  const caudas = new Map<string, Promise<unknown>>()
+  return <T>(chave: string, tarefa: () => Promise<T>): Promise<T> => {
+    const atual = (caudas.get(chave) ?? Promise.resolve()).then(tarefa)
+    const cauda = atual.catch(() => {})
+    caudas.set(chave, cauda)
+    void cauda.then(() => {
+      if (caudas.get(chave) === cauda) caudas.delete(chave)
+    })
+    return atual
+  }
+}
+
+const naFilaDoMeta = filaPorChave()
+
 async function escreverAtomico(caminho: string, conteudo: string): Promise<void> {
-  const temporario = `${caminho}.tmp`
+  const temporario = `${caminho}.${randomUUID()}.tmp`
   await Bun.write(temporario, conteudo)
   await rename(temporario, caminho)
 }
@@ -54,10 +70,12 @@ export async function atualizarMeta(
   mudancas: Partial<MetaConversa>,
 ): Promise<MetaConversa> {
   const caminho = join(dirConversas(raiz), `${exigirId(id)}.meta.json`)
-  const atual: MetaConversa = await Bun.file(caminho).json()
-  const nova = { ...atual, ...mudancas }
-  await escreverAtomico(caminho, JSON.stringify(nova, null, 2))
-  return nova
+  return naFilaDoMeta(caminho, async () => {
+    const atual: MetaConversa = await Bun.file(caminho).json()
+    const nova = { ...atual, ...mudancas }
+    await escreverAtomico(caminho, JSON.stringify(nova, null, 2))
+    return nova
+  })
 }
 
 export async function lerMeta(raiz: string, id: string): Promise<MetaConversa> {
