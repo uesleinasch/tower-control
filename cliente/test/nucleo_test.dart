@@ -60,6 +60,7 @@ final _saidas = <Saida>[
   const ConvocarBoard('pauta'),
   const PedirDecisoes(),
   const PedirDecisao('d1'),
+  const Visivel('c'),
 ];
 
 void main() {

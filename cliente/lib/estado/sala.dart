@@ -6,6 +6,7 @@ import '../conexao/canal.dart';
 import '../nucleo/protocolo.dart';
 import 'areas.dart';
 import 'chat.dart';
+import 'presenca.dart';
 import 'servidor.dart';
 
 enum Tela { conversas, chat, board, decisoes, configuracao }
@@ -16,6 +17,8 @@ class Sala extends ChangeNotifier {
     conversas = EstadoConversas(canal.enviar);
     board = EstadoBoard(canal.enviar);
     decisoes = EstadoDecisoes(canal.enviar);
+    presenca = Presenca(canal.enviar);
+    chat.addListener(_atualizarPresenca);
     _assinaturas = [
       canal.eventos.listen(_tratar),
       canal.conexoes.listen((_) => _aoConectar()),
@@ -28,9 +31,11 @@ class Sala extends ChangeNotifier {
   late final EstadoConversas conversas;
   late final EstadoBoard board;
   late final EstadoDecisoes decisoes;
+  late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
   var _primeiraConexao = true;
+  var _layoutDuplo = false;
 
   Tela tela = Tela.conversas;
   final pedidosDeNova = ValueNotifier(0);
@@ -46,6 +51,18 @@ class Sala extends ChangeNotifier {
     tela = nova;
     if (nova == Tela.decisoes && !decisoes.carregada) decisoes.carregar();
     notifyListeners();
+    _atualizarPresenca();
+  }
+
+  void definirLayoutDuplo(bool duplo) {
+    if (_layoutDuplo == duplo) return;
+    _layoutDuplo = duplo;
+    _atualizarPresenca();
+  }
+
+  void _atualizarPresenca() {
+    final chatNaTela = tela == Tela.chat || (_layoutDuplo && tela == Tela.conversas);
+    presenca.definirNaTela(chatNaTela ? chat.conversaId : null);
   }
 
   void novaConversa(String perfil, {String? modelo}) {
@@ -60,6 +77,7 @@ class Sala extends ChangeNotifier {
 
   void _aoConectar() {
     conversas.listar();
+    presenca.reconectou();
     if (_primeiraConexao) {
       _primeiraConexao = false;
       return;
@@ -105,6 +123,7 @@ class Sala extends ChangeNotifier {
       a.cancel();
     }
     _avisos.close();
+    chat.removeListener(_atualizarPresenca);
     pedidosDeNova.dispose();
     chat.dispose();
     conversas.dispose();

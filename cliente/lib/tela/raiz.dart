@@ -57,8 +57,11 @@ class _RaizState extends State<Raiz> {
             final bloqueio = widget.bloqueio?.call(context);
             if (bloqueio != null) return Scaffold(body: bloqueio);
             return LayoutBuilder(
-              builder: (context, limites) =>
-                  limites.maxWidth >= larguraDupla ? _duplo(context) : _compacto(context),
+              builder: (context, limites) {
+                final duplo = limites.maxWidth >= larguraDupla;
+                WidgetsBinding.instance.addPostFrameCallback((_) => sala.definirLayoutDuplo(duplo));
+                return duplo ? _duplo(context) : _compacto(context);
+              },
             );
           },
         ),

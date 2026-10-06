@@ -269,3 +269,13 @@ class PedirDecisao extends Saida {
   @override
   Map<String, Object?> get campos => {'id': id};
 }
+
+class Visivel extends Saida {
+  const Visivel(this.conversaId);
+  final String? conversaId;
+
+  @override
+  String get tipo => 'visivel';
+  @override
+  Map<String, Object?> get campos => {'conversaId': conversaId};
+}

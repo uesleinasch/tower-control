@@ -28,6 +28,7 @@ Future<void> main(List<String> argumentos) async {
         fechar?.cancel();
         sala.canal.iniciar();
       },
+      onStateChange: (estado) => sala.presenca.definirPrimeiroPlano(estado == AppLifecycleState.resumed),
     );
     sala.iniciar();
     runApp(ControlTower(sala: sala, bloqueio: (_) => bloqueioDoCelular(sala, servidor)));
@@ -38,6 +39,9 @@ Future<void> main(List<String> argumentos) async {
   final desktop = Desktop(sala);
   if (!await assumirInstanciaUnica(desktop.mostrar)) exit(0);
   sala.iniciar();
+  AppLifecycleListener(
+    onStateChange: (estado) => sala.presenca.definirPrimeiroPlano(estado == AppLifecycleState.resumed),
+  );
   final autostart = Autostart();
   runApp(ControlTower(
     sala: sala,

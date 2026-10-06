@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
+import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,6 +155,33 @@ void main() {
       expect(d.filtradas.single.id, '1');
       d.filtrar('casa');
       expect(d.filtradas.single.id, '2');
+    });
+  });
+
+  group('Presenca', () {
+    List<Object?> visiveis() => [for (final e in enviados) e['conversaId']];
+
+    test('informa a conversa na tela só em primeiro plano e sem repetir', () {
+      final p = Presenca(enviar)
+        ..definirNaTela('c1')
+        ..definirNaTela('c1')
+        ..definirPrimeiroPlano(false)
+        ..definirPrimeiroPlano(true)
+        ..definirNaTela(null);
+      expect(enviados.every((e) => e['tipo'] == 'visivel'), isTrue);
+      expect(visiveis(), ['c1', null, 'c1', null]);
+      expect(p.visivel, isNull);
+    });
+
+    test('sem conexão tenta de novo na próxima mudança e repete tudo ao reconectar', () {
+      online = false;
+      final p = Presenca(enviar)..definirNaTela('c1');
+      expect(enviados, isEmpty);
+      online = true;
+      p
+        ..definirNaTela('c1')
+        ..reconectou();
+      expect(visiveis(), ['c1', 'c1']);
     });
   });
 }
