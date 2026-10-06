@@ -161,7 +161,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       const evento = (
         msg as { event?: { type?: string; delta?: { type?: string; text?: string }; content_block?: { type?: string } } }
       ).event
-      if (saida && evento?.type === "content_block_start" && evento.content_block?.type === "text" && acumulado) {
+      if (evento?.type === "content_block_start" && evento.content_block?.type === "text" && acumulado) {
         acumulado += "\n\n"
         emitir("\n\n")
       }
