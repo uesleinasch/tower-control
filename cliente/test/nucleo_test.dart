@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:control_tower/nucleo/avisos.dart';
 import 'package:control_tower/nucleo/baloes.dart';
 import 'package:control_tower/nucleo/enderecos.dart';
 import 'package:control_tower/nucleo/formato.dart';
@@ -175,6 +176,103 @@ void main() {
     test('disputar devolve null quando todos falham', () async {
       expect(await disputar(['a', 'b'], (e) async => e == 'a' ? null : throw Exception()), isNull);
       expect(await disputar([], (e) async => {}), isNull);
+    });
+  });
+
+  group('avisos', () {
+    final agora = DateTime.utc(2026, 10, 6, 12);
+    Notificacao aviso(String tipo, List<String> acoes, {DateTime? criadoEm, DateTime? expiraEm, String? conversaId}) =>
+        lerLinha(jsonEncode({
+          'id': 'a1',
+          'seq': 7,
+          'tipo': tipo,
+          'titulo': 't',
+          'corpo': 'c',
+          'alvo': {'conversaId': ?conversaId, 'tarefaId': 3},
+          'acoes': acoes,
+          'criadoEm': (criadoEm ?? agora).toIso8601String(),
+          'expiraEm': ?expiraEm?.toIso8601String(),
+        })) as Notificacao;
+
+    test('linha NDJSON vira aviso, resolução ou nada', () {
+      final n = aviso('lembrete', ['concluir', 'adiar']);
+      expect([n.seq, n.tarefaId, n.acoes], [7, 3, ['concluir', 'adiar']]);
+      final r = lerLinha('{"tipo":"resolvido","id":"a1","seq":8,"como":"lido","em":"x","aparelho":"desktop"}');
+      expect(r, isA<Resolucao>());
+      expect([(r as Resolucao).como, r.aparelho, r.seq], ['lido', 'desktop', 8]);
+      expect(lerLinha('{}'), isNull);
+      expect(lerLinha(''), isNull);
+      expect(lerLinha('lixo'), isNull);
+      expect(lerLinha('{"tipo":"resolvido","id":"a1"}'), isNull);
+    });
+
+    test('carga da notificação ida e volta', () {
+      final n = aviso('resposta', ['responder'], conversaId: '2026-10-06-poe-abc');
+      final volta = Notificacao.daCarga(n.paraCarga())!;
+      expect([volta.id, volta.tipo, volta.conversaId, volta.acoes], [n.id, 'resposta', '2026-10-06-poe-abc', ['responder']]);
+      expect(Notificacao.daCarga('não é json'), isNull);
+      expect(Notificacao.daCarga(null), isNull);
+    });
+
+    test('tipo decide o canal', () {
+      expect(
+        [for (final t in ['aprovacao', 'lembrete', 'atrasada', 'resumo', 'resposta']) canalDe(t)],
+        [Canal.aprovacoes, Canal.lembretes, Canal.lembretes, Canal.resumo, Canal.respostas],
+      );
+    });
+
+    test('botões seguem as ações do aviso; sem campo de texto, responder abre a conversa', () {
+      List<String> ids(Notificacao n, {bool texto = true}) =>
+          [for (final b in botoesDe(n, campoDeTexto: texto, agora: agora)) b.id];
+      expect(ids(aviso('aprovacao', ['aprovar', 'negar'])), ['aprovar', 'negar']);
+      expect(ids(aviso('lembrete', ['concluir', 'adiar'])), ['concluir', 'adiar-1h', 'adiar-amanha']);
+      expect(ids(aviso('resumo', [])), isEmpty);
+      final resposta = aviso('resposta', ['responder']);
+      expect(botoesDe(resposta, campoDeTexto: true, agora: agora).single.comTexto, isTrue);
+      expect(ids(resposta, texto: false), [abrirConversa]);
+    });
+
+    test('aprovação vencida fica sem botões e diz que expirou', () {
+      final vencida = aviso('aprovacao', ['aprovar', 'negar'], expiraEm: agora);
+      expect(botoesDe(vencida, campoDeTexto: true, agora: agora), isEmpty);
+      expect(corpoDe(vencida, agora), contains('Expirou'));
+      final viva = aviso('aprovacao', ['aprovar', 'negar'], expiraEm: agora.add(const Duration(seconds: 1)));
+      expect(corpoDe(viva, agora), 'c');
+    });
+
+    test('botão vira o corpo do POST', () {
+      expect(pedidoDoBotao('aprovar', aparelho: 'celular'), {'aparelho': 'celular', 'acao': 'aprovar'});
+      expect(pedidoDoBotao('adiar-amanha', aparelho: 'celular'),
+          {'aparelho': 'celular', 'acao': 'adiar', 'adiarPara': 'amanha'});
+      expect(pedidoDoBotao('responder', texto: ' ok ', aparelho: 'celular'),
+          {'aparelho': 'celular', 'acao': 'responder', 'texto': 'ok'});
+      expect(pedidoDoBotao('responder', texto: '  ', aparelho: 'celular'), isNull);
+      expect(pedidoDoBotao(abrirConversa, aparelho: 'celular'), isNull);
+    });
+
+    test('resultado da ação em texto curto', () {
+      expect(textoDoResultado(200, {'como': 'aprovado'}), 'Aprovado');
+      expect(textoDoResultado(409, {'como': 'negado', 'aparelho': 'desktop'}), 'Já resolvido no desktop: Negado');
+      expect(textoDoResultado(404, {}), 'Este aviso não existe mais');
+      expect(textoDoResultado(503, {'erro': 'O TickTask está fechado'}), 'O TickTask está fechado');
+    });
+
+    test('backlog antigo chega sem som e o muito antigo é ignorado', () {
+      expect(alertaDe(aviso('resposta', [], criadoEm: agora.subtract(const Duration(seconds: 30))), agora), Alerta.tocar);
+      expect(alertaDe(aviso('resposta', [], criadoEm: agora.subtract(const Duration(minutes: 5))), agora), Alerta.silencioso);
+      expect(alertaDe(aviso('resposta', [], criadoEm: agora.subtract(const Duration(hours: 25))), agora), Alerta.ignorar);
+    });
+
+    test('id da notificação é estável e positivo', () {
+      expect(idDaNotificacao('abc'), idDaNotificacao('abc'));
+      expect(idDaNotificacao('abc'), isNot(idDaNotificacao('abd')));
+      expect(idDaNotificacao('9b6f3c1e-0000-4000-8000-000000000000'), greaterThanOrEqualTo(0));
+    });
+
+    test('toque leva à conversa ou ao Alfred no TickTask', () {
+      expect((destinoDe(aviso('resposta', [], conversaId: 'c1')) as AbrirConversa).conversaId, 'c1');
+      expect(destinoDe(aviso('lembrete', [])), isA<NovaComAlfredNoTickTask>());
+      expect(destinoDe(aviso('resumo', [])), isA<NovaComAlfredNoTickTask>());
     });
   });
 }
