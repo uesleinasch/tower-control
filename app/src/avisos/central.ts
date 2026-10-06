@@ -12,7 +12,7 @@ export interface Aviso {
   tipo: TipoDeAviso
   titulo: string
   corpo: string
-  alvo: { conversaId?: string; permissaoId?: string; tarefaId?: number }
+  alvo: { conversaId?: string; permissaoId?: string; tarefaId?: number; campo?: "agendamento" | "prazo" }
   acoes: Acao[]
   criadoEm: string
   expiraEm?: string
