@@ -4,6 +4,7 @@ const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", alfred: 
 const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", board: "B", decisoes: "D" }
 
 const EXECUTORES = ["alfred"]
+const ROTULOS_PERMISSAO = { aprovado: "permitido", negado: "negado", expirado: "expirou — comando negado" }
 const ICONES_ANEXO = { imagem: "🖼", texto: "📄", pdf: "📕" }
 const LADO_MAXIMO = 1600
 const LIMITE_ANEXO = 10 * 1024 * 1024
@@ -277,6 +278,7 @@ function cartaoDePermissao(msg) {
       `<button data-ok="1">Permitir</button><button data-ok="0">Negar</button>` +
       `</div>`,
   )
+  cartao.dataset.permissao = msg.id
   const acoes = cartao.querySelector(".acoes")
   acoes.addEventListener("click", (ev) => {
     const botao = ev.target.closest("button")
@@ -559,6 +561,11 @@ function tratar(msg) {
     }
     case "comando": {
       adicionarMensagem("comando", `▸ ${escapar(msg.comando)}`)
+      break
+    }
+    case "permissao-resolvida": {
+      const acoes = document.querySelector(`[data-permissao="${CSS.escape(msg.id)}"] .acoes`)
+      if (acoes?.querySelector("button")) acoes.innerHTML = `<small>${ROTULOS_PERMISSAO[msg.como] ?? msg.como}</small>`
       break
     }
     case "atalhos": {

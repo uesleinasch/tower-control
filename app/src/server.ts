@@ -130,17 +130,21 @@ interface Pendente {
 
 const pendentes = new Map<string, Pendente>()
 
-function soltarPermissao(id: string, permitido: boolean): boolean {
+// O cartão do chat precisa saber quando a permissão se resolve por fora (aviso ou prazo):
+// senão fica com os botões vivos para uma permissão que já não existe.
+function soltarPermissao(id: string, permitido: boolean, como: Como = permitido ? "aprovado" : "negado"): boolean {
   const pendente = pendentes.get(id)
   if (!pendente) return false
   clearTimeout(pendente.prazo)
   pendentes.delete(id)
   pendente.resolver(permitido)
+  const aberto = abertoOuNada(pendente.ws)
+  if (aberto) mandar(aberto, { tipo: "permissao-resolvida", id, como })
   return true
 }
 
 function resolverPermissao(id: string, permitido: boolean, como: Como = permitido ? "aprovado" : "negado"): void {
-  if (soltarPermissao(id, permitido)) avisar(AVISOS.resolver(id, como))
+  if (soltarPermissao(id, permitido, como)) avisar(AVISOS.resolver(id, como))
 }
 
 function avisarAprovacao(id: string, pendente: Pendente): void {
