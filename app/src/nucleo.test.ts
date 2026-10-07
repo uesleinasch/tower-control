@@ -25,6 +25,9 @@ import {
 import { exigeAprovacaoSempre } from "./comandos"
 import { Elenco, casaInicial, personaIdValido, personaInicial, validarEquipe } from "./orquestra/equipe"
 import { lerElenco, migrarParaPersonas } from "./orquestra/elenco"
+import { lerNovaTarefa, podeMudar } from "./orquestra/tarefa"
+import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
+import { Database } from "bun:sqlite"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, filaPorChave, idValido, lerMensagens, lerMeta } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
 import { raizDosDados } from "./caminhos"
@@ -282,6 +285,94 @@ describe("personas e equipes", () => {
       await migrarParaPersonas(raiz)
       await Bun.write(join(raiz, "profiles", "poe", "persona.json"), JSON.stringify({ id: "nati", nome: "Nati" }))
       await expect(lerElenco(raiz)).rejects.toThrow("id diferente da pasta")
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("tarefas internas", () => {
+  const casa = casaInicial(["alfred", "nati", "poe"])
+  const equipes = (id: string) => (id === "casa" ? casa : undefined)
+  const nova = (extra: Record<string, unknown> = {}) =>
+    lerNovaTarefa({ equipe: "casa", posicao: "executor", titulo: "Rodar o backup", ...extra }, equipes)
+
+  test("tarefa nova valida equipe, posição e título, e começa em a fazer", () => {
+    expect(nova()).toMatchObject({ equipe: "casa", posicao: "executor", status: "a_fazer", pai: null, dependeDe: [] })
+    expect(() => lerNovaTarefa({ equipe: "x", posicao: "executor", titulo: "t" }, equipes)).toThrow("equipe desconhecida")
+    expect(() => nova({ posicao: "chefe" })).toThrow("não tem a posição chefe")
+    expect(() => nova({ titulo: "  " })).toThrow("precisa de um título")
+    expect(() => nova({ status: "concluida" })).toThrow("backlog ou a fazer")
+    expect(nova({ dependeDe: [3, "3", -1, "x"] }).dependeDe).toEqual([3])
+  })
+
+  test("transições seguem a máquina de estados", () => {
+    expect(podeMudar("a_fazer", "em_andamento")).toBe(true)
+    expect(podeMudar("backlog", "concluida")).toBe(false)
+    expect(podeMudar("concluida", "a_fazer")).toBe(true)
+    expect(podeMudar("cancelada", "em_andamento")).toBe(false)
+  })
+
+  test("o repositório cria, muda status e registra cada passo", () => {
+    const repo = new Repositorio(":memory:")
+    try {
+      const t = repo.criar(nova({ porque: "não perder dados" }), "ueslei")
+      expect(t).toMatchObject({ id: 1, status: "a_fazer", dono: null, porque: "não perder dados", criadaPor: "ueslei" })
+      expect(repo.mudarStatus(1, "em_andamento", "ueslei").dono).toBe("ueslei")
+      expect(repo.mudarStatus(1, "a_fazer", "ueslei").dono).toBeNull()
+      expect(() => repo.mudarStatus(1, "em_revisao", "ueslei")).toThrow("não dá para ir de a fazer para em revisão")
+      repo.comentar(1, "ueslei", "  rodar à noite  ")
+      expect(repo.registros(1).map((r) => [r.tipo, r.texto])).toEqual([
+        ["status", "criou em a fazer"],
+        ["status", "a fazer → em andamento"],
+        ["status", "em andamento → a fazer"],
+        ["comentario", "rodar à noite"],
+      ])
+      expect(() => repo.comentar(1, "ueslei", " ")).toThrow("comentário vazio")
+      expect(() => repo.mudarStatus(9, "a_fazer", "ueslei")).toThrow("tarefa 9 não existe")
+    } finally {
+      repo.fechar()
+    }
+  })
+
+  test("dependência pendente impede começar, e checkout dá um dono só", () => {
+    const repo = new Repositorio(":memory:")
+    try {
+      repo.criar(nova(), "ueslei")
+      repo.criar(nova({ dependeDe: [1] }), "ueslei")
+      expect(() => repo.criar(nova({ dependeDe: [7] }), "ueslei")).toThrow("tarefa 7 não existe")
+      expect(() => repo.checkout(2, "execucao-a")).toThrow("depende de tarefa não concluída")
+      expect(repo.checkout(1, "execucao-a").dono).toBe("execucao-a")
+      expect(() => repo.checkout(1, "execucao-b")).toThrow()
+      repo.mudarStatus(1, "concluida", "execucao-a")
+      expect(repo.checkout(2, "execucao-b").dono).toBe("execucao-b")
+      expect(repo.listar("casa").map((t) => t.id).sort()).toEqual([1, 2])
+      expect(repo.listar("outra")).toEqual([])
+    } finally {
+      repo.fechar()
+    }
+  })
+
+  test("tarefa-pai precisa existir e ser da mesma equipe", () => {
+    const repo = new Repositorio(":memory:")
+    try {
+      expect(() => repo.criar(nova({ pai: 5 }), "ueslei")).toThrow("tarefa 5 não existe")
+      repo.criar(nova(), "ueslei")
+      expect(repo.criar(nova({ pai: 1 }), "ueslei").pai).toBe(1)
+    } finally {
+      repo.fechar()
+    }
+  })
+
+  test("o banco recusa versão de esquema mais nova que o servidor", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-orquestra-"))
+    try {
+      const caminho = caminhoDoBanco(raiz)
+      new Repositorio(caminho).fechar()
+      const db = new Database(caminho)
+      db.exec("PRAGMA user_version = 99")
+      db.close()
+      expect(() => new Repositorio(caminho)).toThrow("mais nova que este servidor")
     } finally {
       await rm(raiz, { recursive: true, force: true })
     }
