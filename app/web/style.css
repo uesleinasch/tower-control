@@ -16,6 +16,7 @@
   --ticktask: #f43f5e;
   --board: #5b8def;
   --decisoes: #58b7c9;
+  --tarefas: #c9a227;
   --perigo: #e05a5a;
   --altura-app: 100vh;
 }
@@ -83,6 +84,7 @@ body {
 .avatar.ticktask { background: var(--ticktask); }
 .avatar.board { background: var(--board); }
 .avatar.decisoes { background: var(--decisoes); }
+.avatar.tarefas { background: var(--tarefas); }
 .avatar[hidden] { display: none; }
 
 .nome { display: flex; flex-direction: column; font-size: 14px; }
@@ -581,6 +583,48 @@ body {
 .status.aceita { color: #4fae7c; }
 .status.proposta { color: #e0a458; }
 .status.revogada { color: #e05a5a; }
+.status.backlog, .status.cancelada { color: var(--texto-2); }
+.status.a_fazer { color: #5b8def; }
+.status.em_andamento { color: #e0a458; }
+.status.em_revisao { color: #9a6ee8; }
+.status.bloqueada { color: #e05a5a; }
+.status.concluida { color: #4fae7c; }
+
+.nova-tarefa {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--painel-2);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+}
+.nova-tarefa select, .nova-tarefa input {
+  width: 100%;
+  padding: 9px 10px;
+  background: var(--fundo);
+  color: var(--texto);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+}
+.nova-tarefa button, .acoes-tarefa button {
+  align-self: flex-start;
+  padding: 8px 14px;
+  background: var(--acento);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.acoes-tarefa { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.acoes-tarefa button { background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); }
+.acoes-tarefa button:hover { border-color: var(--acento); }
+.grupo-tarefas { font-size: 12px; text-transform: uppercase; color: var(--texto-2); margin: 14px 0 6px; }
 
 /* ── celular: lista e conversa como duas telas que deslizam ── */
 

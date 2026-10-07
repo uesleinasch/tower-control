@@ -1,8 +1,10 @@
 import { join } from "node:path"
 import { dirModelos, dirWeb, raizDoCodigo, raizDosDados } from "./caminhos"
-import { origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
+import { garantirIgnorado, origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import { migrarPendentes } from "./memoria/migracao"
-import { carregarElenco, migrarParaPersonas } from "./orquestra/elenco"
+import { carregarElenco, elenco, migrarParaPersonas } from "./orquestra/elenco"
+import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
+import { lerNovaTarefa, statusValido } from "./orquestra/tarefa"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
 import { ehConselheiro, ehPerfil, lerFoco, modeloEfetivo, type Anexo } from "./tipos"
@@ -51,10 +53,12 @@ try {
   await prepararDados({ dados: RAIZ, modelos: dirModelos(CODIGO), origem: await origemDaImportacao(RAIZ, CODIGO) })
   if (await migrarParaPersonas(RAIZ)) await registrarNoGit(RAIZ, "personas como dados e equipe Casa")
   await carregarElenco(RAIZ)
+  await garantirIgnorado(RAIZ, "orquestra/")
 } catch (erro) {
   console.error(`não consegui preparar a pasta de dados ${RAIZ}: ${(erro as Error).message}`)
   process.exit(1)
 }
+const TAREFAS = new Repositorio(caminhoDoBanco(RAIZ))
 const PORTA = Number(process.env.TOWER_PORTA ?? 7878)
 const MEMORIA = memoriaHttp()
 const naFilaDaConversa = filaPorChave()
@@ -110,9 +114,45 @@ const ESTATICOS: Record<string, string> = {
 type Cliente = ServerWebSocket<undefined>
 
 const PRESENCA = new Presenca<Cliente>()
+const CLIENTES = new Set<Cliente>()
 
 function mandar(ws: Cliente, msg: Record<string, unknown>): void {
   ws.send(JSON.stringify(msg))
+}
+
+function mandarATodos(msg: Record<string, unknown>): void {
+  const texto = JSON.stringify(msg)
+  for (const ws of CLIENTES) if (ws.readyState === WebSocket.OPEN) ws.send(texto)
+}
+
+function equipesParaCliente() {
+  const { casa } = elenco()
+  return [
+    {
+      id: casa.id,
+      nome: casa.nome,
+      posicoes: casa.posicoes.map((p) => ({
+        id: p.id,
+        titulo: p.titulo,
+        persona: p.persona,
+        personaNome: p.persona ? elenco().nome(p.persona) : null,
+        respondeA: p.respondeA,
+        capacidades: p.capacidades,
+      })),
+    },
+  ]
+}
+
+const equipePorId = (id: string) => (id === elenco().casa.id ? elenco().casa : undefined)
+
+function idDeTarefa(bruto: unknown): number {
+  const id = Number(bruto)
+  if (!Number.isInteger(id) || id <= 0) throw new Error("tarefa inválida")
+  return id
+}
+
+function publicarTarefa(id: number): void {
+  mandarATodos({ tipo: "tarefa", tarefa: TAREFAS.exigir(id), registros: TAREFAS.registros(id) })
 }
 
 const abertoOuNada = (ws?: Cliente) => (ws?.readyState === WebSocket.OPEN ? ws : undefined)
@@ -384,6 +424,38 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       mandar(ws, { tipo: "board-sintese", texto: resultado.sintese, ata: resultado.ata })
       return
     }
+    case "equipes": {
+      mandar(ws, { tipo: "equipes", lista: equipesParaCliente() })
+      return
+    }
+    case "tarefas": {
+      const equipe = typeof msg.equipe === "string" ? msg.equipe : undefined
+      mandar(ws, { tipo: "tarefas", lista: TAREFAS.listar(equipe) })
+      return
+    }
+    case "tarefa": {
+      const id = idDeTarefa(msg.id)
+      mandar(ws, { tipo: "tarefa", tarefa: TAREFAS.exigir(id), registros: TAREFAS.registros(id), pedida: true })
+      return
+    }
+    case "tarefa-criar": {
+      const criada = TAREFAS.criar(lerNovaTarefa(msg.tarefa, equipePorId), "ueslei")
+      publicarTarefa(criada.id)
+      return
+    }
+    case "tarefa-status": {
+      const id = idDeTarefa(msg.id)
+      if (!statusValido(msg.status)) throw new Error("status inválido")
+      TAREFAS.mudarStatus(id, msg.status, "ueslei")
+      publicarTarefa(id)
+      return
+    }
+    case "tarefa-comentar": {
+      const id = idDeTarefa(msg.id)
+      TAREFAS.comentar(id, "ueslei", String(msg.texto ?? ""))
+      publicarTarefa(id)
+      return
+    }
     case "decisoes": {
       mandar(ws, { tipo: "decisoes", lista: await lerDecisoes(RAIZ) })
       return
@@ -467,6 +539,7 @@ const servidor = Bun.serve({
   websocket: {
     // Relido a cada conexão: editar atalhos.md e recarregar a página basta.
     open(ws: Cliente) {
+      CLIENTES.add(ws)
       void carregarAtalhos(RAIZ)
         .then((lista) => mandar(ws, { tipo: "atalhos", lista }))
         .catch((erro: Error) => console.warn(`[atalhos] não carregaram — ${erro.message}`))
@@ -477,6 +550,7 @@ const servidor = Bun.serve({
       })
     },
     close(ws: Cliente) {
+      CLIENTES.delete(ws)
       aplicarPresenca(PRESENCA.remover(ws))
       for (const [id, pendente] of pendentes) {
         if (pendente.ws !== ws) continue

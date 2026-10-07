@@ -1,7 +1,7 @@
 "use strict"
 
 const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", alfred: "Alfred", board: "Board" }
-const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", board: "B", decisoes: "D" }
+const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", board: "B", decisoes: "D", tarefas: "T" }
 
 const EXECUTORES = ["alfred"]
 const ROTULOS_PERMISSAO = { aprovado: "permitido", negado: "negado", expirado: "expirou — comando negado" }
@@ -11,7 +11,7 @@ const LIMITE_ANEXO = 10 * 1024 * 1024
 
 const estado = {
   ws: null,
-  modo: "chat", // chat | board | decisoes
+  modo: "chat", // chat | board | decisoes | tarefas
   perfil: null,
   conversaId: null,
   respostaEmCurso: null,
@@ -20,6 +20,9 @@ const estado = {
   atalhos: [],
   auto: false,
   foco: null,
+  equipes: [],
+  tarefas: [],
+  tarefaId: null,
 }
 
 const el = {
@@ -142,6 +145,7 @@ function ajustarAoModo() {
   el.ticktask.hidden = !executor
   refletirAuto()
   refletirFoco()
+  refletirComposerDeTarefas()
   limparAnexos()
   renderAtalhos()
 }
@@ -470,6 +474,158 @@ function abrirDecisoes() {
   enviar({ tipo: "decisoes" })
 }
 
+// ── tarefas ────────────────────────────────────────────────────────
+
+const NOMES_STATUS = {
+  backlog: "backlog",
+  a_fazer: "a fazer",
+  em_andamento: "em andamento",
+  em_revisao: "em revisão",
+  bloqueada: "bloqueada",
+  concluida: "concluída",
+  cancelada: "cancelada",
+}
+// Espelho de TRANSICOES em app/src/orquestra/tarefa.ts: só decide quais botões aparecem;
+// quem valida a mudança é o servidor.
+const TRANSICOES_TAREFA = {
+  backlog: ["a_fazer", "cancelada"],
+  a_fazer: ["em_andamento", "backlog", "bloqueada", "cancelada"],
+  em_andamento: ["em_revisao", "concluida", "bloqueada", "a_fazer", "cancelada"],
+  em_revisao: ["concluida", "em_andamento", "cancelada"],
+  bloqueada: ["a_fazer", "cancelada"],
+  concluida: ["a_fazer"],
+  cancelada: ["backlog"],
+}
+const ORDEM_STATUS = ["em_andamento", "em_revisao", "a_fazer", "bloqueada", "backlog", "concluida", "cancelada"]
+
+function posicoesDaCasa() {
+  return estado.equipes.find((e) => e.id === "casa")?.posicoes ?? []
+}
+
+function rotuloDaPosicao(id) {
+  const p = posicoesDaCasa().find((x) => x.id === id)
+  if (!p) return id
+  return p.personaNome ? `${p.personaNome} · ${p.titulo}` : `${p.titulo} (vaga)`
+}
+
+function refletirComposerDeTarefas() {
+  const listando = estado.modo === "tarefas" && !estado.tarefaId
+  el.entrada.disabled = listando
+  if (estado.modo === "tarefas") {
+    el.entrada.placeholder = listando ? "Abra uma tarefa para comentar" : "Comentar na tarefa…"
+  }
+}
+
+function abrirTarefas() {
+  estado.modo = "tarefas"
+  estado.perfil = null
+  estado.conversaId = null
+  estado.tarefaId = null
+  ajustarAoModo()
+  selecionarBotao("#botao-tarefas")
+  definirCabecalho("tarefas", "Tarefas — Casa")
+  limparTela()
+  irParaConversa()
+  informarVisivel()
+  enviar({ tipo: "equipes" })
+  enviar({ tipo: "tarefas", equipe: "casa" })
+}
+
+function voltarParaTarefas() {
+  estado.tarefaId = null
+  refletirComposerDeTarefas()
+  definirCabecalho("tarefas", "Tarefas — Casa")
+  renderTarefas()
+}
+
+function formNovaTarefa() {
+  const form = document.createElement("form")
+  form.className = "nova-tarefa"
+  const opcoes = posicoesDaCasa()
+    .map((p) => `<option value="${escapar(p.id)}">${escapar(rotuloDaPosicao(p.id))}</option>`)
+    .join("")
+  form.innerHTML =
+    `<select name="posicao" aria-label="posição que fica com a tarefa">${opcoes}</select>` +
+    `<input name="titulo" placeholder="O que precisa ser feito" maxlength="200" required />` +
+    `<input name="porque" placeholder="Por quê (o objetivo que a persona recebe junto)" />` +
+    `<button type="submit">Criar tarefa</button>`
+  form.onsubmit = (ev) => {
+    ev.preventDefault()
+    const dados = new FormData(form)
+    const titulo = String(dados.get("titulo") ?? "").trim()
+    if (!titulo) return
+    enviar({
+      tipo: "tarefa-criar",
+      tarefa: { equipe: "casa", posicao: dados.get("posicao"), titulo, porque: String(dados.get("porque") ?? "") },
+    })
+    form.reset()
+  }
+  return form
+}
+
+function renderTarefas() {
+  if (estado.modo !== "tarefas" || estado.tarefaId) return
+  limparTela()
+  el.mensagens.appendChild(formNovaTarefa())
+  if (!estado.tarefas.length) adicionarMensagem("aviso", "Nenhuma tarefa ainda.")
+  for (const status of ORDEM_STATUS) {
+    const doStatus = estado.tarefas.filter((t) => t.status === status)
+    if (!doStatus.length) continue
+    const titulo = document.createElement("h3")
+    titulo.className = "grupo-tarefas"
+    titulo.textContent = `${NOMES_STATUS[status]} · ${doStatus.length}`
+    el.mensagens.appendChild(titulo)
+    const ul = document.createElement("ul")
+    ul.className = "lista-decisoes"
+    for (const t of doStatus) {
+      const li = document.createElement("li")
+      li.innerHTML =
+        `<span class="status ${t.status}">#${t.id}</span>${escapar(t.titulo)}` +
+        `<small>${escapar(rotuloDaPosicao(t.posicao))} · ${quando(t.atualizadaEm)}</small>`
+      li.onclick = () => enviar({ tipo: "tarefa", id: t.id })
+      ul.appendChild(li)
+    }
+    el.mensagens.appendChild(ul)
+  }
+}
+
+function renderTarefa(tarefa, registros) {
+  estado.tarefaId = tarefa.id
+  refletirComposerDeTarefas()
+  definirCabecalho("tarefas", `#${tarefa.id} — ${tarefa.titulo}`)
+  limparTela()
+  const voltar = adicionarMensagem("aviso", "← voltar para as tarefas")
+  voltar.style.cursor = "pointer"
+  voltar.onclick = voltarParaTarefas
+  const linhas = [
+    `**${tarefa.titulo}**`,
+    `Status: ${NOMES_STATUS[tarefa.status]} · ${rotuloDaPosicao(tarefa.posicao)}${tarefa.dono ? ` · com ${tarefa.dono}` : ""}`,
+    tarefa.porque ? `Por quê: ${tarefa.porque}` : "",
+    tarefa.dependeDe.length ? `Depende de: ${tarefa.dependeDe.map((d) => `#${d}`).join(", ")}` : "",
+    tarefa.pai ? `Parte da tarefa #${tarefa.pai}` : "",
+    tarefa.descricao,
+  ]
+  adicionarMensagem("perfil-msg documento", formatar(linhas.filter(Boolean).join("\n\n")))
+  const acoes = document.createElement("div")
+  acoes.className = "acoes-tarefa"
+  for (const para of TRANSICOES_TAREFA[tarefa.status] ?? []) {
+    const botao = document.createElement("button")
+    botao.textContent = `→ ${NOMES_STATUS[para]}`
+    botao.onclick = () => enviar({ tipo: "tarefa-status", id: tarefa.id, status: para })
+    acoes.appendChild(botao)
+  }
+  el.mensagens.appendChild(acoes)
+  for (const r of registros) {
+    if (r.tipo === "comentario") {
+      if (r.autor === "ueslei") mensagemDoUsuario(r.texto, null, r.em)
+      else adicionarMensagem("perfil-msg", `<strong>${escapar(r.autor)}</strong><br>${formatar(r.texto)}`, r.em)
+    } else {
+      adicionarMensagem("aviso", `${escapar(r.autor)}: ${escapar(r.texto)} · ${quando(r.em)}`)
+    }
+  }
+  rolarAoFim()
+}
+
 // ── envio ──────────────────────────────────────────────────────────
 
 function submeter() {
@@ -478,8 +634,14 @@ function submeter() {
   const noChat = estado.modo === "chat"
   if (estado.respostaEmCurso) return
   if (!texto && !(noChat && anexos.length)) return
+  if (estado.modo === "tarefas" && !estado.tarefaId) return
   el.entrada.value = ""
   ajustarEntrada()
+
+  if (estado.modo === "tarefas") {
+    enviar({ tipo: "tarefa-comentar", id: estado.tarefaId, texto })
+    return
+  }
 
   if (estado.modo === "board") {
     mensagemDoUsuario(texto, null, new Date())
@@ -679,6 +841,26 @@ function tratar(msg) {
       voltar.onclick = () => enviar({ tipo: "decisoes" })
       break
     }
+    case "equipes": {
+      estado.equipes = msg.lista
+      renderTarefas()
+      break
+    }
+    case "tarefas": {
+      estado.tarefas = msg.lista
+      renderTarefas()
+      break
+    }
+    case "tarefa": {
+      const i = estado.tarefas.findIndex((t) => t.id === msg.tarefa.id)
+      if (i >= 0) estado.tarefas[i] = msg.tarefa
+      else estado.tarefas.unshift(msg.tarefa)
+      if (estado.modo !== "tarefas") break
+      if (estado.tarefaId === null && msg.pedida) renderTarefa(msg.tarefa, msg.registros)
+      else if (estado.tarefaId === msg.tarefa.id) renderTarefa(msg.tarefa, msg.registros)
+      else renderTarefas()
+      break
+    }
     case "erro": {
       adicionarMensagem("erro", escapar(msg.mensagem))
       encerrarStreaming()
@@ -710,6 +892,7 @@ el.ticktask.onclick = () => {
 }
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
+document.getElementById("botao-tarefas").onclick = abrirTarefas
 document.getElementById("citacao-fechar").onclick = limparCitacao
 el.voltar.onclick = irParaLista
 el.fab.onclick = () => (document.body.dataset.folha === "aberta" ? fecharFolha() : abrirFolha())

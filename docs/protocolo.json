@@ -9,7 +9,13 @@
     "board",
     "decisoes",
     "decisao",
-    "visivel"
+    "visivel",
+    "equipes",
+    "tarefas",
+    "tarefa",
+    "tarefa-criar",
+    "tarefa-status",
+    "tarefa-comentar"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -23,10 +29,13 @@
     "criada",
     "decisao",
     "decisoes",
+    "equipes",
     "erro",
     "excluida",
     "fim",
     "permissao",
-    "permissao-resolvida"
+    "permissao-resolvida",
+    "tarefa",
+    "tarefas"
   ]
 }

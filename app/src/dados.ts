@@ -115,6 +115,13 @@ export async function prepararDados(opcoes: Preparo): Promise<boolean> {
   return true
 }
 
+export async function garantirIgnorado(dados: string, linha: string): Promise<void> {
+  const arquivo = Bun.file(join(dados, ".gitignore"))
+  const atual = (await arquivo.exists()) ? await arquivo.text() : ""
+  if (atual.split("\n").includes(linha)) return
+  await Bun.write(arquivo, `${atual}${atual && !atual.endsWith("\n") ? "\n" : ""}${linha}\n`)
+}
+
 export async function registrarNoGit(dados: string, motivo: string): Promise<boolean> {
   const presentes = await versionadosPresentes(dados)
   if (!presentes.length || !(await existe(join(dados, ".git")))) return false
