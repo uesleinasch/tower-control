@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises"
 import { raizDosDados } from "../app/src/caminhos"
 import { conversar } from "../app/src/sessions"
 import { apagarSessao } from "../app/src/sessao-sdk"
-import { CONSELHEIROS, type Conselheiro } from "../app/src/tipos"
+import { conselheiros, type Conselheiro } from "../app/src/tipos"
 
 const rotulo = process.argv[2]
 if (!rotulo || !/^[a-z0-9-]+$/.test(rotulo)) {
@@ -12,7 +12,7 @@ if (!rotulo || !/^[a-z0-9-]+$/.test(rotulo)) {
   process.exit(1)
 }
 const pedidas = process.argv.slice(3) as Conselheiro[]
-const personas = pedidas.length ? pedidas : [...CONSELHEIROS]
+const personas = pedidas.length ? pedidas : conselheiros()
 
 const RAIZ = raizDosDados()
 const sonda = (await Bun.file(join(import.meta.dir, "sonda-ritmo.txt")).text())

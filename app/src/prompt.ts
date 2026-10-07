@@ -1,14 +1,6 @@
 import { join } from "node:path"
-import { ehConselheiro, type Conselheiro, type Perfil } from "./tipos"
+import { nomeDe, rodaComandos, type Conselheiro, type Perfil } from "./tipos"
 import { RITMO_NEUTRO, blocoDeEscrita, orcamento } from "./ritmo"
-
-export const NOMES: Record<Perfil, string> = {
-  poe: "Poe",
-  nati: "Nati",
-  lucas: "Lucas",
-  pami: "Pami",
-  alfred: "Alfred",
-}
 
 const POLITICA_ALFRED = `Uma ou duas linhas dizendo o que você fez ou o que encontrou. Sem preâmbulo, sem
 recapitular o pedido, sem oferecer o próximo passo. Saída de comando só quando ela for
@@ -17,7 +9,7 @@ a resposta; se for longa, resuma e diga onde está o resto.`
 function instrucoesDaCasa(perfil: Perfil, escrita: string): string {
   return `# Instruções da casa (control-tower)
 
-Você é ${NOMES[perfil]}, um dos perfis do control-tower — a sala de decisões do Ueslei.
+Você é ${nomeDe(perfil)}, um dos perfis do control-tower — a sala de decisões do Ueslei.
 Sua personalidade está acima e sua memória chega no bloco <memória> de cada mensagem;
 encarne as duas por completo. A lembrança "Como eu escrevo", quando existe, é o seu jeito
 de falar: siga-o.
@@ -68,7 +60,7 @@ mcp__ticktask__*.
 function instrucoesDoExecutor(perfil: Perfil): string {
   return `# Instruções da casa (control-tower)
 
-Você é ${NOMES[perfil]}, o executor do control-tower. Você não é conselheiro: não opina
+Você é ${nomeDe(perfil)}, o executor do control-tower. Você não é conselheiro: não opina
 sem ser perguntado, não sugere melhorias, não pergunta se o Ueslei quer mais alguma coisa.
 
 - Responda sempre em português brasileiro.
@@ -93,7 +85,7 @@ ${POLITICA_ALFRED}`
 function instrucoesParecer(perfil: Conselheiro): string {
   return `# Instruções da casa (board do control-tower)
 
-Você é ${NOMES[perfil]}, convocado como conselheiro do board. Leia a pauta e emita seu
+Você é ${nomeDe(perfil)}, convocado como conselheiro do board. Leia a pauta e emita seu
 parecer INDEPENDENTE, na sua lente, seguindo à risca o formato de parecer definido no
 charter (Posição / Argumentos / Riscos que enxergo / Recomendação). Responda em
 português brasileiro, apenas com o parecer — sem saudações nem comentários fora dele.
@@ -118,7 +110,7 @@ export async function montarSystemPrompt(
   escrita = blocoDeEscrita(orcamento("padrao", RITMO_NEUTRO), RITMO_NEUTRO),
 ): Promise<string> {
   const perfilMd = await lerPerfil(raiz, perfil)
-  if (!ehConselheiro(perfil)) {
+  if (rodaComandos(perfil)) {
     return [perfilMd, instrucoesDoExecutor(perfil)].filter(Boolean).join("\n\n---\n\n")
   }
   const legado = await memoriaLegada(raiz, perfil)
@@ -172,7 +164,7 @@ divergências. Responda em português brasileiro seguindo à risca o formato de 
 charter: "## Síntese do board" com Pauta, Consenso, Divergências (nomeadas por perfil),
 Recomendação final e "Vira decisão?" (se sim, inclua o rascunho do registro).`
   const blocos = pareceres
-    .map((p) => `### Parecer de ${NOMES[p.perfil]}\n\n${p.texto.trim()}`)
+    .map((p) => `### Parecer de ${nomeDe(p.perfil)}\n\n${p.texto.trim()}`)
     .join("\n\n")
   const prompt = `## Pauta\n\n${pauta.trim()}\n\n## Pareceres recebidos\n\n${blocos}\n\nProduza a síntese.`
   return { system, prompt }

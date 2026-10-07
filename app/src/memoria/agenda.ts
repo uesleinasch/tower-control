@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { mkdir, rename } from "node:fs/promises"
-import { CONSELHEIROS, ehConselheiro, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
+import { conselheiros, ehConselheiro, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
 
 export const OCIOSIDADE_MS = 30 * 60_000
 export const HORARIO_SONHO = process.env.CT_HORARIO_SONHO ?? "07:30"
@@ -126,7 +126,7 @@ export async function rodarUmaVez(
   }
   await tentar(espera, "consolidação das conversas apagadas", agora, () => trabalhos.guardadas())
   const estado = await lerEstado(raiz)
-  for (const persona of CONSELHEIROS) {
+  for (const persona of conselheiros()) {
     if (!sonhoDevido(estado.sonhos[persona], estado.atividade[persona], agora)) continue
     await tentar(espera, `sonho de ${persona}`, agora, () => trabalhos.sonhar(persona))
   }

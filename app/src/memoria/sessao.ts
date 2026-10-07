@@ -1,7 +1,6 @@
 import { ambienteDoClaude, executavelDoClaude } from "../caminhos"
 import { query } from "@anthropic-ai/claude-agent-sdk"
-import type { Conselheiro } from "../tipos"
-import { NOMES } from "../prompt"
+import { nomeDe, type Conselheiro } from "../tipos"
 import { FERRAMENTAS_MEMORIA_CONSOLIDACAO, placarVazio, servidorDeMemoria, type Placar } from "./ferramentas"
 import type { Memoria } from "./tipos"
 import { comUso, type TipoDeUso } from "../uso"
@@ -11,7 +10,7 @@ export const MODELO_MEMORIA = "sonnet"
 export function instrucoesDeBastidor(persona: Conselheiro, tarefa: string): string {
   return `# Bastidor da sua memória
 
-Você é ${NOMES[persona]}, fora da conversa, cuidando da própria memória. Ninguém vai ler
+Você é ${nomeDe(persona)}, fora da conversa, cuidando da própria memória. Ninguém vai ler
 o que você responder aqui: o que importa é o que você grava com as ferramentas.
 
 ${tarefa}

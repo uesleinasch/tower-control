@@ -1,6 +1,5 @@
-export const CONSELHEIROS = ["poe", "nati", "lucas", "pami"] as const
-export const EXECUTORES = ["alfred"] as const
-export const PERFIS = [...CONSELHEIROS, ...EXECUTORES] as const
+import { elenco } from "./orquestra/elenco"
+import type { PersonaId } from "./orquestra/equipe"
 
 // Sem isto o SDK resolve para claude-opus-5[1m] — medido em ~7x o custo do haiku
 // na mesma pergunta.
@@ -8,16 +7,40 @@ export const MODELO_PADRAO = "haiku"
 // Com o auto ligado ninguém revisa cada comando; o modelo forte erra menos. Não é
 // gravado em MetaConversa.modelo: desligar o auto volta ao modelo escolhido.
 export const MODELO_DO_AUTO = "claude-opus-5-5"
-export type Conselheiro = (typeof CONSELHEIROS)[number]
-export type Executor = (typeof EXECUTORES)[number]
-export type Perfil = (typeof PERFIS)[number]
+export type Perfil = PersonaId
+export type Conselheiro = PersonaId
 
+export function perfis(): Perfil[] {
+  return elenco().ids()
+}
+
+export function ehPerfil(id: unknown): id is Perfil {
+  return elenco().existe(id)
+}
+
+export function nomeDe(perfil: Perfil): string {
+  return elenco().nome(perfil)
+}
+
+export function rodaComandos(perfil: Perfil): boolean {
+  return elenco().tem(perfil, "comandos")
+}
+
+// Conselheiro = conversa com memória e sem terminal, como a posição de conselho da Casa.
 export function ehConselheiro(perfil: Perfil): perfil is Conselheiro {
-  return (CONSELHEIROS as readonly string[]).includes(perfil)
+  return elenco().tem(perfil, "memoria") && !rodaComandos(perfil)
+}
+
+export function conselheiros(): Conselheiro[] {
+  return perfis().filter(ehConselheiro)
+}
+
+export function doBoard(): Conselheiro[] {
+  return elenco().comCapacidade("board").filter(ehConselheiro)
 }
 
 export function perfilExcluivel(perfil: Perfil): boolean {
-  return !(EXECUTORES as readonly string[]).includes(perfil)
+  return elenco().excluivel(perfil)
 }
 
 // O pedido de exclusão chega por WebSocket sem autenticação: esconder a opção na UI não basta.
@@ -26,12 +49,12 @@ export function exigirPerfilExcluivel(perfil: Perfil): void {
 }
 
 export function modeloEfetivo(meta: { perfil: Perfil; modelo?: string; auto?: boolean }): string | undefined {
-  return meta.auto && !ehConselheiro(meta.perfil) ? MODELO_DO_AUTO : meta.modelo
+  return meta.auto && rodaComandos(meta.perfil) ? MODELO_DO_AUTO : meta.modelo
 }
 
-// undefined = o cliente não mexeu no foco; null = desligar. Conselheiro não tem foco.
+// undefined = o cliente não mexeu no foco; null = desligar. Só posição com TickTask tem foco.
 export function lerFoco(perfil: Perfil, bruto: unknown): "ticktask" | null | undefined {
-  if (typeof bruto !== "string" || ehConselheiro(perfil)) return undefined
+  if (typeof bruto !== "string" || !elenco().tem(perfil, "ticktask")) return undefined
   return bruto === "ticktask" ? "ticktask" : null
 }
 

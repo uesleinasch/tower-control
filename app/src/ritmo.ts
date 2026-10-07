@@ -27,7 +27,7 @@ export interface Orcamento {
 export const CORPUS = corpusEmbutido as RitmoCorpus
 export const RITMO_NEUTRO: RitmoPersona = { baloes: 1, palavras: 1, risada: "rara", minusculas: false, pontoFinal: false }
 const RISADAS: readonly Risada[] = ["nunca", "rara", "as-vezes"]
-const EMBUTIDOS: Record<Conselheiro, unknown> = { poe: ritmoPoe, nati: ritmoNati, lucas: ritmoLucas, pami: ritmoPami }
+const EMBUTIDOS: Record<string, unknown> = { poe: ritmoPoe, nati: ritmoNati, lucas: ritmoLucas, pami: ritmoPami }
 
 export const SEPARADOR_BALAO = /\n\s*-{3,}\s*\n/
 

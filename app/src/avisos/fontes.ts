@@ -1,7 +1,6 @@
 import type { NovoAviso } from "./central"
-import type { Perfil } from "../tipos"
+import { nomeDe, type Perfil } from "../tipos"
 
-const NOMES: Record<Perfil, string> = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", alfred: "Alfred" }
 const LIMITE_CORPO = 180
 
 function resumir(texto: string): string {
@@ -12,7 +11,7 @@ function resumir(texto: string): string {
 export function avisoDeResposta(perfil: Perfil, conversaId: string, texto: string): NovoAviso {
   return {
     tipo: "resposta",
-    titulo: `${NOMES[perfil]} respondeu`,
+    titulo: `${nomeDe(perfil)} respondeu`,
     corpo: resumir(texto) || "(resposta vazia)",
     alvo: { conversaId },
     acoes: ["responder"],

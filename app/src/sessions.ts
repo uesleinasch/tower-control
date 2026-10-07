@@ -3,7 +3,8 @@ import { comUso } from "./uso"
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { mensagemDoConselheiro, mensagemDoExecutor, montarSystemPrompt } from "./prompt"
 import { blocoDeEscrita, carregarRitmo, classificar, lembreteDeForma, normalizadorDeStream, orcamento } from "./ritmo"
-import { MODELO_PADRAO, ehConselheiro, type Perfil } from "./tipos"
+import { MODELO_PADRAO, ehConselheiro, rodaComandos, type Perfil } from "./tipos"
+import { elenco } from "./orquestra/elenco"
 import { servidorTickTask } from "./ticktask"
 import { exigeAprovacaoSempre } from "./comandos"
 import type { Memoria } from "./memoria/tipos"
@@ -110,10 +111,11 @@ function hookDeComando(
 
 export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string; sessionId?: string }> {
   const perfil = opcoes.perfil
-  const conselheiro = ehConselheiro(perfil)
+  const conselheiro = !rodaComandos(perfil)
+  const comMemoria = conselheiro && ehConselheiro(perfil) ? opcoes.memoria : undefined
   const brief =
-    conselheiro && opcoes.memoria
-      ? await montarBrief(opcoes.memoria, perfil, opcoes.consulta ?? opcoes.texto)
+    comMemoria
+      ? await montarBrief(comMemoria, perfil, opcoes.consulta ?? opcoes.texto)
       : ""
   let escrita: string | undefined
   let prompt = mensagemDoExecutor(opcoes.texto, opcoes.foco, opcoes.focoDesligado)
@@ -126,15 +128,16 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
   const system = await montarSystemPrompt(opcoes.raiz, perfil, escrita)
   const saida = conselheiro ? normalizadorDeStream(opcoes.onChunk) : undefined
   const emitir = (pedaco: string) => (saida ? saida.receber(pedaco) : opcoes.onChunk(pedaco))
-  const base = !conselheiro
+  const comTickTask = !conselheiro && elenco().tem(perfil, "ticktask")
+  const base = comTickTask
     ? await servidorTickTask()
-    : opcoes.memoria
-      ? { memoria: servidorDeMemoria(opcoes.memoria, perfil, `conversa:${opcoes.conversaId ?? "avulsa"}`) }
+    : comMemoria
+      ? { memoria: servidorDeMemoria(comMemoria, perfil, `conversa:${opcoes.conversaId ?? "avulsa"}`) }
       : undefined
   const lembretes = opcoes.agendarLembrete ? { lembretes: servidorDeLembretes(opcoes.agendarLembrete) } : undefined
   const mcp = base || lembretes ? { ...base, ...lembretes } : undefined
   const extras = [
-    ...(!conselheiro ? FERRAMENTAS_TICKTASK : opcoes.memoria ? FERRAMENTAS_MEMORIA : []),
+    ...(comTickTask ? FERRAMENTAS_TICKTASK : comMemoria ? FERRAMENTAS_MEMORIA : []),
     ...(lembretes ? [FERRAMENTA_LEMBRETE] : []),
   ]
   let acumulado = ""

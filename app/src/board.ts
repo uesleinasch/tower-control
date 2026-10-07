@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { randomUUID } from "node:crypto"
 import { link, rm } from "node:fs/promises"
-import { CONSELHEIROS, type Conselheiro } from "./tipos"
+import { doBoard, type Conselheiro } from "./tipos"
 import { montarSystemPromptParecer, montarPautaParecer, montarPromptSintese } from "./prompt"
 import { perguntarUmaVez } from "./sessions"
 import { dataLocal, slug } from "./texto"
@@ -24,8 +24,9 @@ export async function convocarBoard(
 ): Promise<ResultadoBoard> {
   const pautaFormatada = montarPautaParecer(pauta, contexto)
 
+  const convocados = doBoard()
   const pareceres = await Promise.all(
-    CONSELHEIROS.map(async (perfil) => {
+    convocados.map(async (perfil) => {
       const brief = memoria ? await montarBrief(memoria, perfil, pauta) : ""
       const system = await montarSystemPromptParecer(raiz, perfil, brief)
       try {
@@ -45,7 +46,7 @@ export async function convocarBoard(
 
   const validos = pareceres.filter((p) => !p.texto.startsWith("_(parecer indisponível"))
   if (!validos.length) throw new Error("nenhum perfil conseguiu emitir parecer")
-  onStatus(`Pareceres recebidos (${validos.length}/${CONSELHEIROS.length}) — sintetizando…`)
+  onStatus(`Pareceres recebidos (${validos.length}/${convocados.length}) — sintetizando…`)
 
   const { system, prompt } = montarPromptSintese(pauta, pareceres)
   const sintese = await perguntarUmaVez({ raiz, system, prompt, uso: { tipo: "board-sintese" } })

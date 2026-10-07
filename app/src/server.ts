@@ -2,9 +2,10 @@ import { join } from "node:path"
 import { dirModelos, dirWeb, raizDoCodigo, raizDosDados } from "./caminhos"
 import { origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import { migrarPendentes } from "./memoria/migracao"
+import { carregarElenco, migrarParaPersonas } from "./orquestra/elenco"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
-import { PERFIS, ehConselheiro, lerFoco, modeloEfetivo, type Anexo, type Perfil } from "./tipos"
+import { ehConselheiro, ehPerfil, lerFoco, modeloEfetivo, type Anexo } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
 import { conversar } from "./sessions"
@@ -48,6 +49,8 @@ const WEB = dirWeb(CODIGO)
 
 try {
   await prepararDados({ dados: RAIZ, modelos: dirModelos(CODIGO), origem: await origemDaImportacao(RAIZ, CODIGO) })
+  if (await migrarParaPersonas(RAIZ)) await registrarNoGit(RAIZ, "personas como dados e equipe Casa")
+  await carregarElenco(RAIZ)
 } catch (erro) {
   console.error(`não consegui preparar a pasta de dados ${RAIZ}: ${(erro as Error).message}`)
   process.exit(1)
@@ -291,10 +294,10 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       return
     }
     case "nova": {
-      const perfil = msg.perfil as Perfil
+      const perfil = msg.perfil
       const texto = String(msg.texto ?? "").trim()
       const anexos = await resolverAnexos(ws, msg.anexos)
-      if (!PERFIS.includes(perfil)) throw new Error("perfil inválido")
+      if (!ehPerfil(perfil)) throw new Error("perfil inválido")
       if (!texto && !anexos.length) throw new Error("mensagem vazia")
       const base = texto || anexos[0]!.nome
       const titulo = base.length > 48 ? `${base.slice(0, 48)}…` : base

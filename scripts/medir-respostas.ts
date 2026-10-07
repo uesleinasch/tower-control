@@ -4,7 +4,7 @@ import { readdir, stat } from "node:fs/promises"
 import { raizDosDados } from "../app/src/caminhos"
 import { baloesDe, cabeNoOrcamento, carregarRitmo, classificar, orcamento, type Situacao } from "../app/src/ritmo"
 import { palavras } from "../app/src/ritmo-corpus"
-import { CONSELHEIROS } from "../app/src/tipos"
+import { conselheiros } from "../app/src/tipos"
 
 const RAIZ = raizDosDados()
 const SEPARADOR_BALAO = /\n\s*-{3,}\s*\n/
@@ -92,7 +92,7 @@ function mediana(valores: number[]): number {
 
 async function resumirSonda(pasta: string): Promise<Map<string, Record<Situacao, Resumo>>> {
   const resumos = new Map<string, Record<Situacao, Resumo>>()
-  for (const persona of CONSELHEIROS) {
+  for (const persona of conselheiros()) {
     const arquivo = Bun.file(join(pasta, `${persona}.jsonl`))
     if (!(await arquivo.exists())) continue
     const ritmo = await carregarRitmo(RAIZ, persona)
@@ -136,7 +136,7 @@ async function medirSonda(pastas: string[]): Promise<void> {
   for (const situacao of ["padrao", "profundidade"] as Situacao[]) {
     console.log(`\n== ${situacao}`)
     console.log("persona | rótulo | resp | pal.med | média | balões | form. | orç.")
-    for (const persona of CONSELHEIROS) {
+    for (const persona of conselheiros()) {
       resumos.forEach((r, i) => {
         const dado = r.get(persona)?.[situacao]
         if (dado) console.log(`${persona.padEnd(7)} | ${pastas[i]!.split("/").pop()!.padEnd(6)} | ${linhaResumo(dado)}`)

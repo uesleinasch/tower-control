@@ -6,8 +6,8 @@ import { diretorioDeSessoes } from "./sessao-sdk"
 export const MARCADOR = ".control-tower"
 export const ARQUIVO_ORIGEM = ".importar-de"
 const IMPORTAVEIS = ["profiles", "decisions", "board", "atalhos.md", "conversations"]
-const VERSIONADOS = ["profiles", "decisions", "board", "atalhos.md"]
-const GITIGNORE = "conversations/\nmemoria/\n.importar-de\n"
+const VERSIONADOS = ["profiles", "equipes", "decisions", "board", "atalhos.md"]
+const GITIGNORE = "conversations/\nmemoria/\norquestra/\n.importar-de\n"
 const IDENTIDADE = ["-c", "user.name=control-tower", "-c", "user.email=control-tower@localhost", "-c", "commit.gpgsign=false"]
 
 async function existe(caminho: string): Promise<boolean> {

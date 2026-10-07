@@ -1,9 +1,9 @@
 import { join } from "node:path"
 import { mkdir, readdir, rm } from "node:fs/promises"
 import { dataHoraLocal } from "../texto"
-import { NOMES, lerPerfil } from "../prompt"
+import { lerPerfil } from "../prompt"
 import { atualizarMeta, filaPorChave, lerMensagens, lerMeta, listarConversas } from "../store"
-import { ehConselheiro, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
+import { ehConselheiro, nomeDe, type Conselheiro, type Mensagem, type MetaConversa } from "../tipos"
 import { carregarRitmo, espelho } from "../ritmo"
 import { consolidacaoPendente, registrarAtividade } from "./agenda"
 import { instrucoesDeBastidor, rodarPersona } from "./sessao"
@@ -24,7 +24,7 @@ o que vale lembrar.
    encurtar. É a sua voz, não uma cópia da dele.`
 
 function linha(m: Mensagem, persona: Conselheiro): string {
-  const quem = m.role === "user" ? "Ueslei" : NOMES[persona]
+  const quem = m.role === "user" ? "Ueslei" : nomeDe(persona)
   const quando = dataHoraLocal(new Date(m.ts))
   return `[${quando}] ${quem}: ${m.texto.trim()}`
 }

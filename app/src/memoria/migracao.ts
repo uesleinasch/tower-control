@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { rm } from "node:fs/promises"
-import { CONSELHEIROS, type Conselheiro } from "../tipos"
+import { conselheiros, type Conselheiro } from "../tipos"
 import { alterarEstado, lerEstado } from "./agenda"
 import { lerPerfil } from "../prompt"
 import { instrucoesDeBastidor, rodarPersona } from "./sessao"
@@ -121,7 +121,7 @@ export async function migrarUma(
 // Refazer sozinho uma migração incompleta duplicaria páginas; quem resolve é o script.
 export async function migrarPendentes(raiz: string, m: Memoria): Promise<void> {
   const estado = await lerEstado(raiz)
-  for (const persona of CONSELHEIROS) {
+  for (const persona of conselheiros()) {
     if (estado.migracaoBloqueada?.[persona]) continue
     const resultado = await migrarUma(raiz, m, persona)
     if (resultado === "migrada") console.log(`[memoria] memory.md de ${persona} migrado e removido`)

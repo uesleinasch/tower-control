@@ -9,10 +9,13 @@ import { lerAtalhos } from "./atalhos"
 import { tiposEmitidos, tiposTratados, type Protocolo } from "./protocolo"
 import { respostaEnderecos } from "./rede"
 import {
-  CONSELHEIROS,
   MODELO_DO_AUTO,
-  PERFIS,
+  conselheiros,
+  doBoard,
   ehConselheiro,
+  ehPerfil,
+  nomeDe,
+  perfis,
   exigirPerfilExcluivel,
   lerFoco,
   modeloEfetivo,
@@ -20,6 +23,8 @@ import {
   type Perfil,
 } from "./tipos"
 import { exigeAprovacaoSempre } from "./comandos"
+import { Elenco, casaInicial, personaIdValido, personaInicial, validarEquipe } from "./orquestra/equipe"
+import { lerElenco, migrarParaPersonas } from "./orquestra/elenco"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, filaPorChave, idValido, lerMensagens, lerMeta } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
 import { raizDosDados } from "./caminhos"
@@ -171,10 +176,122 @@ test("montarSystemPrompt troca a política antiga pelo bloco de escrita", async 
   expect(alfred).not.toContain("## Como escrever")
 })
 
+describe("personas e equipes", () => {
+  const conhecidas = new Set(["poe", "alfred", "nati"])
+  const posicao = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    titulo: id,
+    persona: null,
+    respondeA: null,
+    capacidades: ["arquivos"],
+    ...extra,
+  })
+
+  test("id de persona cabe no id de conversa: só letras minúsculas", () => {
+    expect(personaIdValido("alfred")).toBe(true)
+    expect(personaIdValido("revisora-codigo")).toBe(false)
+    expect(personaIdValido("../x")).toBe(false)
+    expect(personaIdValido("a")).toBe(false)
+  })
+
+  test("a Casa inicial espelha o uso de hoje", () => {
+    const casa = casaInicial(["alfred", "nati", "poe"])
+    const alfred = casa.posicoes.find((p) => p.persona === "alfred")!
+    expect(alfred.id).toBe("executor")
+    expect(alfred.capacidades).toEqual(["arquivos", "comandos", "ticktask"])
+    expect(alfred.aprovacao).toBe("sempre")
+    const poe = casa.posicoes.find((p) => p.persona === "poe")!
+    expect(poe.capacidades).toEqual(["arquivos", "memoria", "board"])
+    expect(validarEquipe(casa, conhecidas)).toEqual(casa)
+    expect(personaInicial("alfred").protegida).toBe(true)
+    expect(personaInicial("poe").protegida).toBeUndefined()
+    expect(personaInicial("zeca").nome).toBe("Zeca")
+  })
+
+  test("equipe inválida é recusada com todos os erros", () => {
+    const erro = (bruto: unknown) => {
+      try {
+        validarEquipe(bruto, conhecidas)
+      } catch (e) {
+        return (e as Error).message
+      }
+      return ""
+    }
+    expect(erro({ id: "x", nome: "X", posicoes: [posicao("a", { persona: "ninguem" })] })).toContain("persona desconhecida")
+    expect(erro({ id: "x", nome: "X", posicoes: [posicao("a", { respondeA: "b" })] })).toContain("posição inexistente")
+    expect(erro({ id: "x", nome: "X", posicoes: [posicao("a", { capacidades: ["voar"] })] })).toContain("capacidade desconhecida")
+    expect(erro({ id: "x", nome: "X", posicoes: [posicao("a"), posicao("a")] })).toContain("id repetido")
+    expect(
+      erro({ id: "x", nome: "X", posicoes: [posicao("a", { persona: "poe" }), posicao("b", { persona: "poe" })] }),
+    ).toContain("mais de uma posição")
+    const ciclo = erro({ id: "x", nome: "X", posicoes: [posicao("a", { respondeA: "b" }), posicao("b", { respondeA: "a" })] })
+    expect(ciclo).toContain("ciclo")
+    const varios = erro({ id: "x", nome: "", posicoes: [posicao("a", { persona: "ninguem" })] })
+    expect(varios).toContain("nome obrigatório")
+    expect(varios).toContain("persona desconhecida")
+  })
+
+  test("as capacidades da posição na Casa decidem o comportamento", () => {
+    const casa = casaInicial(["alfred", "nati", "poe"])
+    casa.posicoes.find((p) => p.persona === "nati")!.capacidades = ["arquivos", "memoria"]
+    const elenco = new Elenco(["alfred", "nati", "poe"].map(personaInicial), casa)
+    expect(elenco.tem("alfred", "comandos")).toBe(true)
+    expect(elenco.tem("poe", "comandos")).toBe(false)
+    expect(elenco.comCapacidade("board")).toEqual(["poe"])
+    expect(elenco.excluivel("alfred")).toBe(false)
+    expect(elenco.nome("nati")).toBe("Nati")
+    expect(elenco.existe("zeca")).toBe(false)
+  })
+
+  test("sem elenco carregado, vale o legado: board com os quatro conselheiros", () => {
+    expect(doBoard()).toEqual(["poe", "nati", "lucas", "pami"])
+    expect(ehPerfil("alfred")).toBe(true)
+    expect(ehPerfil("zeca")).toBe(false)
+    expect(nomeDe("pami")).toBe("Pami")
+  })
+
+  test("a migração cria persona.json e a Casa uma vez só, e o elenco lido bate com o legado", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-personas-"))
+    try {
+      for (const p of ["alfred", "nati", "poe"]) await Bun.write(join(raiz, "profiles", p, "profile.md"), "x")
+      expect(await migrarParaPersonas(raiz)).toBe(true)
+      expect(await Bun.file(join(raiz, "profiles", "alfred", "persona.json")).json()).toEqual({
+        id: "alfred",
+        nome: "Alfred",
+        protegida: true,
+      })
+      const lido = await lerElenco(raiz)
+      expect(lido.ids()).toEqual(["alfred", "nati", "poe"])
+      expect(lido.tem("alfred", "comandos")).toBe(true)
+      expect(lido.tem("nati", "memoria")).toBe(true)
+
+      const casa = await Bun.file(join(raiz, "equipes", "casa", "equipe.json")).json()
+      casa.nome = "Minha casa"
+      await Bun.write(join(raiz, "equipes", "casa", "equipe.json"), JSON.stringify(casa))
+      expect(await migrarParaPersonas(raiz)).toBe(false)
+      expect((await lerElenco(raiz)).casa.nome).toBe("Minha casa")
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("persona.json com id diferente da pasta é recusado", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-personas-"))
+    try {
+      await Bun.write(join(raiz, "profiles", "poe", "profile.md"), "x")
+      await migrarParaPersonas(raiz)
+      await Bun.write(join(raiz, "profiles", "poe", "persona.json"), JSON.stringify({ id: "nati", nome: "Nati" }))
+      await expect(lerElenco(raiz)).rejects.toThrow("id diferente da pasta")
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("conselheiro e executor", () => {
   test("alfred é perfil mas não é conselheiro", () => {
-    expect(PERFIS).toContain("alfred")
-    expect(CONSELHEIROS).not.toContain("alfred")
+    expect(perfis()).toContain("alfred")
+    expect(conselheiros()).not.toContain("alfred")
     expect(ehConselheiro("alfred")).toBe(false)
     expect(ehConselheiro("poe")).toBe(true)
   })
@@ -1175,7 +1292,7 @@ describe("pasta de dados", () => {
   })
 
   test("os modelos trazem os cinco perfis, o charter, os atalhos e o índice vazio", async () => {
-    for (const p of PERFIS) expect(await Bun.file(join(modelos, "profiles", p, "profile.md")).exists()).toBe(true)
+    for (const p of perfis()) expect(await Bun.file(join(modelos, "profiles", p, "profile.md")).exists()).toBe(true)
     expect(await Bun.file(join(modelos, "board", "charter.md")).exists()).toBe(true)
     expect(await Bun.file(join(modelos, "atalhos.md")).exists()).toBe(true)
     const indice = await Bun.file(join(modelos, "decisions", "INDEX.md")).text()

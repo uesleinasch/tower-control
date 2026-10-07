@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { CONSELHEIROS } from "../app/src/tipos"
+import { conselheiros } from "../app/src/tipos"
 import { raizDosDados } from "../app/src/caminhos"
 import { memoriaHttp } from "../app/src/memoria/cliente"
 import { migrarUma } from "../app/src/memoria/migracao"
@@ -12,7 +12,7 @@ const memoria = memoriaHttp()
 let falhou = false
 
 console.log(`dados em ${RAIZ}`)
-for (const persona of CONSELHEIROS) {
+for (const persona of conselheiros()) {
   if (!soVerificar) console.log(`${persona}: migrando…`)
   const resultado = await migrarUma(RAIZ, memoria, persona, { soVerificar })
   if (resultado === "sem-arquivo") {
