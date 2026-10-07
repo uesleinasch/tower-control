@@ -8,8 +8,9 @@ import 'areas.dart';
 import 'chat.dart';
 import 'presenca.dart';
 import 'servidor.dart';
+import 'tarefas.dart';
 
-enum Tela { conversas, chat, board, decisoes, configuracao }
+enum Tela { conversas, chat, board, decisoes, tarefas, configuracao }
 
 class Sala extends ChangeNotifier {
   Sala(this.servidor) : canal = Canal(servidor.resolver) {
@@ -17,6 +18,7 @@ class Sala extends ChangeNotifier {
     conversas = EstadoConversas(canal.enviar);
     board = EstadoBoard(canal.enviar);
     decisoes = EstadoDecisoes(canal.enviar);
+    tarefas = EstadoTarefas(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -31,6 +33,7 @@ class Sala extends ChangeNotifier {
   late final EstadoConversas conversas;
   late final EstadoBoard board;
   late final EstadoDecisoes decisoes;
+  late final EstadoTarefas tarefas;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -50,6 +53,7 @@ class Sala extends ChangeNotifier {
     if (tela == nova) return;
     tela = nova;
     if (nova == Tela.decisoes && !decisoes.carregada) decisoes.carregar();
+    if (nova == Tela.tarefas && !tarefas.carregada) tarefas.carregar();
     notifyListeners();
     _atualizarPresenca();
   }
@@ -90,6 +94,7 @@ class Sala extends ChangeNotifier {
     chat.conexaoRestabelecida();
     board.conexaoRestabelecida();
     if (decisoes.carregada) decisoes.carregar();
+    if (tarefas.carregada) tarefas.carregar();
   }
 
   void _tratar(Entrada e) {
@@ -119,6 +124,7 @@ class Sala extends ChangeNotifier {
         conversas.tratar(e);
         board.tratar(e);
         decisoes.tratar(e);
+        tarefas.tratar(e);
     }
   }
 
@@ -134,6 +140,7 @@ class Sala extends ChangeNotifier {
     conversas.dispose();
     board.dispose();
     decisoes.dispose();
+    tarefas.dispose();
     canal.dispose();
     super.dispose();
   }

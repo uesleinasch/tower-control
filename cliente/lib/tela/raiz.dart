@@ -9,6 +9,7 @@ import 'chat.dart';
 import 'comum.dart';
 import 'conversas.dart';
 import 'decisoes.dart';
+import 'tarefas.dart';
 
 const larguraDupla = 840.0;
 
@@ -70,6 +71,7 @@ class _RaizState extends State<Raiz> {
   Widget _principal(BuildContext context, {required bool compacto}) => switch (sala.tela) {
         Tela.board => TelaBoard(sala: sala),
         Tela.decisoes => TelaDecisoes(sala: sala),
+        Tela.tarefas => TelaTarefas(sala: sala),
         Tela.configuracao when widget.configuracao != null => widget.configuracao!(context),
         Tela.conversas when compacto => ListaConversas(sala: sala),
         _ => TelaChat(sala: sala, compacto: compacto),
@@ -93,7 +95,7 @@ class _RaizState extends State<Raiz> {
         child: Scaffold(body: _principal(context, compacto: true)),
       );
     }
-    final abas = [Tela.conversas, Tela.board, Tela.decisoes];
+    final abas = [Tela.conversas, Tela.board, Tela.decisoes, Tela.tarefas];
     return Scaffold(
       appBar: sala.tela == Tela.conversas
           ? AppBar(
@@ -125,6 +127,7 @@ class _RaizState extends State<Raiz> {
           NavigationDestination(icon: Icon(Icons.gavel_outlined), selectedIcon: Icon(Icons.gavel), label: 'Board'),
           NavigationDestination(
               icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Decisões'),
+          NavigationDestination(icon: Icon(Icons.task_alt_outlined), selectedIcon: Icon(Icons.task_alt), label: 'Tarefas'),
         ],
       ),
     );
@@ -174,6 +177,7 @@ class _Lateral extends StatelessWidget {
         const SizedBox(height: 8),
         destino(Tela.board, const Avatar(cor: Color(Perfil.corBoard), inicial: 'B', tamanho: 28), 'Convocar board'),
         destino(Tela.decisoes, const Avatar(cor: Color(Perfil.corDecisoes), inicial: 'D', tamanho: 28), 'Decisões'),
+        destino(Tela.tarefas, const Avatar(cor: Color(Perfil.corTarefas), inicial: 'T', tamanho: 28), 'Tarefas'),
         const Divider(),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 10, 16, 4),

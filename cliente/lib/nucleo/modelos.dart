@@ -18,6 +18,7 @@ class Perfil {
 
   static const corBoard = 0xFF5B8DEF;
   static const corDecisoes = 0xFF58B7C9;
+  static const corTarefas = 0xFFC9A227;
 
   static Perfil porChave(String chave) =>
       todos.firstWhere((p) => p.chave == chave, orElse: () => Perfil(chave, chave, '?', 0xFF8B93A7, ''));

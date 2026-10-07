@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'modelos.dart';
+import 'tarefas.dart';
 
 sealed class Entrada {
   const Entrada();
@@ -31,11 +32,18 @@ sealed class Entrada {
       'criada' => Criada(MetaConversa.deJson(json['meta'] as Map<String, dynamic>)),
       'decisao' => DecisaoAberta(texto('id'), texto('conteudo')),
       'decisoes' => Decisoes(listaDeJson(json['lista'], Decisao.deJson)),
+      'equipes' => EquipesRecebidas(listaDeJson(json['lista'], EquipeResumo.deJson)),
       'erro' => Erro(texto('mensagem')),
       'excluida' => Excluida(texto('id')),
       'fim' => Fim(texto('conversaId')),
       'permissao' => PedidoDePermissao(texto('id'), texto('comando')),
       'permissao-resolvida' => PermissaoResolvida(texto('id'), texto('como')),
+      'tarefa' => TarefaRecebida(
+          Tarefa.deJson(json['tarefa'] as Map<String, dynamic>),
+          listaDeJson(json['registros'], RegistroDeTarefa.deJson),
+          pedida: json['pedida'] == true,
+        ),
+      'tarefas' => TarefasRecebidas(listaDeJson(json['lista'], Tarefa.deJson)),
       _ => Desconhecida(tipo, bruto),
     };
   }
@@ -99,6 +107,23 @@ class DecisaoAberta extends Entrada {
 class Decisoes extends Entrada {
   const Decisoes(this.lista);
   final List<Decisao> lista;
+}
+
+class EquipesRecebidas extends Entrada {
+  const EquipesRecebidas(this.lista);
+  final List<EquipeResumo> lista;
+}
+
+class TarefasRecebidas extends Entrada {
+  const TarefasRecebidas(this.lista);
+  final List<Tarefa> lista;
+}
+
+class TarefaRecebida extends Entrada {
+  const TarefaRecebida(this.tarefa, this.registros, {this.pedida = false});
+  final Tarefa tarefa;
+  final List<RegistroDeTarefa> registros;
+  final bool pedida;
 }
 
 class Erro extends Entrada {
@@ -285,4 +310,67 @@ class Visivel extends Saida {
   String get tipo => 'visivel';
   @override
   Map<String, Object?> get campos => {'conversaId': conversaId};
+}
+
+class PedirEquipes extends Saida {
+  const PedirEquipes();
+  @override
+  String get tipo => 'equipes';
+}
+
+class PedirTarefas extends Saida {
+  const PedirTarefas({this.equipe});
+  final String? equipe;
+
+  @override
+  String get tipo => 'tarefas';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe};
+}
+
+class PedirTarefa extends Saida {
+  const PedirTarefa(this.id);
+  final int id;
+
+  @override
+  String get tipo => 'tarefa';
+  @override
+  Map<String, Object?> get campos => {'id': id};
+}
+
+class CriarTarefa extends Saida {
+  const CriarTarefa({required this.equipe, required this.posicao, required this.titulo, this.porque = ''});
+  final String equipe;
+  final String posicao;
+  final String titulo;
+  final String porque;
+
+  @override
+  String get tipo => 'tarefa-criar';
+  @override
+  Map<String, Object?> get campos => {
+        'tarefa': {'equipe': equipe, 'posicao': posicao, 'titulo': titulo, 'porque': porque},
+      };
+}
+
+class MudarStatusTarefa extends Saida {
+  const MudarStatusTarefa(this.id, this.status);
+  final int id;
+  final String status;
+
+  @override
+  String get tipo => 'tarefa-status';
+  @override
+  Map<String, Object?> get campos => {'id': id, 'status': status};
+}
+
+class ComentarTarefa extends Saida {
+  const ComentarTarefa(this.id, this.texto);
+  final int id;
+  final String texto;
+
+  @override
+  String get tipo => 'tarefa-comentar';
+  @override
+  Map<String, Object?> get campos => {'id': id, 'texto': texto};
 }

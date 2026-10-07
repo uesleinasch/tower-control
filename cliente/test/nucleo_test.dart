@@ -6,7 +6,24 @@ import 'package:control_tower/nucleo/baloes.dart';
 import 'package:control_tower/nucleo/enderecos.dart';
 import 'package:control_tower/nucleo/formato.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
+import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+const _tarefa = {
+  'id': 3,
+  'equipe': 'casa',
+  'posicao': 'executor',
+  'titulo': 'Backup',
+  'descricao': '',
+  'porque': 'não perder dados',
+  'pai': null,
+  'status': 'em_andamento',
+  'dono': 'ueslei',
+  'criadaPor': 'ueslei',
+  'criadaEm': '2026-10-07T10:00:00Z',
+  'atualizadaEm': '2026-10-07T10:05:00Z',
+  'dependeDe': [1],
+};
 
 const _meta = {'id': '2026-09-30-poe-abc', 'perfil': 'poe', 'titulo': 't', 'criadaEm': '2026-09-30T10:00:00Z'};
 
@@ -45,11 +62,34 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
       {'id': 'd1', 'date': '2026-09-30', 'title': 'T', 'status': 'aceita', 'tags': ['a'], 'projeto': 'p'},
     ],
   },
+  'equipes': {
+    'lista': [
+      {
+        'id': 'casa',
+        'nome': 'Casa',
+        'posicoes': [
+          {'id': 'executor', 'titulo': 'executor de tarefas', 'persona': 'alfred', 'personaNome': 'Alfred'},
+          {'id': 'vaga', 'titulo': 'revisora', 'persona': null, 'personaNome': null},
+        ],
+      },
+    ],
+  },
   'erro': {'mensagem': 'falhou'},
   'excluida': {'id': 'c'},
   'fim': {'conversaId': 'c'},
   'permissao': {'id': 'p1', 'comando': 'git status'},
   'permissao-resolvida': {'id': 'p1', 'como': 'aprovado'},
+  'tarefa': {
+    'tarefa': _tarefa,
+    'registros': [
+      {'id': 1, 'tarefa': 3, 'tipo': 'status', 'autor': 'ueslei', 'texto': 'criou em a fazer', 'em': '2026-10-07T10:00:00Z'},
+      {'id': 2, 'tarefa': 3, 'tipo': 'comentario', 'autor': 'ueslei', 'texto': 'à noite', 'em': '2026-10-07T10:01:00Z'},
+    ],
+    'pedida': true,
+  },
+  'tarefas': {
+    'lista': [_tarefa],
+  },
 };
 
 final _saidas = <Saida>[
@@ -63,6 +103,12 @@ final _saidas = <Saida>[
   const PedirDecisoes(),
   const PedirDecisao('d1'),
   const Visivel('c'),
+  const PedirEquipes(),
+  const PedirTarefas(equipe: 'casa'),
+  const PedirTarefa(3),
+  const CriarTarefa(equipe: 'casa', posicao: 'executor', titulo: 't'),
+  const MudarStatusTarefa(3, 'concluida'),
+  const ComentarTarefa(3, 'oi'),
 ];
 
 void main() {
@@ -82,6 +128,46 @@ void main() {
     test('toda saída do codec é um tipo cliente→servidor e cobre a lista', () {
       final tipos = (protocolo['cliente→servidor'] as List).cast<String>();
       expect(_saidas.map((s) => s.tipo).toSet(), tipos.toSet());
+    });
+  });
+
+  group('tarefas', () {
+    test('tarefa decodifica com registros, dependências e marca de pedida', () {
+      final e = Entrada.decodificar(jsonEncode({'tipo': 'tarefa', ..._fixturasEntrada['tarefa']!})) as TarefaRecebida;
+      expect(e.tarefa.id, 3);
+      expect(e.tarefa.dependeDe, [1]);
+      expect(e.tarefa.proximosStatus, contains('em_revisao'));
+      expect(e.registros.map((r) => r.comentario), [false, true]);
+      expect(e.pedida, isTrue);
+    });
+
+    test('posição vaga e ocupada têm rótulos diferentes', () {
+      final e = Entrada.decodificar(jsonEncode({'tipo': 'equipes', ..._fixturasEntrada['equipes']!})) as EquipesRecebidas;
+      expect(e.lista.single.posicoes.map((p) => p.rotulo), ['Alfred · executor de tarefas', 'revisora (vaga)']);
+    });
+
+    test('agrupa por status na ordem de trabalho e substitui tarefa atualizada', () {
+      Tarefa t(int id, String status) => Tarefa(
+          id: id, equipe: 'casa', posicao: 'p', titulo: '$id', status: status, atualizadaEm: DateTime(2026));
+      final grupos = agruparPorStatus([t(1, 'concluida'), t(2, 'a_fazer'), t(3, 'em_andamento'), t(4, 'a_fazer')]);
+      expect(grupos.map((g) => g.status), ['em_andamento', 'a_fazer', 'concluida']);
+      expect(grupos[1].tarefas.map((x) => x.id), [2, 4]);
+      final lista = comTarefa([t(1, 'a_fazer'), t(2, 'a_fazer')], t(2, 'concluida'));
+      expect(lista.map((x) => x.status), ['a_fazer', 'concluida']);
+      expect(comTarefa(lista, t(9, 'backlog')).first.id, 9);
+    });
+
+    test('criar tarefa vai com a equipe e a posição dentro de "tarefa"', () {
+      final json = jsonDecode(const CriarTarefa(equipe: 'casa', posicao: 'executor', titulo: 't').codificar()) as Map;
+      expect(json['tipo'], 'tarefa-criar');
+      expect(json['tarefa'], {'equipe': 'casa', 'posicao': 'executor', 'titulo': 't', 'porque': ''});
+    });
+
+    test('transições espelham as do servidor', () {
+      final servidor = File('../app/src/orquestra/tarefa.ts').readAsStringSync();
+      for (final MapEntry(key: de, value: paras) in transicoesDeTarefa.entries) {
+        expect(servidor, contains('$de: [${paras.map((p) => '"$p"').join(', ')}]'), reason: de);
+      }
     });
   });
 
