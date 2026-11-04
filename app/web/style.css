@@ -625,6 +625,19 @@ body {
 .acoes-tarefa button { background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); }
 .acoes-tarefa button:hover { border-color: var(--acento); }
 .grupo-tarefas { font-size: 12px; text-transform: uppercase; color: var(--texto-2); margin: 14px 0 6px; }
+.status.execucao.na_fila { color: var(--texto-2); }
+.status.execucao.rodando { color: #e0a458; }
+.status.execucao.falhou { color: #e05a5a; }
+.status.execucao.interrompida { color: var(--texto-2); }
+.lista-decisoes .rodando { color: #e0a458; font-size: 11px; }
+.perfil-msg.entrega { border-left: 3px solid #4fae7c; }
+.perfil-msg.ajuda { border-left: 3px solid #e05a5a; }
+#log-execucao { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; min-width: 0; }
+#log-execucao .evento { font-size: 13px; color: var(--texto-2); overflow-wrap: anywhere; }
+#log-execucao .evento.texto { color: var(--texto); }
+#log-execucao .evento.erro { color: var(--perigo); }
+#log-execucao .evento time { font-size: 11px; margin-right: 6px; }
+#log-execucao .evento code { white-space: pre-wrap; }
 
 /* ── celular: lista e conversa como duas telas que deslizam ── */
 

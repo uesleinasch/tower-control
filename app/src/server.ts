@@ -5,12 +5,14 @@ import { migrarPendentes } from "./memoria/migracao"
 import { carregarElenco, elenco, migrarParaPersonas } from "./orquestra/elenco"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
 import { lerNovaTarefa, statusValido } from "./orquestra/tarefa"
+import { Orquestra, tetoDeExecucoes } from "./orquestra/runtime"
+import type { Evento, Execucao } from "./orquestra/execucao"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
-import { ehConselheiro, ehPerfil, lerFoco, modeloEfetivo, type Anexo } from "./tipos"
+import { MODELO_PADRAO, ehConselheiro, ehPerfil, lerFoco, modeloEfetivo, nomeDe, type Anexo } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
-import { conversar } from "./sessions"
+import { conversar, trabalhar } from "./sessions"
 import { convocarBoard } from "./board"
 import { enderecos, respostaEnderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
@@ -29,7 +31,7 @@ import {
 import { sonhar } from "./memoria/sonho"
 import { CentralDeAvisos, caminhoDosAvisos, type Como } from "./avisos/central"
 import { Presenca, type Mudanca } from "./avisos/presenca"
-import { avisoDeAprovacao, avisoDeResposta } from "./avisos/fontes"
+import { avisoDeAprovacao, avisoDeAprovacaoEmTarefa, avisoDeResposta } from "./avisos/fontes"
 import { executorDeAvisos, lerDesde, streamDeAvisos, tratarAcao } from "./avisos/http"
 import { Lembretes } from "./avisos/motor"
 import { chamarTickTask } from "./avisos/ticktask-cliente"
@@ -151,8 +153,30 @@ function idDeTarefa(bruto: unknown): number {
   return id
 }
 
+function tarefaParaCliente(id: number) {
+  return { ...TAREFAS.exigir(id), rodando: ORQUESTRA.rodando(id) }
+}
+
+function detalheDaTarefa(id: number) {
+  const execucoes = TAREFAS.execucoesDaTarefa(id)
+  return {
+    tarefa: tarefaParaCliente(id),
+    registros: TAREFAS.registros(id),
+    execucoes,
+    custoUSD: execucoes.reduce((soma, e) => soma + (e.custoUSD ?? 0), 0),
+  }
+}
+
 function publicarTarefa(id: number): void {
-  mandarATodos({ tipo: "tarefa", tarefa: TAREFAS.exigir(id), registros: TAREFAS.registros(id) })
+  mandarATodos({ tipo: "tarefa", ...detalheDaTarefa(id) })
+}
+
+function publicarExecucao(execucao: Execucao): void {
+  mandarATodos({ tipo: "execucao", execucao })
+}
+
+function publicarEvento(evento: Evento, tarefaId: number): void {
+  mandarATodos({ tipo: "execucao-evento", execucaoId: evento.execucao, tarefaId, evento })
 }
 
 const abertoOuNada = (ws?: Cliente) => (ws?.readyState === WebSocket.OPEN ? ws : undefined)
@@ -160,10 +184,12 @@ const abertoOuNada = (ws?: Cliente) => (ws?.readyState === WebSocket.OPEN ? ws :
 // ── permissão de comando do executor ───────────────────────────────
 
 const PRAZO_PERMISSAO = 120_000
+const PRAZO_PERMISSAO_EM_TAREFA = 600_000
 
 interface Pendente {
   ws?: Cliente
-  conversaId: string
+  conversaId?: string
+  tarefaId?: number
   comando: string
   expiraEm: Date
   avisado: boolean
@@ -181,6 +207,10 @@ function soltarPermissao(id: string, permitido: boolean, como: Como = permitido 
   clearTimeout(pendente.prazo)
   pendentes.delete(id)
   pendente.resolver(permitido)
+  if (pendente.tarefaId !== undefined) {
+    mandarATodos({ tipo: "permissao-resolvida", id, como, tarefaId: pendente.tarefaId })
+    return true
+  }
   const aberto = abertoOuNada(pendente.ws)
   if (aberto) mandar(aberto, { tipo: "permissao-resolvida", id, como })
   return true
@@ -191,7 +221,7 @@ function resolverPermissao(id: string, permitido: boolean, como: Como = permitid
 }
 
 function avisarAprovacao(id: string, pendente: Pendente): void {
-  if (pendente.avisado) return
+  if (pendente.avisado || pendente.conversaId === undefined) return
   pendente.avisado = true
   avisar(AVISOS.criar(avisoDeAprovacao(id, pendente.conversaId, pendente.comando, pendente.expiraEm)))
 }
@@ -203,7 +233,7 @@ function aplicarPresenca({ mostrada, deixadas }: Mudanca): void {
     }
   }
   for (const [id, pendente] of pendentes) {
-    if (deixadas.includes(pendente.conversaId)) avisarAprovacao(id, pendente)
+    if (pendente.conversaId !== undefined && deixadas.includes(pendente.conversaId)) avisarAprovacao(id, pendente)
   }
 }
 
@@ -229,6 +259,43 @@ function tratarComando(ws: Cliente | undefined, conversaId: string, comando: str
     if (!PRESENCA.estaVisivel(conversaId)) avisarAprovacao(id, pendente)
   })
 }
+
+// Tarefa não tem "conversa visível": o pedido vai para todas as telas e sempre vira aviso.
+function tratarComandoDeTarefa(tarefaId: number, persona: string, comando: string, aprovar: boolean): Promise<boolean> {
+  if (CLIENTES.size === 0 && AVISOS.escutando === 0) return Promise.resolve(false)
+  if (!aprovar) return Promise.resolve(true)
+  const id = randomUUID()
+  return new Promise((resolver) => {
+    const prazo = setTimeout(() => resolverPermissao(id, false, "expirado"), PRAZO_PERMISSAO_EM_TAREFA)
+    const expiraEm = new Date(Date.now() + PRAZO_PERMISSAO_EM_TAREFA)
+    pendentes.set(id, { tarefaId, comando, expiraEm, avisado: true, resolver, prazo })
+    mandarATodos({ tipo: "permissao", id, comando, tarefaId })
+    avisar(AVISOS.criar(avisoDeAprovacaoEmTarefa(id, tarefaId, nomeDe(persona), comando, expiraEm)))
+  })
+}
+
+function cancelarPedidosDaTarefa(tarefaId: number): void {
+  for (const [id, pendente] of pendentes) {
+    if (pendente.tarefaId === tarefaId) resolverPermissao(id, false, "expirado")
+  }
+}
+
+const ORQUESTRA = new Orquestra({
+  raiz: RAIZ,
+  repo: TAREFAS,
+  memoria: MEMORIA,
+  teto: tetoDeExecucoes(),
+  equipe: equipePorId,
+  nome: nomeDe,
+  modelo: (persona) => elenco().persona(persona)?.modelo ?? MODELO_PADRAO,
+  trabalhar,
+  publicarTarefa,
+  publicarExecucao,
+  publicarEvento,
+  avisar: (aviso) => avisar(AVISOS.criar(aviso)),
+  pedirComando: tratarComandoDeTarefa,
+  cancelarPedidos: cancelarPedidosDaTarefa,
+})
 
 const executarAviso = executorDeAvisos({
   soltarPermissao,
@@ -430,30 +497,39 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "tarefas": {
       const equipe = typeof msg.equipe === "string" ? msg.equipe : undefined
-      mandar(ws, { tipo: "tarefas", lista: TAREFAS.listar(equipe) })
+      mandar(ws, { tipo: "tarefas", lista: TAREFAS.listar(equipe).map((t) => ({ ...t, rodando: ORQUESTRA.rodando(t.id) })) })
       return
     }
     case "tarefa": {
       const id = idDeTarefa(msg.id)
-      mandar(ws, { tipo: "tarefa", tarefa: TAREFAS.exigir(id), registros: TAREFAS.registros(id), pedida: true })
+      mandar(ws, { tipo: "tarefa", ...detalheDaTarefa(id), pedida: true })
+      return
+    }
+    case "execucao": {
+      const execucao = TAREFAS.exigirExecucao(idDeTarefa(msg.id))
+      mandar(ws, { tipo: "execucao", execucao, eventos: TAREFAS.eventos(execucao.id) })
       return
     }
     case "tarefa-criar": {
       const criada = TAREFAS.criar(lerNovaTarefa(msg.tarefa, equipePorId), "ueslei")
       publicarTarefa(criada.id)
+      ORQUESTRA.aoCriar(criada)
       return
     }
     case "tarefa-status": {
       const id = idDeTarefa(msg.id)
       if (!statusValido(msg.status)) throw new Error("status inválido")
+      const de = TAREFAS.exigir(id).status
       TAREFAS.mudarStatus(id, msg.status, "ueslei")
       publicarTarefa(id)
+      ORQUESTRA.aoMudarStatus(id, de, msg.status)
       return
     }
     case "tarefa-comentar": {
       const id = idDeTarefa(msg.id)
       TAREFAS.comentar(id, "ueslei", String(msg.texto ?? ""))
       publicarTarefa(id)
+      ORQUESTRA.aoComentar(id)
       return
     }
     case "decisoes": {
@@ -567,6 +643,7 @@ const servidor = Bun.serve({
 
 void espelharNaSubida()
 LEMBRETES.iniciar()
+ORQUESTRA.iniciar()
 iniciarAgenda(RAIZ, {
   migrar: () => migrarPendentes(RAIZ, MEMORIA),
   pendentes: (agora) => conversasPendentes(RAIZ, agora),

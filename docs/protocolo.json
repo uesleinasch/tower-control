@@ -15,7 +15,8 @@
     "tarefa",
     "tarefa-criar",
     "tarefa-status",
-    "tarefa-comentar"
+    "tarefa-comentar",
+    "execucao"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -36,6 +37,8 @@
     "permissao",
     "permissao-resolvida",
     "tarefa",
-    "tarefas"
+    "tarefas",
+    "execucao",
+    "execucao-evento"
   ]
 }

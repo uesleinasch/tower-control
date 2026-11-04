@@ -23,6 +23,9 @@ const estado = {
   equipes: [],
   tarefas: [],
   tarefaId: null,
+  detalhe: null,
+  log: null,
+  pedidosDeTarefa: new Map(),
 }
 
 const el = {
@@ -274,9 +277,10 @@ async function anexarArquivos(lista) {
 }
 
 function cartaoDePermissao(msg) {
+  const quem = msg.tarefaId ? `Comando na tarefa #${msg.tarefaId}` : "Alfred quer rodar um comando"
   const cartao = adicionarMensagem(
     "permissao",
-    `<span class="autor alfred">Alfred quer rodar um comando</span>` +
+    `<span class="autor alfred">${escapar(quem)}</span>` +
       `<pre>${escapar(msg.comando)}</pre>` +
       `<div class="acoes">` +
       `<button data-ok="1">Permitir</button><button data-ok="0">Negar</button>` +
@@ -491,10 +495,24 @@ const TRANSICOES_TAREFA = {
   backlog: ["a_fazer", "cancelada"],
   a_fazer: ["em_andamento", "backlog", "bloqueada", "cancelada"],
   em_andamento: ["em_revisao", "concluida", "bloqueada", "a_fazer", "cancelada"],
-  em_revisao: ["concluida", "em_andamento", "cancelada"],
+  em_revisao: ["concluida", "em_andamento", "a_fazer", "cancelada"],
   bloqueada: ["a_fazer", "cancelada"],
   concluida: ["a_fazer"],
   cancelada: ["backlog"],
+}
+const NOMES_EXECUCAO = {
+  na_fila: "na fila",
+  rodando: "rodando",
+  concluida: "concluída",
+  falhou: "falhou",
+  interrompida: "interrompida",
+}
+const NOMES_GATILHO = {
+  atribuicao: "atribuição",
+  comentario: "comentário",
+  dependencia: "dependência",
+  retomada: "retomada",
+  nova_tentativa: "nova tentativa",
 }
 const ORDEM_STATUS = ["em_andamento", "em_revisao", "a_fazer", "bloqueada", "backlog", "concluida", "cancelada"]
 
@@ -533,6 +551,8 @@ function abrirTarefas() {
 
 function voltarParaTarefas() {
   estado.tarefaId = null
+  estado.detalhe = null
+  estado.log = null
   refletirComposerDeTarefas()
   definirCabecalho("tarefas", "Tarefas — Casa")
   renderTarefas()
@@ -581,6 +601,7 @@ function renderTarefas() {
       const li = document.createElement("li")
       li.innerHTML =
         `<span class="status ${t.status}">#${t.id}</span>${escapar(t.titulo)}` +
+        (t.rodando ? ` <span class="rodando">● rodando</span>` : "") +
         `<small>${escapar(rotuloDaPosicao(t.posicao))} · ${quando(t.atualizadaEm)}</small>`
       li.onclick = () => enviar({ tipo: "tarefa", id: t.id })
       ul.appendChild(li)
@@ -589,7 +610,45 @@ function renderTarefas() {
   }
 }
 
-function renderTarefa(tarefa, registros) {
+function dinheiro(usd) {
+  return usd ? `US$ ${usd.toFixed(usd < 0.1 ? 3 : 2)}` : "US$ 0"
+}
+
+function duracao(e) {
+  if (!e.inicio) return ""
+  const ms = (e.fim ? Date.parse(e.fim) : Date.now()) - Date.parse(e.inicio)
+  const s = Math.round(ms / 1000)
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${s % 60}s`
+}
+
+function linhaDeEvento(ev) {
+  const div = document.createElement("div")
+  div.className = `evento ${ev.tipo}`
+  div.innerHTML = `<time>${quando(ev.em)}</time> ${ev.tipo === "texto" ? formatar(ev.conteudo) : `<code>${escapar(ev.conteudo)}</code>`}`
+  return div
+}
+
+function renderLog() {
+  const alvo = document.getElementById("log-execucao")
+  if (!alvo) return
+  alvo.innerHTML = ""
+  const log = estado.log
+  if (!log) return
+  const titulo = document.createElement("h3")
+  titulo.className = "grupo-tarefas"
+  titulo.textContent = `Log da execução ${log.execucaoId}`
+  alvo.appendChild(titulo)
+  if (!log.eventos.length) alvo.appendChild(Object.assign(document.createElement("small"), { textContent: "Sem eventos ainda." }))
+  for (const ev of log.eventos) alvo.appendChild(linhaDeEvento(ev))
+}
+
+function pedirLogSePreciso() {
+  const ultima = estado.detalhe?.execucoes.filter((e) => e.inicio).at(-1)
+  if (ultima && estado.log?.execucaoId !== ultima.id) enviar({ tipo: "execucao", id: ultima.id })
+}
+
+function renderTarefa() {
+  const { tarefa, registros, execucoes = [], custoUSD = 0 } = estado.detalhe
   estado.tarefaId = tarefa.id
   refletirComposerDeTarefas()
   definirCabecalho("tarefas", `#${tarefa.id} — ${tarefa.titulo}`)
@@ -599,7 +658,7 @@ function renderTarefa(tarefa, registros) {
   voltar.onclick = voltarParaTarefas
   const linhas = [
     `**${tarefa.titulo}**`,
-    `Status: ${NOMES_STATUS[tarefa.status]} · ${rotuloDaPosicao(tarefa.posicao)}${tarefa.dono ? ` · com ${tarefa.dono}` : ""}`,
+    `Status: ${NOMES_STATUS[tarefa.status]} · ${rotuloDaPosicao(tarefa.posicao)}${tarefa.rodando ? " · rodando agora" : ""} · custo ${dinheiro(custoUSD)}`,
     tarefa.porque ? `Por quê: ${tarefa.porque}` : "",
     tarefa.dependeDe.length ? `Depende de: ${tarefa.dependeDe.map((d) => `#${d}`).join(", ")}` : "",
     tarefa.pai ? `Parte da tarefa #${tarefa.pai}` : "",
@@ -619,10 +678,39 @@ function renderTarefa(tarefa, registros) {
     if (r.tipo === "comentario") {
       if (r.autor === "ueslei") mensagemDoUsuario(r.texto, null, r.em)
       else adicionarMensagem("perfil-msg", `<strong>${escapar(r.autor)}</strong><br>${formatar(r.texto)}`, r.em)
+    } else if (r.tipo === "entrega" || r.tipo === "ajuda") {
+      const rotulo = r.tipo === "entrega" ? "entregou" : "pediu ajuda"
+      adicionarMensagem(`perfil-msg ${r.tipo}`, `<strong>${escapar(r.autor)} ${rotulo}</strong><br>${formatar(r.texto)}`, r.em)
     } else {
       adicionarMensagem("aviso", `${escapar(r.autor)}: ${escapar(r.texto)} · ${quando(r.em)}`)
     }
   }
+  if (execucoes.length) {
+    const titulo = document.createElement("h3")
+    titulo.className = "grupo-tarefas"
+    titulo.textContent = `Execuções · ${execucoes.length}`
+    el.mensagens.appendChild(titulo)
+    const ul = document.createElement("ul")
+    ul.className = "lista-decisoes"
+    for (const e of [...execucoes].reverse()) {
+      const li = document.createElement("li")
+      const detalhes = [e.persona, NOMES_GATILHO[e.gatilho] ?? e.gatilho, duracao(e), e.custoUSD != null ? dinheiro(e.custoUSD) : "", e.erro ?? ""]
+      li.innerHTML =
+        `<span class="status execucao ${e.status}">${e.id}</span>${NOMES_EXECUCAO[e.status] ?? e.status}` +
+        `<small>${escapar(detalhes.filter(Boolean).join(" · "))}</small>`
+      if (e.inicio) li.onclick = () => enviar({ tipo: "execucao", id: e.id })
+      ul.appendChild(li)
+    }
+    el.mensagens.appendChild(ul)
+  }
+  const log = document.createElement("div")
+  log.id = "log-execucao"
+  el.mensagens.appendChild(log)
+  renderLog()
+  for (const pedido of estado.pedidosDeTarefa.values()) {
+    if (pedido.tarefaId === tarefa.id) cartaoDePermissao(pedido)
+  }
+  pedirLogSePreciso()
   rolarAoFim()
 }
 
@@ -718,6 +806,11 @@ function encerrarStreaming() {
 function tratar(msg) {
   switch (msg.tipo) {
     case "permissao": {
+      if (msg.tarefaId) {
+        estado.pedidosDeTarefa.set(msg.id, msg)
+        if (estado.modo === "tarefas" && estado.tarefaId === msg.tarefaId) cartaoDePermissao(msg)
+        break
+      }
       cartaoDePermissao(msg)
       break
     }
@@ -726,6 +819,7 @@ function tratar(msg) {
       break
     }
     case "permissao-resolvida": {
+      estado.pedidosDeTarefa.delete(msg.id)
       const acoes = document.querySelector(`[data-permissao="${CSS.escape(msg.id)}"] .acoes`)
       if (acoes?.querySelector("button")) acoes.innerHTML = `<small>${ROTULOS_PERMISSAO[msg.como] ?? msg.como}</small>`
       break
@@ -856,9 +950,36 @@ function tratar(msg) {
       if (i >= 0) estado.tarefas[i] = msg.tarefa
       else estado.tarefas.unshift(msg.tarefa)
       if (estado.modo !== "tarefas") break
-      if (estado.tarefaId === null && msg.pedida) renderTarefa(msg.tarefa, msg.registros)
-      else if (estado.tarefaId === msg.tarefa.id) renderTarefa(msg.tarefa, msg.registros)
-      else renderTarefas()
+      if ((estado.tarefaId === null && msg.pedida) || estado.tarefaId === msg.tarefa.id) {
+        if (estado.tarefaId !== msg.tarefa.id) estado.log = null
+        estado.detalhe = msg
+        renderTarefa()
+      } else renderTarefas()
+      break
+    }
+    case "execucao": {
+      const d = estado.detalhe
+      if (!d || d.tarefa.id !== msg.execucao.tarefa) break
+      const i = d.execucoes.findIndex((e) => e.id === msg.execucao.id)
+      if (i >= 0) d.execucoes[i] = msg.execucao
+      else d.execucoes.push(msg.execucao)
+      if (msg.eventos) {
+        estado.log = { execucaoId: msg.execucao.id, eventos: msg.eventos }
+        renderLog()
+      } else if (msg.execucao.status === "rodando") {
+        pedirLogSePreciso()
+      }
+      break
+    }
+    case "execucao-evento": {
+      if (estado.log?.execucaoId !== msg.execucaoId) break
+      estado.log.eventos.push(msg.evento)
+      const alvo = document.getElementById("log-execucao")
+      if (alvo) {
+        alvo.querySelector("small")?.remove()
+        alvo.appendChild(linhaDeEvento(msg.evento))
+        rolarAoFim()
+      }
       break
     }
     case "erro": {

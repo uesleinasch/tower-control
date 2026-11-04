@@ -223,7 +223,7 @@ export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string
     ...(comMemoria ? { memoria: servidorDeMemoria(comMemoria, opcoes.persona, `tarefa:${opcoes.tarefaId}`) } : {}),
     orquestra: servidorDaOrquestra(opcoes.acoes),
   }
-  let sessionId = opcoes.sessionId
+  let sessionId: string | undefined
   let final = ""
   const uso = {
     tipo: "tarefa" as const,
@@ -281,7 +281,7 @@ export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string
       final = typeof resultado.result === "string" ? resultado.result.trim() : ""
     }
   }
-  return { texto: final, sessionId }
+  return { texto: final, sessionId: sessionId ?? opcoes.sessionId }
 }
 
 export async function perguntarUmaVez(opcoes: {
