@@ -508,7 +508,7 @@ const TRANSICOES_TAREFA = {
   backlog: ["a_fazer", "cancelada"],
   a_fazer: ["em_andamento", "backlog", "bloqueada", "cancelada"],
   em_andamento: ["em_revisao", "concluida", "bloqueada", "a_fazer", "cancelada"],
-  em_revisao: ["concluida", "em_andamento", "a_fazer", "cancelada"],
+  em_revisao: ["concluida", "em_andamento", "a_fazer", "bloqueada", "cancelada"],
   bloqueada: ["a_fazer", "cancelada"],
   concluida: ["a_fazer"],
   cancelada: ["backlog"],
@@ -527,6 +527,8 @@ const NOMES_GATILHO = {
   retomada: "retomada",
   nova_tentativa: "nova tentativa",
   plano_aprovado: "plano aprovado",
+  revisao: "entrega para revisar",
+  mudanca: "pedido de mudança",
 }
 const ORDEM_STATUS = ["em_andamento", "em_revisao", "a_fazer", "bloqueada", "backlog", "concluida", "cancelada"]
 
@@ -587,6 +589,41 @@ function formatarTokens(n) {
   if (n >= 1_000) return `${Math.round(n / 1_000)} mil tokens`
   return `${Math.round(n)} tokens`
 }
+
+function nomeNaTrilha(etapa, equipe) {
+  if (etapa.por.board) return "board"
+  if (etapa.por.ueslei) return "Ueslei"
+  const p = posicoesDa(equipe).find((x) => x.id === etapa.por.posicao)
+  return p?.personaNome ?? p?.titulo ?? etapa.por.posicao
+}
+
+function descreverPolitica(politica, equipe) {
+  return politica.map((e) => `${nomeNaTrilha(e, equipe)} ${e.tipo === "revisao" ? "revisa" : "aprova"}`)
+}
+
+function trilhaDaTarefa(tarefa) {
+  const dona = posicoesDa(tarefa.equipe).find((p) => p.id === tarefa.posicao)
+  const atual = tarefa.status === "em_revisao" ? tarefa.etapa : null
+  const comExecutora = tarefa.status === "a_fazer" || tarefa.status === "em_andamento"
+  const passos = [{ texto: `${dona?.personaNome ?? dona?.titulo ?? tarefa.posicao} executa`, atual: comExecutora, passada: atual !== null }]
+  descreverPolitica(tarefa.politica, tarefa.equipe).forEach((texto, i) =>
+    passos.push({
+      texto,
+      atual: atual === i,
+      passada: tarefa.status === "concluida" || (atual !== null ? i < atual : comExecutora && tarefa.retorno !== null && i < tarefa.retorno),
+    }),
+  )
+  if (tarefa.status === "concluida") passos[0].passada = true
+  const div = document.createElement("div")
+  div.className = "trilha-politica"
+  div.innerHTML = passos
+    .map((p) => `<span class="${p.atual ? "atual" : p.passada ? "passada" : ""}">${p.passada && !p.atual ? "✓ " : ""}${escapar(p.texto)}</span>`)
+    .join(" → ")
+  return div
+}
+
+const esperaDecisaoDoUeslei = (tarefa) =>
+  tarefa.status === "em_revisao" && tarefa.etapa != null && tarefa.politica[tarefa.etapa]?.por.ueslei === true
 
 const planoPendente = (registros) => {
   const plano = registros.findLastIndex((r) => r.tipo === "plano")
@@ -672,7 +709,7 @@ function renderTarefas() {
       li.innerHTML =
         `<span class="status ${t.status}">#${t.id}</span>${escapar(t.titulo)}` +
         (t.rodando ? ` <span class="rodando">● rodando</span>` : "") +
-        `<small>${escapar(rotuloDaPosicao(t.posicao))} · ${quando(t.atualizadaEm)}</small>`
+        `<small>${escapar(rotuloDaPosicao(t.posicao))}${t.comQuem ? ` · ${escapar(t.comQuem)}` : ""} · ${quando(t.atualizadaEm)}</small>`
       li.onclick = () => enviar({ tipo: "tarefa", id: t.id })
       ul.appendChild(li)
     }
@@ -736,6 +773,7 @@ function renderTarefa() {
     tarefa.descricao,
   ]
   adicionarMensagem("perfil-msg documento", formatar(linhas.filter(Boolean).join("\n\n")))
+  if (tarefa.politica?.length) el.mensagens.appendChild(trilhaDaTarefa(tarefa))
   const acoes = document.createElement("div")
   acoes.className = "acoes-tarefa"
   for (const para of TRANSICOES_TAREFA[tarefa.status] ?? []) {
@@ -751,13 +789,27 @@ function renderTarefa() {
     aprovar.onclick = () => enviar({ tipo: "tarefa-aprovar-plano", id: tarefa.id })
     acoes.prepend(aprovar)
   }
+  if (esperaDecisaoDoUeslei(tarefa)) {
+    const mudanca = document.createElement("button")
+    mudanca.className = "pedir-mudanca"
+    mudanca.textContent = "Pedir mudança"
+    mudanca.onclick = () => {
+      const texto = prompt("O que precisa mudar?")?.trim()
+      if (texto) enviar({ tipo: "tarefa-decidir", id: tarefa.id, decisao: "mudanca", texto })
+    }
+    const aprovar = document.createElement("button")
+    aprovar.className = "aprovar-plano"
+    aprovar.textContent = "Aprovar"
+    aprovar.onclick = () => enviar({ tipo: "tarefa-decidir", id: tarefa.id, decisao: "aprovar" })
+    acoes.prepend(aprovar, mudanca)
+  }
   el.mensagens.appendChild(acoes)
   for (const r of registros) {
     if (r.tipo === "comentario") {
       if (r.autor === "ueslei") mensagemDoUsuario(r.texto, null, r.em)
       else adicionarMensagem("perfil-msg", `<strong>${escapar(r.autor)}</strong><br>${formatar(r.texto)}`, r.em)
-    } else if (r.tipo === "entrega" || r.tipo === "ajuda" || r.tipo === "plano") {
-      const rotulo = { entrega: "entregou", ajuda: "pediu ajuda", plano: "propôs um plano" }[r.tipo]
+    } else if (["entrega", "ajuda", "plano", "aprovado", "mudanca"].includes(r.tipo)) {
+      const rotulo = { entrega: "entregou", ajuda: "pediu ajuda", plano: "propôs um plano", aprovado: "aprovou", mudanca: "pediu mudança" }[r.tipo]
       adicionarMensagem(`perfil-msg ${r.tipo}`, `<strong>${escapar(r.autor)} ${rotulo}</strong><br>${formatar(r.texto)}`, r.em)
     } else {
       adicionarMensagem("aviso", `${escapar(r.autor)}: ${escapar(r.texto)} · ${quando(r.em)}`)
@@ -898,6 +950,7 @@ function detalheDaPosicao(equipe, p) {
     `Capacidades: ${escapar(p.capacidades.map((c) => NOMES_CAPACIDADE[c] ?? c).join(", ") || "nenhuma")}`,
     p.capacidades.includes("comandos") ? `Aprovação de comando: ${escapar(p.aprovacao)}` : "",
     p.diretorio ? `Diretório: <code>${escapar(p.diretorio)}</code>` : "",
+    p.politica?.length ? `Depois da entrega: ${escapar(descreverPolitica(p.politica, equipe.id).join(" → "))}` : "",
   ]
   div.innerHTML = linhas.filter(Boolean).join("<br>")
   if (abertas.length) {

@@ -17,7 +17,9 @@ import { MODELO_PADRAO, ehConselheiro, ehPerfil, lerFoco, modeloEfetivo, nomeDe,
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
 import { conversar, trabalhar } from "./sessions"
-import { convocarBoard } from "./board"
+import { convocarBoard, revisarComBoard } from "./board"
+import { comQuem } from "./orquestra/politica"
+import type { Tarefa } from "./orquestra/tarefa"
 import { enderecos, respostaEnderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
 import { apagarSessao } from "./sessao-sdk"
@@ -269,10 +271,11 @@ const equipePorId = (id: string) => elenco().equipe(id)
 function contarTarefas(equipe: string) {
   const tarefas = TAREFAS.listar(equipe)
   return (posicao: string) => {
-    const daPosicao = tarefas.filter((t) => t.posicao === posicao)
+    const abertas = tarefas.filter((t) => t.status !== "concluida" && t.status !== "cancelada")
     return {
-      abertas: daPosicao.filter((t) => t.status !== "concluida" && t.status !== "cancelada").length,
-      emAndamento: daPosicao.filter((t) => t.status === "em_andamento").length,
+      abertas: abertas.filter((t) => t.posicao === posicao).length,
+      emAndamento: tarefas.filter((t) => t.posicao === posicao && t.status === "em_andamento").length,
+      citadas: abertas.filter((t) => t.politica.some((e) => "posicao" in e.por && e.por.posicao === posicao)).length,
     }
   }
 }
@@ -337,8 +340,12 @@ function idDeTarefa(bruto: unknown): number {
   return id
 }
 
+function paraCliente(tarefa: Tarefa) {
+  return { ...tarefa, rodando: ORQUESTRA.rodando(tarefa.id), comQuem: comQuem(tarefa, equipePorId(tarefa.equipe), nomeDe) }
+}
+
 function tarefaParaCliente(id: number) {
-  return { ...TAREFAS.exigir(id), rodando: ORQUESTRA.rodando(id) }
+  return paraCliente(TAREFAS.exigir(id))
 }
 
 function detalheDaTarefa(id: number) {
@@ -474,6 +481,7 @@ const ORQUESTRA = new Orquestra({
   nome: nomeDe,
   modelo: (persona) => elenco().persona(persona)?.modelo ?? MODELO_PADRAO,
   trabalhar,
+  revisarComBoard: (pedido) => revisarComBoard(RAIZ, { ...pedido, memoria: MEMORIA }),
   publicarTarefa,
   publicarExecucao,
   publicarEvento,
@@ -710,6 +718,13 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       publicarTarefa(id)
       return
     }
+    case "tarefa-decidir": {
+      const id = idDeTarefa(msg.id)
+      if (msg.decisao !== "aprovar" && msg.decisao !== "mudanca") throw new Error("decisão inválida")
+      ORQUESTRA.decidir(id, msg.decisao, typeof msg.texto === "string" ? msg.texto : "")
+      publicarTarefa(id)
+      return
+    }
     case "auditoria": {
       mandar(ws, { tipo: "auditoria", lista: TAREFAS.auditoria() })
       return
@@ -734,7 +749,7 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "tarefas": {
       const equipe = typeof msg.equipe === "string" ? msg.equipe : undefined
-      mandar(ws, { tipo: "tarefas", lista: TAREFAS.listar(equipe).map((t) => ({ ...t, rodando: ORQUESTRA.rodando(t.id) })) })
+      mandar(ws, { tipo: "tarefas", lista: TAREFAS.listar(equipe).map(paraCliente) })
       return
     }
     case "tarefa": {

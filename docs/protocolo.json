@@ -26,7 +26,8 @@
     "pausar",
     "retomar",
     "tarefa-aprovar-plano",
-    "auditoria"
+    "auditoria",
+    "tarefa-decidir"
   ],
   "servidor→cliente": [
     "atalhos",
