@@ -156,6 +156,7 @@ function regrasDaRevisao(executora: string, final: boolean, semDecisao: boolean)
     `Você está ${final ? "dando a aprovação final" : "revisando"} a entrega de ${executora} numa tarefa do orquestrador, não numa conversa.`,
     "",
     "- Ninguém está olhando esta conversa. Leia a tarefa, a entrega e o que mais precisar, mas não altere nada.",
+    "- Confira os arquivos que a entrega diz ter criado ou mudado, lendo-os. Arquivo que não está lá é motivo para pedir mudança.",
     "- Decida chamando uma das ferramentas: aprovar, com o seu parecer, ou pedir_mudanca, dizendo o que muda e por quê.",
     `- Pedido de mudança volta para ${executora}, e a nova entrega volta para você.`,
     "- Use comentar só para registrar algo que vale ler mesmo se a execução cair.",
@@ -175,7 +176,9 @@ export type ModoDaExecucao =
 function regrasDoBoard(executora: string): string {
   return `O board está revisando a entrega de ${executora} numa tarefa do orquestrador.
 Leia a tarefa e a entrega mais recente no histórico e diga se ela pode seguir como está ou
-precisa de mudança; se precisar, diga o que muda e por quê. Não altere nada.`
+precisa de mudança; se precisar, diga o que muda e por quê. Não altere nada. Confira os
+arquivos que a entrega diz ter criado ou mudado, lendo-os: o texto da entrega não prova que
+eles existem, e arquivo que não está lá é motivo para pedir mudança.`
 }
 
 function rotuloDoRegistro(r: Registro): string {
