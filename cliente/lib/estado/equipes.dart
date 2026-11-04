@@ -28,7 +28,8 @@ class EstadoEquipes extends ChangeNotifier {
 
   void alternarPausaGeral() => pausadoTudo ? retomar('*') : pausar('*');
 
-  void salvarOrcamento(String persona, double? limite) => _enviar(SalvarOrcamento(persona, limite));
+  void salvarOrcamento(String persona, {required double? usd, required int? tokens}) =>
+      _enviar(SalvarOrcamento(persona, usd: usd, tokens: tokens));
 
   void pedirAuditoria() => _enviar(const PedirAuditoria());
 

@@ -11,8 +11,11 @@ class Perfil {
     this.gerandoPerfil = false,
     this.modelo,
     this.orcamentoMensalUSD,
+    this.orcamentoMensalTokens,
     this.gastoMesUSD = 0,
     this.gastoTotalMesUSD = 0,
+    this.tokensMes = 0,
+    this.tokensTotalMes = 0,
     this.pausa,
   });
 
@@ -27,16 +30,26 @@ class Perfil {
   final bool gerandoPerfil;
   final String? modelo;
   final double? orcamentoMensalUSD;
+  final int? orcamentoMensalTokens;
   final double gastoMesUSD;
   final double gastoTotalMesUSD;
+  final int tokensMes;
+  final int tokensTotalMes;
   final String? pausa;
 
   double? get proporcaoDoOrcamento {
-    final limite = orcamentoMensalUSD;
-    if (limite == null) return null;
-    if (limite <= 0) return 1;
-    final p = gastoMesUSD / limite;
-    return p > 1 ? 1 : p;
+    double? fracao(num gasto, num? limite) {
+      if (limite == null) return null;
+      if (limite <= 0) return 1;
+      final p = gasto / limite;
+      return p > 1 ? 1 : p.toDouble();
+    }
+
+    final usd = fracao(gastoMesUSD, orcamentoMensalUSD);
+    final tokens = fracao(tokensMes, orcamentoMensalTokens);
+    if (usd == null) return tokens;
+    if (tokens == null) return usd;
+    return usd > tokens ? usd : tokens;
   }
 
   factory Perfil.deJson(Map<String, dynamic> j) {
@@ -54,8 +67,11 @@ class Perfil {
       gerandoPerfil: j['gerandoPerfil'] == true,
       modelo: j['modelo'] as String?,
       orcamentoMensalUSD: (j['orcamentoMensalUSD'] as num?)?.toDouble(),
+      orcamentoMensalTokens: (j['orcamentoMensalTokens'] as num?)?.toInt(),
       gastoMesUSD: (j['gastoMesUSD'] as num?)?.toDouble() ?? 0,
       gastoTotalMesUSD: (j['gastoTotalMesUSD'] as num?)?.toDouble() ?? 0,
+      tokensMes: (j['tokensMes'] as num?)?.toInt() ?? 0,
+      tokensTotalMes: (j['tokensTotalMes'] as num?)?.toInt() ?? 0,
       pausa: (j['pausa'] as Map?)?['motivo'] as String?,
     );
   }
@@ -78,6 +94,12 @@ class Perfil {
 
   static Perfil porChave(String chave) =>
       todos.firstWhere((p) => p.chave == chave, orElse: () => Perfil(chave, chave, '?', 0xFF8B93A7, ''));
+}
+
+String formatarTokens(num n) {
+  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1).replaceAll('.', ',')} mi tokens';
+  if (n >= 1000) return '${(n / 1000).round()} mil tokens';
+  return '${n.round()} tokens';
 }
 
 int corDeHex(String? hex) {

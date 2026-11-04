@@ -488,15 +488,16 @@ class ExcluirEquipe extends Saida {
 }
 
 class SalvarOrcamento extends Saida {
-  const SalvarOrcamento(this.id, this.orcamentoMensalUSD);
+  const SalvarOrcamento(this.id, {required this.usd, required this.tokens});
   final String id;
-  final double? orcamentoMensalUSD;
+  final double? usd;
+  final int? tokens;
 
   @override
   String get tipo => 'persona-salvar';
   @override
   Map<String, Object?> get campos => {
-        'persona': {'id': id, 'orcamentoMensalUSD': orcamentoMensalUSD},
+        'persona': {'id': id, 'orcamentoMensalUSD': usd, 'orcamentoMensalTokens': tokens},
       };
 }
 

@@ -155,7 +155,7 @@ final _saidas = <Saida>[
   const ExcluirPersona('vera', 'Vera'),
   const SalvarEquipe(EquipeResumo(id: 'codigo', nome: 'Código', posicoes: [])),
   const ExcluirEquipe('codigo'),
-  const SalvarOrcamento('alfred', 5),
+  const SalvarOrcamento('alfred', usd: 5, tokens: 2000000),
   const Pausar('*'),
   const Retomar('alfred'),
   const AprovarPlano(3),
@@ -567,8 +567,12 @@ void main() {
       expect(planoPendente([r('plano'), r('plano-aprovado')]), isFalse);
       expect(planoPendente([r('entrega')]), isFalse);
       expect(r('plano').destacado, isTrue);
-      final json = jsonDecode(const SalvarOrcamento('alfred', null).codificar()) as Map;
-      expect(json['persona'], {'id': 'alfred', 'orcamentoMensalUSD': null});
+      final json = jsonDecode(const SalvarOrcamento('alfred', usd: null, tokens: 500000).codificar()) as Map;
+      expect(json['persona'], {'id': 'alfred', 'orcamentoMensalUSD': null, 'orcamentoMensalTokens': 500000});
+      final tokens = Perfil.deJson({'id': 'x', 'nome': 'X', 'orcamentoMensalUSD': 10, 'gastoMesUSD': 1, 'orcamentoMensalTokens': 1000, 'tokensMes': 900});
+      expect(tokens.proporcaoDoOrcamento, 0.9);
+      expect(formatarTokens(1250000), '1,3 mi tokens');
+      expect(formatarTokens(45400), '45 mil tokens');
     });
 
     test('personas do servidor substituem o registro fixo', () {

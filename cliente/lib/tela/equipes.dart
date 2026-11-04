@@ -863,20 +863,13 @@ class _PainelDePersonas extends StatelessWidget {
   final bool gerenciar;
 
   Future<void> _orcamento(BuildContext context, Perfil p) async {
-    final texto = await pedirTexto(
-      context,
-      titulo: 'Orçamento de ${p.nome}',
-      rotulo: 'Limite mensal das tarefas em US\$ (vazio = sem limite)',
-      explicacao: 'Neste mês: US\$ ${p.gastoMesUSD.toStringAsFixed(2)} em tarefas, US\$ ${p.gastoTotalMesUSD.toStringAsFixed(2)} no total.',
-      acao: 'Salvar',
-      vazioVale: true,
+    final limites = await showDialog<({double? usd, int? tokens})>(
+      context: context,
+      builder: (_) => _DialogoDeOrcamento(persona: p),
     );
-    if (texto == null) return;
-    final limpo = texto.trim().replaceAll(',', '.');
-    final limite = limpo.isEmpty ? null : double.tryParse(limpo);
-    if (limpo.isNotEmpty && (limite == null || limite < 0)) return;
-    estado.salvarOrcamento(p.chave, limite);
+    if (limites != null) estado.salvarOrcamento(p.chave, usd: limites.usd, tokens: limites.tokens);
   }
+
 
   Future<void> _nova(BuildContext context) async {
     final dados = await showDialog<_NovaPersona>(context: context, builder: (_) => const _DialogoNovaPersona());
@@ -928,6 +921,11 @@ class _PainelDePersonas extends StatelessWidget {
                 Text(
                   'tarefas no mês: US\$ ${p.gastoMesUSD.toStringAsFixed(2)}'
                   '${p.orcamentoMensalUSD != null ? ' de US\$ ${p.orcamentoMensalUSD!.toStringAsFixed(2)}' : ' · sem limite'}',
+                  style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
+                ),
+                Text(
+                  'tokens no mês: ${formatarTokens(p.tokensMes)}'
+                  '${p.orcamentoMensalTokens != null ? ' de ${formatarTokens(p.orcamentoMensalTokens!)}' : ' · sem limite'}',
                   style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
                 ),
                 if (p.proporcaoDoOrcamento case final proporcao?)
@@ -1232,4 +1230,74 @@ String quandoCurto(DateTime em) {
   final l = em.toLocal();
   String d(int n) => n.toString().padLeft(2, '0');
   return '${d(l.day)}/${d(l.month)} ${d(l.hour)}:${d(l.minute)}';
+}
+
+class _DialogoDeOrcamento extends StatefulWidget {
+  const _DialogoDeOrcamento({required this.persona});
+
+  final Perfil persona;
+
+  @override
+  State<_DialogoDeOrcamento> createState() => _DialogoDeOrcamentoState();
+}
+
+class _DialogoDeOrcamentoState extends State<_DialogoDeOrcamento> {
+  late final _usd = TextEditingController(text: widget.persona.orcamentoMensalUSD?.toString() ?? '');
+  late final _tokens = TextEditingController(text: widget.persona.orcamentoMensalTokens?.toString() ?? '');
+  String? _erro;
+
+  @override
+  void dispose() {
+    _usd.dispose();
+    _tokens.dispose();
+    super.dispose();
+  }
+
+  void _salvar() {
+    final usdTexto = _usd.text.trim().replaceAll(',', '.');
+    final tokensTexto = _tokens.text.trim().replaceAll('.', '').replaceAll(' ', '');
+    final usd = usdTexto.isEmpty ? null : double.tryParse(usdTexto);
+    final tokens = tokensTexto.isEmpty ? null : int.tryParse(tokensTexto);
+    if ((usdTexto.isNotEmpty && (usd == null || usd < 0)) || (tokensTexto.isNotEmpty && (tokens == null || tokens < 0))) {
+      setState(() => _erro = 'Use números positivos; tokens sem casas decimais.');
+      return;
+    }
+    Navigator.pop<({double? usd, int? tokens})>(context, (usd: usd, tokens: tokens));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.persona;
+    return AlertDialog(
+      title: Text('Orçamento de ${p.nome}'),
+      content: SizedBox(
+        width: 400,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(
+            'Neste mês, em tarefas: US\$ ${p.gastoMesUSD.toStringAsFixed(2)} e ${formatarTokens(p.tokensMes)}. '
+            'O que estourar primeiro segura as tarefas. Vazio = sem limite.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _usd,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Limite mensal em US\$'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _tokens,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Limite mensal em tokens (ex.: 2000000)'),
+            onSubmitted: (_) => _salvar(),
+          ),
+          if (_erro != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_erro!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(onPressed: _salvar, child: const Text('Salvar')),
+      ],
+    );
+  }
 }
