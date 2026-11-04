@@ -69,7 +69,7 @@ class TelaEquipes extends StatelessWidget {
     required bool personasVisiveis,
   }) {
     final selecionada = estado.selecionada == null ? null : equipe.posicao(estado.selecionada!);
-    final canvas = _Canvas(estado: estado, equipe: equipe, editar: editar);
+    final canvas = CanvasDoOrganograma(estado: estado, equipe: equipe, editar: editar);
     if (!editar) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(child: canvas),
@@ -216,18 +216,18 @@ class _Topo extends StatelessWidget {
 
 enum _Gesto { fundo, cartao, alca }
 
-class _Canvas extends StatefulWidget {
-  const _Canvas({required this.estado, required this.equipe, required this.editar});
+class CanvasDoOrganograma extends StatefulWidget {
+  const CanvasDoOrganograma({super.key, required this.estado, required this.equipe, required this.editar});
 
   final EstadoEquipes estado;
   final EquipeResumo equipe;
   final bool editar;
 
   @override
-  State<_Canvas> createState() => _CanvasState();
+  State<CanvasDoOrganograma> createState() => _CanvasDoOrganogramaState();
 }
 
-class _CanvasState extends State<_Canvas> {
+class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
   Vista? _vista;
   String? _ajustadaPara;
   Size _tamanho = Size.zero;
@@ -238,6 +238,7 @@ class _CanvasState extends State<_Canvas> {
   Ponto? _ponteiro;
   double _escalaNoInicio = 1;
   Offset? _pressionado;
+  String? _linhaSobre;
   MouseCursor _cursor = SystemMouseCursors.grab;
 
   Vista get _v => _vista ?? (dx: 0, dy: 0, escala: 1);
@@ -266,12 +267,64 @@ class _CanvasState extends State<_Canvas> {
 
   void _aoPassar(PointerHoverEvent e) {
     final mundo = paraMundo(_v, e.localPosition.dx, e.localPosition.dy);
-    final cursor = switch (_gestoEm(mundo)) {
+    final gesto = _gestoEm(mundo);
+    final linha = gesto == _Gesto.fundo && widget.editar ? ligacaoEm(widget.equipe, mundo.x, mundo.y) : null;
+    final cursor = switch (gesto) {
       _Gesto.alca => SystemMouseCursors.precise,
       _Gesto.cartao => SystemMouseCursors.move,
-      _Gesto.fundo => alvoEm(widget.equipe, mundo.x, mundo.y) is NaPosicao ? SystemMouseCursors.click : SystemMouseCursors.grab,
+      _Gesto.fundo => linha != null || alvoEm(widget.equipe, mundo.x, mundo.y) != null
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.grab,
     };
-    if (cursor != _cursor) setState(() => _cursor = cursor);
+    if (cursor != _cursor || linha != _linhaSobre) {
+      setState(() {
+        _cursor = cursor;
+        _linhaSobre = linha;
+      });
+    }
+  }
+
+  String _titulo(EquipeResumo e, String id) => e.posicao(id)?.titulo ?? id;
+
+  void _avisar(String texto, {EquipeResumo? desfazerPara}) {
+    final mensageiro = ScaffoldMessenger.maybeOf(context);
+    if (mensageiro == null) return;
+    mensageiro.hideCurrentSnackBar();
+    mensageiro.showSnackBar(SnackBar(
+      content: Text(texto),
+      duration: const Duration(seconds: 4),
+      action: desfazerPara == null
+          ? null
+          : SnackBarAction(label: 'Desfazer', onPressed: () => widget.estado.aplicar((_) => desfazerPara)),
+    ));
+  }
+
+  void _ligar(String chefe, NaPosicao? destino) {
+    final antes = widget.estado.atual;
+    if (antes == null) return;
+    if (destino == null || destino.id == chefe) {
+      _avisar('Solte o + em cima de outro cartão para ligar.');
+      return;
+    }
+    widget.estado.aplicar((e) => ligarPelaAlca(e, chefe, destino));
+    if (widget.estado.erro == null) {
+      _avisar('${_titulo(antes, destino.id)} agora responde a ${_titulo(antes, chefe)}.', desfazerPara: antes);
+    }
+  }
+
+  void _desligar(String filho) {
+    final antes = widget.estado.atual;
+    final chefe = antes?.posicao(filho)?.respondeA;
+    if (antes == null || chefe == null) return;
+    widget.estado.aplicar((e) => soltar(e, filho));
+    setState(() => _linhaSobre = null);
+    _avisar('${_titulo(antes, filho)} não responde mais a ${_titulo(antes, chefe)}.', desfazerPara: antes);
+  }
+
+  Future<void> _criarSubordinada(String chefe) async {
+    final nome = _titulo(widget.equipe, chefe);
+    final titulo = await pedirTexto(context, titulo: 'Subordinada de $nome', rotulo: 'Título (ex.: executor)', acao: 'Criar');
+    if (titulo != null) widget.estado.novaSubordinada(chefe, titulo);
   }
 
   void _roda(PointerSignalEvent e) {
@@ -343,16 +396,24 @@ class _CanvasState extends State<_Canvas> {
     });
     if (id == null) return;
     if (gesto == _Gesto.cartao && em != null) widget.estado.aplicar((e) => mover(e, id, em.x, em.y));
-    if (gesto == _Gesto.alca && ponteiro != null) {
-      widget.estado.aplicar((e) => ligarPelaAlca(e, id, alvoEm(e, ponteiro.x, ponteiro.y)));
-    }
+    if (gesto == _Gesto.alca && ponteiro != null) _ligar(id, alvoEm(widget.equipe, ponteiro.x, ponteiro.y));
   }
 
   void _toque(TapUpDetails d) {
     final mundo = paraMundo(_v, d.localPosition.dx, d.localPosition.dy);
+    final alca = widget.editar ? alcaEm(widget.equipe, mundo.x, mundo.y) : null;
+    if (alca != null) {
+      _criarSubordinada(alca);
+      return;
+    }
     final alvo = alvoEm(widget.equipe, mundo.x, mundo.y);
-    if (alvo is NaPosicao) {
+    if (alvo != null) {
       widget.estado.selecionar(widget.estado.selecionada == alvo.id ? null : alvo.id);
+      return;
+    }
+    final linha = widget.editar ? ligacaoEm(widget.equipe, mundo.x, mundo.y) : null;
+    if (linha != null) {
+      _desligar(linha);
     } else if (widget.estado.selecionada != null) {
       widget.estado.selecionar(null);
     }
@@ -417,6 +478,8 @@ class _CanvasState extends State<_Canvas> {
                           selecionada: widget.estado.selecionada,
                           ligandoDe: _gesto == _Gesto.alca ? _alvo : null,
                           ponteiro: _ponteiro,
+                          destino: _gesto == _Gesto.alca && _ponteiro != null ? alvoEm(equipe, _ponteiro!.x, _ponteiro!.y)?.id : null,
+                          linhaRealcada: _linhaSobre,
                         ),
                       ),
                     ),
@@ -428,7 +491,7 @@ class _CanvasState extends State<_Canvas> {
                     bottom: 12,
                     right: 260,
                     child: Text(
-                      'Arraste o + de um cartão até outro para ele responder ao primeiro · arraste o fundo para mover · Ctrl + roda para zoom',
+                      'Clique no + para criar uma subordinada, ou arraste-o até outro cartão para ligar · clique numa linha para desfazer a ligação · arraste o fundo para mover · Ctrl + roda para zoom',
                       style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
                     ),
                   ),
@@ -453,13 +516,23 @@ class _CanvasState extends State<_Canvas> {
 }
 
 class _Area extends StatelessWidget {
-  const _Area({required this.equipe, required this.editar, this.selecionada, this.ligandoDe, this.ponteiro});
+  const _Area({
+    required this.equipe,
+    required this.editar,
+    this.selecionada,
+    this.ligandoDe,
+    this.ponteiro,
+    this.destino,
+    this.linhaRealcada,
+  });
 
   final EquipeResumo equipe;
   final bool editar;
   final String? selecionada;
   final String? ligandoDe;
   final Ponto? ponteiro;
+  final String? destino;
+  final String? linhaRealcada;
 
   @override
   Widget build(BuildContext context) {
@@ -473,6 +546,7 @@ class _Area extends StatelessWidget {
             destaque: cores.primary,
             ligandoDe: ligandoDe,
             ponteiro: ponteiro == null ? null : Offset(ponteiro!.x, ponteiro!.y),
+            linhaRealcada: linhaRealcada,
           ),
         ),
       ),
@@ -482,7 +556,7 @@ class _Area extends StatelessWidget {
           top: cantoDoCartao(equipe, p.id).y,
           width: larguraDoCartao,
           height: alturaDoCartao,
-          child: _Cartao(posicao: p, escolhida: selecionada == p.id),
+          child: _Cartao(posicao: p, escolhida: selecionada == p.id || destino == p.id),
         ),
         if (editar)
           Positioned(
@@ -576,13 +650,14 @@ class _Cartao extends StatelessWidget {
 }
 
 class _Ligacoes extends CustomPainter {
-  _Ligacoes({required this.equipe, required this.cor, required this.destaque, this.ligandoDe, this.ponteiro});
+  _Ligacoes({required this.equipe, required this.cor, required this.destaque, this.ligandoDe, this.ponteiro, this.linhaRealcada});
 
   final EquipeResumo equipe;
   final Color cor;
   final Color destaque;
   final String? ligandoDe;
   final Offset? ponteiro;
+  final String? linhaRealcada;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -590,23 +665,18 @@ class _Ligacoes extends CustomPainter {
       ..color = cor
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
+    final realce = Paint()
+      ..color = destaque
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke;
     for (final p in equipe.posicoes) {
-      final chefe = p.respondeA == null ? null : equipe.posicao(p.respondeA!);
-      if (chefe == null) continue;
-      final de = cantoDoCartao(equipe, p.id);
-      final x1 = de.x + larguraDoCartao / 2;
-      final y1 = de.y;
-      final x2 = cantoDoCartao(equipe, chefe.id).x + larguraDoCartao / 2;
-      final y2 = cantoDoCartao(equipe, chefe.id).y + alturaDoCartao;
-      final meio = (y1 + y2) / 2;
-      canvas.drawPath(
-        Path()
-          ..moveTo(x1, y1)
-          ..lineTo(x1, meio)
-          ..lineTo(x2, meio)
-          ..lineTo(x2, y2),
-        traco,
-      );
+      final caminho = caminhoDaLigacao(equipe, p.id);
+      if (caminho.isEmpty) continue;
+      final path = Path()..moveTo(caminho.first.x, caminho.first.y);
+      for (final ponto in caminho.skip(1)) {
+        path.lineTo(ponto.x, ponto.y);
+      }
+      canvas.drawPath(path, p.id == linhaRealcada ? realce : traco);
     }
     final origem = ligandoDe;
     if (origem != null && ponteiro != null && equipe.posicao(origem) != null) {
@@ -623,7 +693,11 @@ class _Ligacoes extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _Ligacoes antigo) =>
-      antigo.equipe != equipe || antigo.ligandoDe != ligandoDe || antigo.ponteiro != ponteiro || antigo.cor != cor;
+      antigo.equipe != equipe ||
+      antigo.ligandoDe != ligandoDe ||
+      antigo.ponteiro != ponteiro ||
+      antigo.cor != cor ||
+      antigo.linhaRealcada != linhaRealcada;
 }
 
 class _PainelDaPosicao extends StatefulWidget {
@@ -939,30 +1013,52 @@ Future<String?> pedirTexto(
   required String rotulo,
   String? explicacao,
   String acao = 'Ok',
-}) {
-  final controle = TextEditingController();
-  return showDialog<String>(
-    context: context,
-    builder: (contexto) => AlertDialog(
-      title: Text(titulo),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (explicacao != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(explicacao)),
-        TextField(
-          controller: controle,
-          autofocus: true,
-          decoration: InputDecoration(labelText: rotulo),
-          onSubmitted: (v) => Navigator.pop(contexto, v.trim().isEmpty ? null : v),
-        ),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(contexto), child: const Text('Cancelar')),
-        FilledButton(
-          onPressed: () => Navigator.pop(contexto, controle.text.trim().isEmpty ? null : controle.text),
-          child: Text(acao),
-        ),
-      ],
-    ),
-  ).whenComplete(controle.dispose);
+}) =>
+    showDialog<String>(
+      context: context,
+      builder: (_) => _DialogoDeTexto(titulo: titulo, rotulo: rotulo, explicacao: explicacao, acao: acao),
+    );
+
+class _DialogoDeTexto extends StatefulWidget {
+  const _DialogoDeTexto({required this.titulo, required this.rotulo, this.explicacao, required this.acao});
+
+  final String titulo;
+  final String rotulo;
+  final String? explicacao;
+  final String acao;
+
+  @override
+  State<_DialogoDeTexto> createState() => _DialogoDeTextoState();
+}
+
+class _DialogoDeTextoState extends State<_DialogoDeTexto> {
+  final _controle = TextEditingController();
+
+  @override
+  void dispose() {
+    _controle.dispose();
+    super.dispose();
+  }
+
+  void _confirmar() => Navigator.pop(context, _controle.text.trim().isEmpty ? null : _controle.text);
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.titulo),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (widget.explicacao != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(widget.explicacao!)),
+          TextField(
+            controller: _controle,
+            autofocus: true,
+            decoration: InputDecoration(labelText: widget.rotulo),
+            onSubmitted: (_) => _confirmar(),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(onPressed: _confirmar, child: Text(widget.acao)),
+        ],
+      );
 }
 
 Future<bool> confirmar(BuildContext context, String titulo, String texto) async =>

@@ -290,3 +290,38 @@ Vista ajustarVista(EquipeResumo e, double largura, double altura) {
     escala: escala,
   );
 }
+
+List<Ponto> caminhoDaLigacao(EquipeResumo e, String filho) {
+  final p = e.posicao(filho);
+  final chefe = p?.respondeA == null ? null : e.posicao(p!.respondeA!);
+  if (chefe == null) return const [];
+  final de = cantoDoCartao(e, filho);
+  final ate = cantoDoCartao(e, chefe.id);
+  final x1 = de.x + larguraDoCartao / 2;
+  final y1 = de.y;
+  final x2 = ate.x + larguraDoCartao / 2;
+  final y2 = ate.y + alturaDoCartao;
+  final meio = (y1 + y2) / 2;
+  return [(x: x1, y: y1), (x: x1, y: meio), (x: x2, y: meio), (x: x2, y: y2)];
+}
+
+double _distanciaAoSegmento(Ponto p, Ponto a, Ponto b) {
+  final dx = b.x - a.x;
+  final dy = b.y - a.y;
+  final comprimento = dx * dx + dy * dy;
+  final t = comprimento == 0 ? 0.0 : (((p.x - a.x) * dx + (p.y - a.y) * dy) / comprimento).clamp(0.0, 1.0);
+  final qx = a.x + t * dx - p.x;
+  final qy = a.y + t * dy - p.y;
+  return qx * qx + qy * qy;
+}
+
+String? ligacaoEm(EquipeResumo e, double x, double y, {double tolerancia = 7}) {
+  final ponto = (x: x, y: y);
+  for (final p in e.posicoes) {
+    final caminho = caminhoDaLigacao(e, p.id);
+    for (var i = 0; i + 1 < caminho.length; i++) {
+      if (_distanciaAoSegmento(ponto, caminho[i], caminho[i + 1]) <= tolerancia * tolerancia) return p.id;
+    }
+  }
+  return null;
+}

@@ -477,6 +477,15 @@ void main() {
       expect([sub.id, sub.equipe.posicao(sub.id)!.respondeA, sub.equipe.ponto(sub.id).y], ['estagiaria', 'revisora', 480.0]);
     });
 
+    test('clique perto da linha acha a ligação; longe dela, nada', () {
+      final e = codigo();
+      final caminho = caminhoDaLigacao(e, 'executor');
+      expect(caminho, hasLength(4));
+      expect(ligacaoEm(e, caminho[0].x + 3, (caminho[0].y + caminho[1].y) / 2), 'executor');
+      expect(ligacaoEm(e, caminho[0].x + 40, (caminho[0].y + caminho[1].y) / 2), isNull);
+      expect(caminhoDaLigacao(e, 'tech-lead'), isEmpty);
+    });
+
     test('chefes possíveis excluem a própria posição e quem formaria ciclo', () {
       expect(chefesPossiveis(codigo(), 'executor').map((p) => p.id), ['tech-lead']);
       expect(chefesPossiveis(codigo(), 'tech-lead').map((p) => p.id), isEmpty);
