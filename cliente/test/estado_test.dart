@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
 import 'package:control_tower/estado/presenca.dart';
+import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
@@ -23,6 +24,37 @@ void main() {
   setUp(() {
     enviados = [];
     online = true;
+  });
+
+  group('EstadoEquipes', () {
+    const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor', persona: 'alfred')]);
+
+    test('editar marca rascunho, salvar envia a equipe e a resposta limpa o rascunho', () {
+      final estado = EstadoEquipes(enviar)..tratar(const EquipesRecebidas([casa]));
+      expect(estado.alterada, isFalse);
+      estado.novaPosicao('Revisora');
+      expect([estado.alterada, estado.selecionada], [true, 'revisora']);
+      estado.salvar();
+      expect(enviados.last['tipo'], 'equipe-salvar');
+      expect((enviados.last['equipe'] as Map)['posicoes'], hasLength(2));
+      estado.tratar(const EquipesRecebidas([casa]));
+      expect([estado.alterada, estado.salvando], [false, false]);
+    });
+
+    test('erro do servidor mantém o rascunho, e validação local nem envia', () {
+      final estado = EstadoEquipes(enviar)
+        ..tratar(const EquipesRecebidas([casa]))
+        ..novaPosicao('Revisora')
+        ..salvar()
+        ..tratar(const Erro('posição executor: tem tarefa aberta'));
+      expect([estado.alterada, estado.erro], [true, 'posição executor: tem tarefa aberta']);
+      final enviadosAntes = enviados.length;
+      estado
+        ..aplicar((e) => e.copiar(nome: ' '))
+        ..salvar();
+      expect(enviados.length, enviadosAntes);
+      expect(estado.erro, contains('nome obrigatório'));
+    });
   });
 
   group('EstadoTarefas', () {

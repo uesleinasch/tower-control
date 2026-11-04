@@ -22,23 +22,39 @@ class EstadoTarefas extends ChangeNotifier {
 
   List<Tarefa> lista = const [];
   List<EquipeResumo> equipes = const [];
+  String equipe = equipeCasa;
   bool carregada = false;
   TarefaAberta? aberta;
   LogDeExecucao? log;
   final Map<String, PedidoDePermissao> pedidos = {};
 
   List<PosicaoResumo> get posicoes =>
-      equipes.where((e) => e.id == equipeCasa).expand((e) => e.posicoes).toList();
+      equipes.where((e) => e.id == equipe).expand((e) => e.posicoes).toList();
 
-  String rotuloDaPosicao(String id) =>
-      posicoes.where((p) => p.id == id).map((p) => p.rotulo).firstOrNull ?? id;
+  List<Tarefa> get daEquipe => [for (final t in lista) if (t.equipe == equipe) t];
+
+  String get nomeDaEquipe => equipes.where((e) => e.id == equipe).map((e) => e.nome).firstOrNull ?? equipe;
+
+  String rotuloDaPosicao(String id, {String? daEquipe}) =>
+      equipes
+          .where((e) => e.id == (daEquipe ?? equipe))
+          .expand((e) => e.posicoes)
+          .where((p) => p.id == id)
+          .map((p) => p.rotulo)
+          .firstOrNull ??
+      id;
+
+  void escolherEquipe(String id) {
+    equipe = id;
+    notifyListeners();
+  }
 
   List<PedidoDePermissao> get pedidosDaAberta =>
       [for (final p in pedidos.values) if (p.tarefaId == aberta?.tarefa.id) p];
 
   void carregar() {
     _enviar(const PedirEquipes());
-    _enviar(const PedirTarefas(equipe: equipeCasa));
+    _enviar(const PedirTarefas());
   }
 
   void abrir(int id) => _enviar(PedirTarefa(id));
@@ -52,7 +68,7 @@ class EstadoTarefas extends ChangeNotifier {
   }
 
   void criar({required String posicao, required String titulo, String porque = ''}) =>
-      _enviar(CriarTarefa(equipe: equipeCasa, posicao: posicao, titulo: titulo, porque: porque));
+      _enviar(CriarTarefa(equipe: equipe, posicao: posicao, titulo: titulo, porque: porque));
 
   void mudarStatus(int id, String status) => _enviar(MudarStatusTarefa(id, status));
 
@@ -83,6 +99,7 @@ class EstadoTarefas extends ChangeNotifier {
         lista = comTarefa(lista, tarefa);
         if (!pedida && aberta?.tarefa.id != tarefa.id) break;
         if (aberta?.tarefa.id != tarefa.id) log = null;
+        equipe = tarefa.equipe;
         aberta = (tarefa: tarefa, registros: registros, execucoes: execucoes, custoUSD: custoUSD);
         _pedirLogSePreciso();
       case ExecucaoRecebida(:final execucao, :final eventos):

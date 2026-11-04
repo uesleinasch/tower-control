@@ -5,7 +5,9 @@ import 'package:control_tower/nucleo/avisos.dart';
 import 'package:control_tower/nucleo/baloes.dart';
 import 'package:control_tower/nucleo/enderecos.dart';
 import 'package:control_tower/nucleo/formato.dart';
+import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
+import 'package:control_tower/nucleo/organograma.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -102,6 +104,11 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
   'excluida': {'id': 'c'},
   'fim': {'conversaId': 'c'},
   'permissao': {'id': 'p1', 'comando': 'git status'},
+  'personas': {
+    'lista': [
+      {'id': 'vera', 'nome': 'Vera', 'inicial': 'V', 'cor': '#112233', 'titulo': 'revisora', 'conversa': true, 'executor': false, 'excluivel': true, 'modelo': null, 'gerandoPerfil': true},
+    ],
+  },
   'permissao-resolvida': {'id': 'p1', 'como': 'aprovado'},
   'tarefa': {
     'tarefa': _tarefa,
@@ -137,6 +144,11 @@ final _saidas = <Saida>[
   const MudarStatusTarefa(3, 'concluida'),
   const ComentarTarefa(3, 'oi'),
   const PedirExecucao(5),
+  const PedirPersonas(),
+  const CriarPersona(nome: 'Vera', base: 'revisora'),
+  const ExcluirPersona('vera', 'Vera'),
+  const SalvarEquipe(EquipeResumo(id: 'codigo', nome: 'Código', posicoes: [])),
+  const ExcluirEquipe('codigo'),
 ];
 
 void main() {
@@ -399,6 +411,84 @@ void main() {
     test('permissão de tarefa traz o id da tarefa', () {
       final e = Entrada.decodificar('{"tipo":"permissao","id":"p1","comando":"ls","tarefaId":3}') as PedidoDePermissao;
       expect(e.tarefaId, 3);
+    });
+  });
+
+  group('organograma', () {
+    EquipeResumo codigo() => EquipeResumo.deJson({
+          'id': 'codigo',
+          'nome': 'Código',
+          'posicoes': [
+            {'id': 'tech-lead', 'titulo': 'tech lead', 'persona': 'nati', 'capacidades': ['arquivos']},
+            {'id': 'executor', 'titulo': 'executor', 'persona': 'alfred', 'respondeA': 'tech-lead', 'capacidades': ['arquivos', 'comandos']},
+            {'id': 'revisora', 'titulo': 'revisora', 'persona': null, 'respondeA': 'executor', 'capacidades': ['arquivos']},
+          ],
+          'layout': {
+            'tech-lead': {'x': 0, 'y': 0},
+            'executor': {'x': 0, 'y': 160},
+            'revisora': {'x': 280, 'y': 320},
+          },
+        });
+
+    test('ligar recusa ciclo e auto-ligação, e soltar responde ao Ueslei', () {
+      final e = codigo();
+      expect(() => ligar(e, 'tech-lead', 'revisora'), throwsA(isA<ErroDeOrganograma>()));
+      expect(() => ligar(e, 'executor', 'executor'), throwsA(isA<ErroDeOrganograma>()));
+      expect(ligar(e, 'revisora', 'tech-lead').posicao('revisora')!.respondeA, 'tech-lead');
+      expect(soltar(e, 'executor').posicao('executor')!.respondeA, isNull);
+    });
+
+    test('remover posição religa as subordinadas ao chefe dela e tira do layout', () {
+      final e = removerPosicao(codigo(), 'executor');
+      expect(e.posicao('revisora')!.respondeA, 'tech-lead');
+      expect(e.layout.containsKey('executor'), isFalse);
+    });
+
+    test('adicionar posição gera id único a partir do título', () {
+      final r1 = adicionarPosicao(codigo(), 'Revisora');
+      expect(r1.id, 'revisora-2');
+      expect(r1.equipe.ponto('revisora-2'), (x: 560.0, y: 0.0));
+      expect(adicionarPosicao(codigo(), 'Ação rápida').id, 'acao-rapida');
+      expect(slugDe('42 coisas'), 'p-42-coisas');
+    });
+
+    test('mover não deixa coordenada negativa', () {
+      expect(mover(codigo(), 'executor', -10, 40.4).ponto('executor'), (x: 0.0, y: 40.0));
+    });
+
+    test('a alça liga pelo ponto em que foi solta', () {
+      final e = codigo();
+      final revisora = cantoDoCartao(e, 'revisora');
+      expect((alvoEm(e, revisora.x + 5, revisora.y + 5) as NaPosicao).id, 'revisora');
+      final ueslei = cantoDoUeslei(e);
+      expect(alvoEm(e, ueslei.x + 5, ueslei.y + 5), isA<NoUeslei>());
+      expect(alvoEm(e, -50, -50), isNull);
+      expect(ligarPelaAlca(e, 'tech-lead', NaPosicao('revisora')).posicao('revisora')!.respondeA, 'tech-lead');
+      expect(ligarPelaAlca(e, 'executor', const NoUeslei()).posicao('executor')!.respondeA, isNull);
+    });
+
+    test('valida com as mesmas regras do servidor e vai e volta em JSON', () {
+      final e = codigo();
+      expect(validarOrganograma(e, {'nati', 'alfred'}), isEmpty);
+      expect(validarOrganograma(e, {'nati'}), contains('posição executor: persona desconhecida (alfred)'));
+      final dupla = editarPosicao(e, 'revisora', (p) => p.copiar(persona: () => 'nati'));
+      expect(validarOrganograma(dupla, {'nati', 'alfred'}), contains('persona nati: ocupa mais de uma posição na mesma equipe'));
+      final json = jsonDecode(jsonEncode(e.paraJson())) as Map<String, dynamic>;
+      expect(EquipeResumo.deJson(json).paraJson(), e.paraJson());
+      expect((json['posicoes'] as List).first, isNot(contains('personaNome')));
+    });
+
+    test('personas do servidor substituem o registro fixo', () {
+      final original = Perfil.todos;
+      try {
+        final e = Entrada.decodificar(jsonEncode({'tipo': 'personas', ..._fixturasEntrada['personas']!})) as PersonasRecebidas;
+        Perfil.registrar(e.lista);
+        final vera = Perfil.porChave('vera');
+        expect([vera.nome, vera.cor, vera.papel, vera.gerandoPerfil], ['Vera', 0xFF112233, 'revisora', true]);
+        expect(Perfil.porChave('poe').inicial, '?');
+      } finally {
+        Perfil.registrar(original);
+      }
     });
   });
 }

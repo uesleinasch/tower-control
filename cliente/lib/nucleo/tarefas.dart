@@ -23,29 +23,99 @@ const transicoesDeTarefa = {
 const ordemDeStatus = ['em_andamento', 'em_revisao', 'a_fazer', 'bloqueada', 'backlog', 'concluida', 'cancelada'];
 
 class PosicaoResumo {
-  const PosicaoResumo({required this.id, required this.titulo, this.persona, this.personaNome});
+  const PosicaoResumo({
+    required this.id,
+    required this.titulo,
+    this.persona,
+    this.personaNome,
+    this.respondeA,
+    this.capacidades = const [],
+    this.aprovacao = 'sempre',
+    this.diretorio,
+  });
 
   final String id;
   final String titulo;
   final String? persona;
   final String? personaNome;
+  final String? respondeA;
+  final List<String> capacidades;
+  final String aprovacao;
+  final String? diretorio;
 
   String get rotulo => personaNome != null ? '$personaNome · $titulo' : '$titulo (vaga)';
+
+  PosicaoResumo copiar({
+    String? titulo,
+    String? Function()? persona,
+    String? Function()? respondeA,
+    List<String>? capacidades,
+    String? aprovacao,
+    String? Function()? diretorio,
+  }) =>
+      PosicaoResumo(
+        id: id,
+        titulo: titulo ?? this.titulo,
+        persona: persona != null ? persona() : this.persona,
+        personaNome: persona != null ? null : personaNome,
+        respondeA: respondeA != null ? respondeA() : this.respondeA,
+        capacidades: capacidades ?? this.capacidades,
+        aprovacao: aprovacao ?? this.aprovacao,
+        diretorio: diretorio != null ? diretorio() : this.diretorio,
+      );
+
+  Map<String, Object?> paraJson() => {
+        'id': id,
+        'titulo': titulo,
+        'persona': persona,
+        'respondeA': respondeA,
+        'capacidades': capacidades,
+        'aprovacao': aprovacao,
+        if (diretorio != null && diretorio!.trim().isNotEmpty) 'diretorio': diretorio!.trim(),
+      };
 
   factory PosicaoResumo.deJson(Map<String, dynamic> j) => PosicaoResumo(
         id: j['id'] as String? ?? '',
         titulo: j['titulo'] as String? ?? '',
         persona: j['persona'] as String?,
         personaNome: j['personaNome'] as String?,
+        respondeA: j['respondeA'] as String?,
+        capacidades: [for (final c in (j['capacidades'] as List? ?? const [])) c as String],
+        aprovacao: j['aprovacao'] as String? ?? 'sempre',
+        diretorio: j['diretorio'] as String?,
       );
 }
 
+typedef Ponto = ({double x, double y});
+
 class EquipeResumo {
-  const EquipeResumo({required this.id, required this.nome, required this.posicoes});
+  const EquipeResumo({required this.id, required this.nome, required this.posicoes, this.layout = const {}});
 
   final String id;
   final String nome;
   final List<PosicaoResumo> posicoes;
+  final Map<String, Ponto> layout;
+
+  PosicaoResumo? posicao(String id) => posicoes.where((p) => p.id == id).firstOrNull;
+
+  Ponto ponto(String id) => layout[id] ?? (x: 0, y: 0);
+
+  EquipeResumo copiar({String? nome, List<PosicaoResumo>? posicoes, Map<String, Ponto>? layout}) => EquipeResumo(
+        id: id,
+        nome: nome ?? this.nome,
+        posicoes: posicoes ?? this.posicoes,
+        layout: layout ?? this.layout,
+      );
+
+  Map<String, Object?> paraJson() => {
+        'id': id,
+        'nome': nome,
+        'posicoes': [for (final p in posicoes) p.paraJson()],
+        'layout': {
+          for (final MapEntry(:key, :value) in layout.entries)
+            if (posicao(key) != null) key: {'x': value.x, 'y': value.y},
+        },
+      };
 
   factory EquipeResumo.deJson(Map<String, dynamic> j) => EquipeResumo(
         id: j['id'] as String? ?? '',
@@ -53,6 +123,11 @@ class EquipeResumo {
         posicoes: [
           for (final p in (j['posicoes'] as List? ?? const []).whereType<Map<String, dynamic>>()) PosicaoResumo.deJson(p),
         ],
+        layout: {
+          for (final MapEntry(:key, :value) in ((j['layout'] as Map?) ?? const {}).entries)
+            if (value is Map && value['x'] is num && value['y'] is num)
+              key as String: (x: (value['x'] as num).toDouble(), y: (value['y'] as num).toDouble()),
+        },
       );
 }
 

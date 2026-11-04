@@ -3,14 +3,16 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../conexao/canal.dart';
+import '../nucleo/modelos.dart';
 import '../nucleo/protocolo.dart';
 import 'areas.dart';
 import 'chat.dart';
+import 'equipes.dart';
 import 'presenca.dart';
 import 'servidor.dart';
 import 'tarefas.dart';
 
-enum Tela { conversas, chat, board, decisoes, tarefas, configuracao }
+enum Tela { conversas, chat, board, decisoes, tarefas, equipes, configuracao }
 
 class Sala extends ChangeNotifier {
   Sala(this.servidor) : canal = Canal(servidor.resolver) {
@@ -19,6 +21,7 @@ class Sala extends ChangeNotifier {
     board = EstadoBoard(canal.enviar);
     decisoes = EstadoDecisoes(canal.enviar);
     tarefas = EstadoTarefas(canal.enviar);
+    equipes = EstadoEquipes(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -34,6 +37,7 @@ class Sala extends ChangeNotifier {
   late final EstadoBoard board;
   late final EstadoDecisoes decisoes;
   late final EstadoTarefas tarefas;
+  late final EstadoEquipes equipes;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -54,6 +58,7 @@ class Sala extends ChangeNotifier {
     tela = nova;
     if (nova == Tela.decisoes && !decisoes.carregada) decisoes.carregar();
     if (nova == Tela.tarefas && !tarefas.carregada) tarefas.carregar();
+    if (nova == Tela.equipes && !equipes.carregada) equipes.carregar();
     notifyListeners();
     _atualizarPresenca();
   }
@@ -100,10 +105,19 @@ class Sala extends ChangeNotifier {
     board.conexaoRestabelecida();
     if (decisoes.carregada) decisoes.carregar();
     if (tarefas.carregada) tarefas.carregar();
+    if (equipes.carregada) equipes.carregar();
   }
 
   void _tratar(Entrada e) {
     switch (e) {
+      case PersonasRecebidas(:final lista):
+        Perfil.registrar(lista);
+        equipes.tratar(e);
+        notifyListeners();
+        return;
+      case Erro() when equipes.salvando:
+        equipes.tratar(e);
+        return;
       case Aviso(:final texto) when tela != Tela.chat:
         _avisos.add(texto);
         return;
@@ -130,6 +144,7 @@ class Sala extends ChangeNotifier {
         board.tratar(e);
         decisoes.tratar(e);
         tarefas.tratar(e);
+        equipes.tratar(e);
     }
   }
 
@@ -146,6 +161,7 @@ class Sala extends ChangeNotifier {
     board.dispose();
     decisoes.dispose();
     tarefas.dispose();
+    equipes.dispose();
     canal.dispose();
     super.dispose();
   }

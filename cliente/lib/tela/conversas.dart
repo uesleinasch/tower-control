@@ -116,14 +116,14 @@ class _FolhaNovaState extends State<_FolhaNova> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: Text('CONSELHO', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 11, letterSpacing: 1)),
             ),
-            for (final p in Perfil.todos.where((p) => !p.executor))
+            for (final p in Perfil.todos.where((p) => p.conversa && !p.executor))
               opcao(Avatar.doPerfil(p.chave), p.nome, p.papel, () => _escolher(p.chave)),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               child: Text('EXECUÇÃO', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 11, letterSpacing: 1)),
             ),
-            opcao(Avatar.doPerfil('alfred'), 'Alfred', Perfil.alfred.papel,
-                () => _escolher('alfred')),
+            for (final p in Perfil.todos.where((p) => p.conversa && p.executor))
+              opcao(Avatar.doPerfil(p.chave), p.nome, p.papel, () => _escolher(p.chave)),
           ],
         ),
       ),

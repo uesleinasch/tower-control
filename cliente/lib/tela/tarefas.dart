@@ -60,7 +60,7 @@ class _Lista extends StatelessWidget {
   Widget build(BuildContext context) {
     final estado = sala.tarefas;
     final cores = Theme.of(context).colorScheme;
-    final grupos = agruparPorStatus(estado.lista);
+    final grupos = agruparPorStatus(estado.daEquipe);
     return Column(children: [
       Material(
         color: cores.surface,
@@ -68,7 +68,7 @@ class _Lista extends StatelessWidget {
           bottom: false,
           child: ListTile(
             leading: const Avatar(cor: Color(Perfil.corTarefas), inicial: 'T', tamanho: 32),
-            title: const Text('Tarefas — Casa'),
+            title: Text('Tarefas — ${estado.nomeDaEquipe}'),
             subtitle: Text('o que as personas têm a fazer', style: TextStyle(color: cores.onSurfaceVariant)),
             trailing: IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: estado.carregar),
           ),
@@ -81,8 +81,18 @@ class _Lista extends StatelessWidget {
             : ListView(
                 padding: const EdgeInsets.only(bottom: 24),
                 children: [
+                  if (estado.equipes.length > 1)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: DropdownButton<String>(
+                        value: estado.equipes.any((e) => e.id == estado.equipe) ? estado.equipe : null,
+                        isExpanded: true,
+                        items: [for (final e in estado.equipes) DropdownMenuItem(value: e.id, child: Text(e.nome))],
+                        onChanged: (id) => id == null ? null : estado.escolherEquipe(id),
+                      ),
+                    ),
                   _NovaTarefa(sala: sala),
-                  if (estado.lista.isEmpty)
+                  if (estado.daEquipe.isEmpty)
                     Padding(
                       padding: const EdgeInsets.all(24),
                       child: Center(

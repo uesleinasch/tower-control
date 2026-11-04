@@ -1,5 +1,16 @@
 class Perfil {
-  const Perfil(this.chave, this.nome, this.inicial, this.cor, this.papel, {this.executor = false});
+  const Perfil(
+    this.chave,
+    this.nome,
+    this.inicial,
+    this.cor,
+    this.papel, {
+    this.executor = false,
+    this.conversa = true,
+    this.excluivel = true,
+    this.gerandoPerfil = false,
+    this.modelo,
+  });
 
   final String chave;
   final String nome;
@@ -7,6 +18,27 @@ class Perfil {
   final int cor;
   final String papel;
   final bool executor;
+  final bool conversa;
+  final bool excluivel;
+  final bool gerandoPerfil;
+  final String? modelo;
+
+  factory Perfil.deJson(Map<String, dynamic> j) {
+    final chave = j['id'] as String? ?? '';
+    final nome = j['nome'] as String? ?? chave;
+    return Perfil(
+      chave,
+      nome,
+      j['inicial'] as String? ?? (nome.isEmpty ? '?' : nome[0].toUpperCase()),
+      corDeHex(j['cor'] as String?),
+      j['titulo'] as String? ?? '',
+      executor: j['executor'] == true,
+      conversa: j['conversa'] == true,
+      excluivel: j['excluivel'] == true,
+      gerandoPerfil: j['gerandoPerfil'] == true,
+      modelo: j['modelo'] as String?,
+    );
+  }
 
   static const poe = Perfil('poe', 'Poe', 'P', 0xFFE0A458, 'o amigo');
   static const nati = Perfil('nati', 'Nati', 'N', 0xFF9A6EE8, 'engenheira sênior');
@@ -14,7 +46,11 @@ class Perfil {
   static const pami = Perfil('pami', 'Pami', 'P', 0xFFE06A8A, 'a projetista');
   static const alfred = Perfil('alfred', 'Alfred', 'A', 0xFFA9B0BF, 'executor de tarefas', executor: true);
 
-  static const todos = [poe, nati, lucas, pami, alfred];
+  static List<Perfil> _registro = const [poe, nati, lucas, pami, alfred];
+
+  static List<Perfil> get todos => _registro;
+
+  static void registrar(List<Perfil> lista) => _registro = List.unmodifiable(lista);
 
   static const corBoard = 0xFF5B8DEF;
   static const corDecisoes = 0xFF58B7C9;
@@ -22,6 +58,11 @@ class Perfil {
 
   static Perfil porChave(String chave) =>
       todos.firstWhere((p) => p.chave == chave, orElse: () => Perfil(chave, chave, '?', 0xFF8B93A7, ''));
+}
+
+int corDeHex(String? hex) {
+  final valor = hex != null && hex.length == 7 && hex.startsWith('#') ? int.tryParse(hex.substring(1), radix: 16) : null;
+  return 0xFF000000 | (valor ?? 0x8B93A7);
 }
 
 const modelos = {'haiku': 'Haiku · padrão', 'sonnet': 'Sonnet', 'opus': 'Opus'};

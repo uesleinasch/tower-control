@@ -9,6 +9,7 @@ import 'chat.dart';
 import 'comum.dart';
 import 'conversas.dart';
 import 'decisoes.dart';
+import 'equipes.dart';
 import 'tarefas.dart';
 
 const larguraDupla = 840.0;
@@ -72,6 +73,7 @@ class _RaizState extends State<Raiz> {
         Tela.board => TelaBoard(sala: sala),
         Tela.decisoes => TelaDecisoes(sala: sala),
         Tela.tarefas => TelaTarefas(sala: sala),
+        Tela.equipes => TelaEquipes(sala: sala),
         Tela.configuracao when widget.configuracao != null => widget.configuracao!(context),
         Tela.conversas when compacto => ListaConversas(sala: sala),
         _ => TelaChat(sala: sala, compacto: compacto),
@@ -95,7 +97,7 @@ class _RaizState extends State<Raiz> {
         child: Scaffold(body: _principal(context, compacto: true)),
       );
     }
-    final abas = [Tela.conversas, Tela.board, Tela.decisoes, Tela.tarefas];
+    final abas = [Tela.conversas, Tela.board, Tela.decisoes, Tela.tarefas, Tela.equipes];
     return Scaffold(
       appBar: sala.tela == Tela.conversas
           ? AppBar(
@@ -128,6 +130,7 @@ class _RaizState extends State<Raiz> {
           NavigationDestination(
               icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Decisões'),
           NavigationDestination(icon: Icon(Icons.task_alt_outlined), selectedIcon: Icon(Icons.task_alt), label: 'Tarefas'),
+          NavigationDestination(icon: Icon(Icons.account_tree_outlined), selectedIcon: Icon(Icons.account_tree), label: 'Equipes'),
         ],
       ),
     );
@@ -178,6 +181,7 @@ class _Lateral extends StatelessWidget {
         destino(Tela.board, const Avatar(cor: Color(Perfil.corBoard), inicial: 'B', tamanho: 28), 'Convocar board'),
         destino(Tela.decisoes, const Avatar(cor: Color(Perfil.corDecisoes), inicial: 'D', tamanho: 28), 'Decisões'),
         destino(Tela.tarefas, const Avatar(cor: Color(Perfil.corTarefas), inicial: 'T', tamanho: 28), 'Tarefas'),
+        destino(Tela.equipes, const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 28), 'Equipes'),
         const Divider(),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 10, 16, 4),

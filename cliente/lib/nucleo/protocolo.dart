@@ -46,6 +46,7 @@ sealed class Entrada {
           inteiro('tarefaId') ?? 0,
           EventoDeExecucao.deJson(json['evento'] as Map<String, dynamic>),
         ),
+      'personas' => PersonasRecebidas(listaDeJson(json['lista'], Perfil.deJson)),
       'permissao' => PedidoDePermissao(texto('id'), texto('comando'), tarefaId: inteiro('tarefaId')),
       'permissao-resolvida' => PermissaoResolvida(texto('id'), texto('como')),
       'tarefa' => TarefaRecebida(
@@ -124,6 +125,11 @@ class Decisoes extends Entrada {
 class EquipesRecebidas extends Entrada {
   const EquipesRecebidas(this.lista);
   final List<EquipeResumo> lista;
+}
+
+class PersonasRecebidas extends Entrada {
+  const PersonasRecebidas(this.lista);
+  final List<Perfil> lista;
 }
 
 class TarefasRecebidas extends Entrada {
@@ -411,4 +417,60 @@ class ComentarTarefa extends Saida {
   String get tipo => 'tarefa-comentar';
   @override
   Map<String, Object?> get campos => {'id': id, 'texto': texto};
+}
+
+class PedirPersonas extends Saida {
+  const PedirPersonas();
+
+  @override
+  String get tipo => 'personas';
+  @override
+  Map<String, Object?> get campos => const {};
+}
+
+class CriarPersona extends Saida {
+  const CriarPersona({required this.nome, required this.base, this.titulo = '', this.modelo, this.cor});
+  final String nome;
+  final String base;
+  final String titulo;
+  final String? modelo;
+  final String? cor;
+
+  @override
+  String get tipo => 'persona-criar';
+  @override
+  Map<String, Object?> get campos => {
+        'persona': {'nome': nome, 'base': base, 'titulo': titulo, 'modelo': ?modelo, 'cor': ?cor},
+      };
+}
+
+class ExcluirPersona extends Saida {
+  const ExcluirPersona(this.id, this.confirmacao);
+  final String id;
+  final String confirmacao;
+
+  @override
+  String get tipo => 'persona-excluir';
+  @override
+  Map<String, Object?> get campos => {'id': id, 'confirmacao': confirmacao};
+}
+
+class SalvarEquipe extends Saida {
+  const SalvarEquipe(this.equipe);
+  final EquipeResumo equipe;
+
+  @override
+  String get tipo => 'equipe-salvar';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe.paraJson()};
+}
+
+class ExcluirEquipe extends Saida {
+  const ExcluirEquipe(this.id);
+  final String id;
+
+  @override
+  String get tipo => 'equipe-excluir';
+  @override
+  Map<String, Object?> get campos => {'id': id};
 }
