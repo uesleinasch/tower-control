@@ -23,6 +23,8 @@ const estado = {
   auto: false,
   foco: null,
   personas: [],
+  pausadoTudo: false,
+  auditoria: null,
   equipes: [],
   equipeVista: "casa",
   equipeDasTarefas: "casa",
@@ -524,6 +526,7 @@ const NOMES_GATILHO = {
   dependencia: "dependência",
   retomada: "retomada",
   nova_tentativa: "nova tentativa",
+  plano_aprovado: "plano aprovado",
 }
 const ORDEM_STATUS = ["em_andamento", "em_revisao", "a_fazer", "bloqueada", "backlog", "concluida", "cancelada"]
 
@@ -565,6 +568,23 @@ function abrirTarefas() {
 
 function tituloDasTarefas() {
   return `Tarefas — ${equipeDe(estado.equipeDasTarefas)?.nome ?? estado.equipeDasTarefas}`
+}
+
+function barraDePausa() {
+  const barra = document.createElement("div")
+  barra.className = `barra-pausa${estado.pausadoTudo ? " pausado" : ""}`
+  const texto = document.createElement("span")
+  texto.textContent = estado.pausadoTudo ? "Tudo pausado: nenhuma tarefa começa." : "Personas trabalhando normalmente."
+  const botao = document.createElement("button")
+  botao.textContent = estado.pausadoTudo ? "Retomar tudo" : "Pausar tudo"
+  botao.onclick = () => enviar(estado.pausadoTudo ? { tipo: "retomar", alvo: "*" } : { tipo: "pausar", alvo: "*" })
+  barra.append(texto, botao)
+  return barra
+}
+
+const planoPendente = (registros) => {
+  const plano = registros.findLastIndex((r) => r.tipo === "plano")
+  return plano >= 0 && registros.findLastIndex((r) => r.tipo === "plano-aprovado") < plano
 }
 
 function seletorDeEquipe(valor, aoMudar) {
@@ -620,6 +640,7 @@ function renderTarefas() {
   if (estado.modo !== "tarefas" || estado.tarefaId) return
   limparTela()
   definirCabecalho("tarefas", tituloDasTarefas())
+  el.mensagens.appendChild(barraDePausa())
   if (estado.equipes.length > 1) {
     el.mensagens.appendChild(
       seletorDeEquipe(estado.equipeDasTarefas, (id) => {
@@ -717,13 +738,20 @@ function renderTarefa() {
     botao.onclick = () => enviar({ tipo: "tarefa-status", id: tarefa.id, status: para })
     acoes.appendChild(botao)
   }
+  if (tarefa.status === "em_revisao" && planoPendente(registros)) {
+    const aprovar = document.createElement("button")
+    aprovar.className = "aprovar-plano"
+    aprovar.textContent = "Aprovar plano"
+    aprovar.onclick = () => enviar({ tipo: "tarefa-aprovar-plano", id: tarefa.id })
+    acoes.prepend(aprovar)
+  }
   el.mensagens.appendChild(acoes)
   for (const r of registros) {
     if (r.tipo === "comentario") {
       if (r.autor === "ueslei") mensagemDoUsuario(r.texto, null, r.em)
       else adicionarMensagem("perfil-msg", `<strong>${escapar(r.autor)}</strong><br>${formatar(r.texto)}`, r.em)
-    } else if (r.tipo === "entrega" || r.tipo === "ajuda") {
-      const rotulo = r.tipo === "entrega" ? "entregou" : "pediu ajuda"
+    } else if (r.tipo === "entrega" || r.tipo === "ajuda" || r.tipo === "plano") {
+      const rotulo = { entrega: "entregou", ajuda: "pediu ajuda", plano: "propôs um plano" }[r.tipo]
       adicionarMensagem(`perfil-msg ${r.tipo}`, `<strong>${escapar(r.autor)} ${rotulo}</strong><br>${formatar(r.texto)}`, r.em)
     } else {
       adicionarMensagem("aviso", `${escapar(r.autor)}: ${escapar(r.texto)} · ${quando(r.em)}`)
@@ -929,9 +957,34 @@ function secaoDePersonas() {
   ul.className = "lista-decisoes"
   for (const p of estado.personas) {
     const li = document.createElement("li")
+    li.className = "persona-item"
+    const MOTIVOS = { ueslei: "pausada", tudo: "tudo pausado", orcamento: "orçamento estourado" }
+    const limite = p.orcamentoMensalUSD
+    const proporcao = limite ? Math.min(1, (p.gastoMesUSD ?? 0) / limite) : 0
     li.innerHTML =
-      `<span class="avatar avatar-balao ${p.id}">${escapar(p.inicial)}</span>${escapar(p.nome)}` +
-      `<small>${escapar([p.titulo, p.modelo, p.gerandoPerfil ? "gerando perfil…" : ""].filter(Boolean).join(" · "))}</small>`
+      `<span class="avatar avatar-balao ${p.id}">${escapar(p.inicial)}</span>` +
+      `<span class="persona-dados">${escapar(p.nome)}` +
+      `<small>${escapar([p.titulo, p.modelo, p.gerandoPerfil ? "gerando perfil…" : "", p.pausa ? MOTIVOS[p.pausa.motivo] : ""].filter(Boolean).join(" · "))}</small>` +
+      `<small>tarefas no mês: US$ ${(p.gastoMesUSD ?? 0).toFixed(2)}${limite != null ? ` de US$ ${limite.toFixed(2)}` : " · sem limite"} · total US$ ${(p.gastoTotalMesUSD ?? 0).toFixed(2)}</small>` +
+      (limite != null ? `<span class="barra-orcamento${proporcao >= 1 ? " estourado" : proporcao >= 0.8 ? " alerta" : ""}"><span style="width:${Math.round(proporcao * 100)}%"></span></span>` : "") +
+      `</span>`
+    const orcamento = document.createElement("input")
+    orcamento.type = "number"
+    orcamento.min = "0"
+    orcamento.step = "0.5"
+    orcamento.placeholder = "limite US$"
+    orcamento.className = "orcamento-persona"
+    orcamento.value = limite != null ? String(limite) : ""
+    orcamento.title = "orçamento mensal das tarefas (vazio = sem limite)"
+    orcamento.onchange = () =>
+      enviar({ tipo: "persona-salvar", persona: { id: p.id, orcamentoMensalUSD: orcamento.value === "" ? null : Number(orcamento.value) } })
+    li.appendChild(orcamento)
+    const pausa = document.createElement("button")
+    pausa.className = "pausar-persona"
+    const pausadaPeloUeslei = p.pausa?.motivo === "ueslei"
+    pausa.textContent = pausadaPeloUeslei ? "Retomar" : "Pausar"
+    pausa.onclick = () => enviar(pausadaPeloUeslei ? { tipo: "retomar", alvo: p.id } : { tipo: "pausar", alvo: p.id })
+    li.appendChild(pausa)
     if (p.excluivel) {
       const excluir = document.createElement("button")
       excluir.className = "excluir-persona"
@@ -951,9 +1004,40 @@ function secaoDePersonas() {
   return secao
 }
 
+function secaoDeAtividade() {
+  const secao = document.createElement("section")
+  const titulo = document.createElement("h3")
+  titulo.className = "grupo-tarefas"
+  titulo.textContent = "Atividade"
+  const alternar = document.createElement("button")
+  alternar.className = "link-atividade"
+  alternar.textContent = estado.auditoria ? "ocultar" : "mostrar"
+  alternar.onclick = () => {
+    if (estado.auditoria) {
+      estado.auditoria = null
+      renderEquipes()
+    } else enviar({ tipo: "auditoria" })
+  }
+  titulo.appendChild(alternar)
+  secao.appendChild(titulo)
+  if (estado.auditoria) {
+    const ul = document.createElement("ul")
+    ul.className = "lista-atividade"
+    if (!estado.auditoria.length) ul.innerHTML = "<li>Nada registrado ainda.</li>"
+    for (const a of estado.auditoria) {
+      const li = document.createElement("li")
+      li.innerHTML = `<time>${quando(a.em)}</time> <strong>${escapar(a.quem)}</strong> ${escapar(a.acao)} · ${escapar(a.alvo)}${a.detalhe ? ` · <small>${escapar(a.detalhe)}</small>` : ""}`
+      ul.appendChild(li)
+    }
+    secao.appendChild(ul)
+  }
+  return secao
+}
+
 function renderEquipes() {
   if (estado.modo !== "equipes") return
   limparTela()
+  el.mensagens.appendChild(barraDePausa())
   const equipe = equipeDe(estado.equipeVista) ?? estado.equipes[0]
   if (equipe) {
     estado.equipeVista = equipe.id
@@ -981,6 +1065,7 @@ function renderEquipes() {
     if (vista) el.mensagens.appendChild(detalheDaPosicao(equipe, vista))
   }
   el.mensagens.appendChild(secaoDePersonas())
+  el.mensagens.appendChild(secaoDeAtividade())
 }
 
 // ── envio ──────────────────────────────────────────────────────────
@@ -1214,6 +1299,17 @@ function tratar(msg) {
     case "personas": {
       estado.personas = msg.lista
       renderPersonas()
+      renderEquipes()
+      break
+    }
+    case "orquestra": {
+      estado.pausadoTudo = msg.pausadoTudo === true
+      renderEquipes()
+      renderTarefas()
+      break
+    }
+    case "auditoria": {
+      estado.auditoria = msg.lista
       renderEquipes()
       break
     }

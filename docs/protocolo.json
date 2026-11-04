@@ -21,7 +21,12 @@
     "persona-criar",
     "persona-excluir",
     "equipe-salvar",
-    "equipe-excluir"
+    "equipe-excluir",
+    "persona-salvar",
+    "pausar",
+    "retomar",
+    "tarefa-aprovar-plano",
+    "auditoria"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -45,7 +50,9 @@
     "tarefas",
     "execucao",
     "execucao-evento",
-    "personas"
+    "personas",
+    "orquestra",
+    "auditoria"
   ],
   "cliente→servidor só no desktop": [
     "equipe-salvar",

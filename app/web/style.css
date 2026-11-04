@@ -787,3 +787,21 @@ body {
 .secao-personas .excluir-persona { margin-left: auto; background: transparent; color: var(--perigo); border: 1px solid var(--perigo); border-radius: 8px; padding: 2px 10px; cursor: pointer; }
 .nova-persona textarea { width: 100%; box-sizing: border-box; background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 8px; font: inherit; resize: vertical; }
 .nova-persona .cor-persona { display: flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 13px; }
+
+.barra-pausa { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin: 4px 0 10px; border: 1px solid var(--borda); border-radius: 10px; background: var(--painel-2); color: var(--texto-2); font-size: 13px; }
+.barra-pausa.pausado { border-color: var(--perigo); color: var(--texto); }
+.barra-pausa button, .pausar-persona, .aprovar-plano { background: var(--painel); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.barra-pausa.pausado button, .aprovar-plano { border-color: var(--acento); }
+.persona-item { flex-wrap: wrap; }
+.persona-dados { flex: 1 1 200px; min-width: 0; }
+.persona-dados small { display: block; }
+.barra-orcamento { display: block; height: 4px; margin-top: 4px; background: var(--borda); border-radius: 2px; overflow: hidden; }
+.barra-orcamento span { display: block; height: 100%; background: #4fae7c; }
+.barra-orcamento.alerta span { background: #e0a458; }
+.barra-orcamento.estourado span { background: var(--perigo); }
+.orcamento-persona { width: 96px; background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 4px 6px; }
+.perfil-msg.plano { border-left: 3px solid #9a6ee8; }
+.link-atividade { margin-left: 8px; background: none; border: none; color: var(--acento); cursor: pointer; font-size: 12px; text-transform: none; }
+.lista-atividade { list-style: none; padding: 0; margin: 0 0 12px; font-size: 13px; color: var(--texto-2); }
+.lista-atividade li { padding: 4px 0; border-bottom: 1px solid var(--borda); overflow-wrap: anywhere; }
+.lista-atividade strong { color: var(--texto); }

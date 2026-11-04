@@ -2,8 +2,10 @@ import { join } from "node:path"
 import { dirModelos, dirWeb, raizDoCodigo, raizDosDados } from "./caminhos"
 import { garantirIgnorado, origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import { migrarPendentes } from "./memoria/migracao"
-import { apagarEquipe, carregarElenco, elenco, gravarEquipe, migrarParaPersonas } from "./orquestra/elenco"
-import { corDaPersona, exigirMudancaDeEquipe, resumoDaMudanca, slugValido, validarEquipe } from "./orquestra/equipe"
+import { apagarEquipe, carregarElenco, elenco, gravarEquipe, gravarPersona, migrarParaPersonas } from "./orquestra/elenco"
+import { corDaPersona, exigirMudancaDeEquipe, resumoDaMudanca, slugValido, validarEquipe, validarPersona } from "./orquestra/equipe"
+import { Contas, TUDO, mesDe, motivoDeBloqueio, nivelDoOrcamento } from "./orquestra/governanca"
+import { aoGravarUso, lerUso } from "./uso"
 import { criarPersona, excluirPersona, gerarPerfil, lerPedidoDePersona } from "./orquestra/personas"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
 import { lerNovaTarefa, statusValido } from "./orquestra/tarefa"
@@ -33,7 +35,7 @@ import {
 import { sonhar } from "./memoria/sonho"
 import { CentralDeAvisos, caminhoDosAvisos, type Como } from "./avisos/central"
 import { Presenca, type Mudanca } from "./avisos/presenca"
-import { avisoDeAprovacao, avisoDeAprovacaoEmTarefa, avisoDeResposta } from "./avisos/fontes"
+import { avisoDeAprovacao, avisoDeAprovacaoEmTarefa, avisoDeOrcamento, avisoDeResposta } from "./avisos/fontes"
 import type { NovoAviso } from "./avisos/central"
 import { executorDeAvisos, lerDesde, streamDeAvisos, tratarAcao } from "./avisos/http"
 import { Lembretes } from "./avisos/motor"
@@ -64,6 +66,9 @@ try {
   process.exit(1)
 }
 const TAREFAS = new Repositorio(caminhoDoBanco(RAIZ))
+const CONTAS = new Contas()
+CONTAS.carregar(await lerUso(RAIZ).catch(() => []))
+aoGravarUso((registro) => CONTAS.registrar(registro))
 const PORTA = Number(process.env.TOWER_PORTA ?? 7878)
 const MEMORIA = memoriaHttp()
 const naFilaDaConversa = filaPorChave()
@@ -143,6 +148,67 @@ function equipesParaCliente() {
 
 const GERANDO_PERFIL = new Set<string>()
 
+function bloqueioDe(persona: string) {
+  const pausas = new Set(TAREFAS.pausas().keys())
+  return motivoDeBloqueio(persona, pausas, CONTAS.gasto(persona).tarefas, elenco().persona(persona)?.orcamentoMensalUSD)
+}
+
+function conferirOrcamento(persona: string): void {
+  const limite = elenco().persona(persona)?.orcamentoMensalUSD
+  const gasto = CONTAS.gasto(persona).tarefas
+  const nivel = nivelDoOrcamento(gasto, limite)
+  if (nivel && limite !== undefined && TAREFAS.marcarAvisoDeOrcamento(persona, mesDe(new Date()), nivel)) {
+    TAREFAS.auditar("orquestra", nivel === "alerta" ? "orçamento em 80%" : "orçamento estourado", `persona:${persona}`, `US$ ${gasto.toFixed(2)} de US$ ${limite.toFixed(2)}`)
+    avisar(AVISOS.criar(avisoDeOrcamento(elenco().nome(persona), nivel, gasto, limite)))
+  }
+  mandarATodos({ tipo: "personas", lista: personasParaCliente() })
+}
+
+function estadoDaOrquestra() {
+  return { tipo: "orquestra", pausadoTudo: TAREFAS.pausas().has(TUDO) }
+}
+
+async function salvarPersona(bruto: unknown): Promise<void> {
+  const pedido = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>
+  const id = String(pedido.id ?? "")
+  const atual = elenco().persona(id)
+  if (!atual) throw new Error(`a persona ${id} não existe`)
+  const nova: Record<string, unknown> = { ...atual }
+  const mudancas: string[] = []
+  if ("orcamentoMensalUSD" in pedido) {
+    if (pedido.orcamentoMensalUSD === null || pedido.orcamentoMensalUSD === "") delete nova.orcamentoMensalUSD
+    else nova.orcamentoMensalUSD = Number(pedido.orcamentoMensalUSD)
+    mudancas.push(nova.orcamentoMensalUSD === undefined ? "sem limite de orçamento" : `orçamento US$ ${Number(nova.orcamentoMensalUSD).toFixed(2)}`)
+  }
+  if ("modelo" in pedido) {
+    if (pedido.modelo) nova.modelo = String(pedido.modelo)
+    else delete nova.modelo
+    mudancas.push(`modelo ${String(nova.modelo ?? "padrão")}`)
+  }
+  if ("cor" in pedido) {
+    if (pedido.cor) nova.cor = String(pedido.cor)
+    else delete nova.cor
+    mudancas.push("cor")
+  }
+  if (typeof pedido.nome === "string" && pedido.nome.trim()) {
+    nova.nome = pedido.nome.trim()
+    mudancas.push(`nome ${pedido.nome.trim()}`)
+  }
+  const valida = validarPersona(nova)
+  await gravarPersona(RAIZ, valida)
+  await carregarElenco(RAIZ)
+  await registrarNoGit(RAIZ, `persona ${valida.nome}: ${mudancas.join(", ") || "sem mudança"}`)
+  publicarElenco()
+  ORQUESTRA.despachar()
+}
+
+function alvoDaPausa(bruto: unknown): string {
+  const alvo = String(bruto ?? "")
+  if (alvo === TUDO) return TUDO
+  if (!elenco().existe(alvo)) throw new Error(`a persona ${alvo} não existe`)
+  return alvo
+}
+
 function personasParaCliente() {
   return elenco()
     .personas()
@@ -159,6 +225,13 @@ function personasParaCliente() {
         excluivel: perfilExcluivel(p.id),
         modelo: p.modelo ?? null,
         gerandoPerfil: GERANDO_PERFIL.has(p.id),
+        orcamentoMensalUSD: p.orcamentoMensalUSD ?? null,
+        gastoMesUSD: CONTAS.gasto(p.id).tarefas,
+        gastoTotalMesUSD: CONTAS.gasto(p.id).total,
+        pausa: (() => {
+          const motivo = bloqueioDe(p.id)
+          return motivo ? { motivo } : null
+        })(),
       }
     })
 }
@@ -296,6 +369,7 @@ function soltarPermissao(id: string, permitido: boolean, como: Como = permitido 
   pendentes.delete(id)
   pendente.resolver(permitido)
   if (pendente.tarefaId !== undefined) {
+    TAREFAS.auditar("ueslei", `comando ${como}`, `tarefa:${pendente.tarefaId}`, pendente.comando)
     mandarATodos({ tipo: "permissao-resolvida", id, como, tarefaId: pendente.tarefaId })
     return true
   }
@@ -383,6 +457,8 @@ const ORQUESTRA = new Orquestra({
   avisar: (aviso) => avisar(AVISOS.criar(aviso)),
   pedirComando: tratarComandoDeTarefa,
   cancelarPedidos: cancelarPedidosDaTarefa,
+  bloqueio: bloqueioDe,
+  aposExecucao: conferirOrcamento,
 })
 
 const executarAviso = executorDeAvisos({
@@ -586,6 +662,33 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "personas": {
       mandar(ws, { tipo: "personas", lista: personasParaCliente() })
+      mandar(ws, estadoDaOrquestra())
+      return
+    }
+    case "persona-salvar": {
+      await salvarPersona(msg.persona)
+      return
+    }
+    case "pausar": {
+      ORQUESTRA.pausar(alvoDaPausa(msg.alvo))
+      mandarATodos(estadoDaOrquestra())
+      mandarATodos({ tipo: "personas", lista: personasParaCliente() })
+      return
+    }
+    case "retomar": {
+      ORQUESTRA.retomar(alvoDaPausa(msg.alvo))
+      mandarATodos(estadoDaOrquestra())
+      mandarATodos({ tipo: "personas", lista: personasParaCliente() })
+      return
+    }
+    case "tarefa-aprovar-plano": {
+      const id = idDeTarefa(msg.id)
+      ORQUESTRA.aprovarPlano(id)
+      publicarTarefa(id)
+      return
+    }
+    case "auditoria": {
+      mandar(ws, { tipo: "auditoria", lista: TAREFAS.auditoria() })
       return
     }
     case "persona-criar": {
