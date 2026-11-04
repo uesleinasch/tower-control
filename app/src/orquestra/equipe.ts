@@ -12,6 +12,7 @@ export interface Persona {
   modelo?: string
   protegida?: boolean
   orcamentoMensalUSD?: number
+  orcamentoMensalTokens?: number
   cor?: string
 }
 
@@ -91,6 +92,12 @@ export function validarPersona(bruto: unknown): Persona {
       throw new Error(`persona ${p.id}: orçamento inválido`)
     }
     persona.orcamentoMensalUSD = p.orcamentoMensalUSD
+  }
+  if (p.orcamentoMensalTokens !== undefined) {
+    if (typeof p.orcamentoMensalTokens !== "number" || !Number.isInteger(p.orcamentoMensalTokens) || p.orcamentoMensalTokens < 0) {
+      throw new Error(`persona ${p.id}: orçamento de tokens inválido (use um número inteiro)`)
+    }
+    persona.orcamentoMensalTokens = p.orcamentoMensalTokens
   }
   return persona
 }

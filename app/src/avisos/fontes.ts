@@ -1,5 +1,6 @@
 import type { NovoAviso } from "./central"
 import { nomeDe, type Perfil } from "../tipos"
+import { formatarTokens } from "../orquestra/governanca"
 
 const LIMITE_CORPO = 180
 
@@ -67,11 +68,21 @@ export const avisoDeDelegacao = (tarefaId: number, nome: string, titulo: string)
 export const avisoDePlano = (tarefaId: number, nome: string, plano: string) =>
   avisoDeTarefa(tarefaId, `${nome} propôs um plano para #${tarefaId}`, plano)
 
-export function avisoDeOrcamento(nome: string, nivel: "alerta" | "estourado", gasto: number, limite: number): NovoAviso {
-  const valores = `US$ ${gasto.toFixed(2)} de US$ ${limite.toFixed(2)} no mês`
+export function avisoDeOrcamento(
+  nome: string,
+  nivel: "alerta" | "estourado",
+  dimensao: "usd" | "tokens",
+  gasto: number,
+  limite: number,
+): NovoAviso {
+  const valores =
+    dimensao === "usd"
+      ? `US$ ${gasto.toFixed(2)} de US$ ${limite.toFixed(2)} no mês`
+      : `${formatarTokens(gasto)} de ${formatarTokens(limite)} no mês`
+  const qual = dimensao === "usd" ? "orçamento" : "orçamento de tokens"
   return {
     tipo: "tarefa",
-    titulo: nivel === "alerta" ? `${nome} passou de 80% do orçamento` : `${nome} parou: orçamento do mês estourado`,
+    titulo: nivel === "alerta" ? `${nome} passou de 80% do ${qual}` : `${nome} parou: ${qual} do mês estourado`,
     corpo: nivel === "alerta" ? valores : `${valores}. As tarefas dele esperam na fila até você subir o limite ou o mês virar.`,
     alvo: {},
     acoes: [],

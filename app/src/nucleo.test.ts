@@ -35,6 +35,7 @@ import {
   personaInicial,
   resumoDaMudanca,
   validarEquipe,
+  validarPersona,
 } from "./orquestra/equipe"
 import { carregarElenco, definirElenco, gravarEquipe, lerElenco, migrarParaPersonas } from "./orquestra/elenco"
 import { criarPersona, excluirPersona, lerPedidoDePersona, novaPersona } from "./orquestra/personas"
@@ -43,7 +44,7 @@ import { lerNovaTarefa, podeMudar } from "./orquestra/tarefa"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
 import { blocoDaTarefa, custoDaExecucao, escolher, falhasSeguidas, podeMudarExecucao } from "./orquestra/execucao"
 import { opcoesDaPosicao, opcoesDePlano } from "./orquestra/capacidades"
-import { Contas, gastosDoMes, motivoDeBloqueio, nivelDoOrcamento, planoAprovado, precisaDePlano, recusaDeDelegacao } from "./orquestra/governanca"
+import { Contas, formatarTokens, gastosDoMes, motivoDeBloqueio, niveisDoOrcamento, nivelDoOrcamento, planoAprovado, precisaDePlano, recusaDeDelegacao } from "./orquestra/governanca"
 import { Orquestra } from "./orquestra/runtime"
 import type { trabalhar } from "./sessions"
 import { Database } from "bun:sqlite"
@@ -803,7 +804,7 @@ describe("organograma de personas", () => {
 describe("governança", () => {
   const uso = (ts: string, perfil: string, tipo: RegistroDeUso["tipo"], sessionId: string, acumulado: number, retomada = false): RegistroDeUso => ({
     ts, tipo, perfil, sessionId, custoAcumuladoUSD: acumulado, retomada,
-    chamadas: 1, entrada: 0, escritaCache: 0, leituraCache: 0, saida: 0, duracaoMs: 1,
+    chamadas: 1, entrada: 10, escritaCache: 100, leituraCache: 1_000, saida: 50, duracaoMs: 1,
   })
 
   test("o gasto do mês soma só o mês e separa tarefas do total, pela diferença do acumulado da sessão", () => {
@@ -817,6 +818,8 @@ describe("governança", () => {
     expect(gastos.get("alfred")!.tarefas).toBeCloseTo(0.5)
     expect(gastos.get("alfred")!.total).toBeCloseTo(0.7)
     expect(gastos.get("nati")!.tarefas).toBeCloseTo(0.7)
+    expect(gastos.get("alfred")!.tokensTarefas).toBe(1_160)
+    expect(gastos.get("alfred")!.tokensTotal).toBe(2_320)
     const contas = new Contas()
     contas.carregar(registros)
     contas.registrar(uso("2026-11-04T12:00:00Z", "alfred", "tarefa", "s4", 2))
@@ -830,10 +833,19 @@ describe("governança", () => {
     expect(nivelDoOrcamento(4, 5)).toBe("alerta")
     expect(nivelDoOrcamento(5, 5)).toBe("estourado")
     expect(nivelDoOrcamento(0, 0)).toBe("estourado")
-    expect(motivoDeBloqueio("alfred", new Set(["*"]), 0, undefined)).toBe("tudo")
-    expect(motivoDeBloqueio("alfred", new Set(["alfred"]), 9, 5)).toBe("ueslei")
-    expect(motivoDeBloqueio("alfred", new Set(), 9, 5)).toBe("orcamento")
-    expect(motivoDeBloqueio("alfred", new Set(["nati"]), 1, 5)).toBeNull()
+    const gasto = (usd: number, tokens = 0) => ({ tarefas: usd, total: usd, tokensTarefas: tokens, tokensTotal: tokens })
+    expect(motivoDeBloqueio("alfred", new Set(["*"]), gasto(0), {})).toBe("tudo")
+    expect(motivoDeBloqueio("alfred", new Set(["alfred"]), gasto(9), { usd: 5 })).toBe("ueslei")
+    expect(motivoDeBloqueio("alfred", new Set(), gasto(9), { usd: 5 })).toBe("orcamento")
+    expect(motivoDeBloqueio("alfred", new Set(["nati"]), gasto(1), { usd: 5 })).toBeNull()
+    expect(motivoDeBloqueio("alfred", new Set(), gasto(1, 200_000), { usd: 5, tokens: 100_000 })).toBe("orcamento")
+    expect(niveisDoOrcamento(gasto(4.5, 10), { usd: 5, tokens: 100 })).toEqual({ usd: "alerta", tokens: null })
+    expect(niveisDoOrcamento(gasto(0, 90), { tokens: 100 })).toEqual({ usd: null, tokens: "alerta" })
+    expect(formatarTokens(1_250_000)).toBe("1,3 mi tokens")
+    expect(formatarTokens(45_400)).toBe("45 mil tokens")
+    expect(formatarTokens(800)).toBe("800 tokens")
+    expect(validarPersona({ id: "vera", nome: "Vera", orcamentoMensalTokens: 500_000 }).orcamentoMensalTokens).toBe(500_000)
+    expect(() => validarPersona({ id: "vera", nome: "Vera", orcamentoMensalTokens: 1.5 })).toThrow("número inteiro")
   })
 
   test("plano: pede enquanto não houver aprovação depois do último plano, e a execução de plano só lê", () => {

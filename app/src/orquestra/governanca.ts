@@ -13,6 +13,27 @@ export type MotivoDeBloqueio = "tudo" | "ueslei" | "orcamento"
 export interface Gasto {
   tarefas: number
   total: number
+  tokensTarefas: number
+  tokensTotal: number
+}
+
+export type Dimensao = "usd" | "tokens"
+
+export interface Limites {
+  usd?: number
+  tokens?: number
+}
+
+const SEM_GASTO: Gasto = { tarefas: 0, total: 0, tokensTarefas: 0, tokensTotal: 0 }
+
+export function tokensDe(r: Pick<RegistroDeUso, "entrada" | "escritaCache" | "leituraCache" | "saida">): number {
+  return (r.entrada ?? 0) + (r.escritaCache ?? 0) + (r.leituraCache ?? 0) + (r.saida ?? 0)
+}
+
+export function formatarTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(".", ",")} mi tokens`
+  if (n >= 1_000) return `${Math.round(n / 1_000)} mil tokens`
+  return `${Math.round(n)} tokens`
 }
 
 export function mesDe(quando: Date | string): string {
@@ -26,9 +47,14 @@ export function gastosDoMes(registros: RegistroDeUso[], mes: string): Map<string
   registros.forEach((r, i) => {
     if (!r.perfil || mesDe(r.ts) !== mes) return
     const custo = custos[i] ?? 0
-    const g = gastos.get(r.perfil) ?? { tarefas: 0, total: 0 }
+    const tokens = tokensDe(r)
+    const g = gastos.get(r.perfil) ?? { ...SEM_GASTO }
     g.total += custo
-    if (r.tipo === "tarefa") g.tarefas += custo
+    g.tokensTotal += tokens
+    if (r.tipo === "tarefa") {
+      g.tarefas += custo
+      g.tokensTarefas += tokens
+    }
     gastos.set(r.perfil, g)
   })
   return gastos
@@ -52,7 +78,7 @@ export class Contas {
     if (!this.cache || this.cache.mes !== mes || this.cache.tamanho !== this.registros.length) {
       this.cache = { mes, tamanho: this.registros.length, gastos: gastosDoMes(this.registros, mes) }
     }
-    return this.cache.gastos.get(persona) ?? { tarefas: 0, total: 0 }
+    return this.cache.gastos.get(persona) ?? { ...SEM_GASTO }
   }
 }
 
@@ -63,15 +89,23 @@ export function nivelDoOrcamento(gasto: number, limite: number | undefined): Niv
   return null
 }
 
+export function niveisDoOrcamento(gasto: Gasto, limites: Limites): Record<Dimensao, NivelDoOrcamento | null> {
+  return {
+    usd: nivelDoOrcamento(gasto.tarefas, limites.usd),
+    tokens: nivelDoOrcamento(gasto.tokensTarefas, limites.tokens),
+  }
+}
+
 export function motivoDeBloqueio(
   persona: string,
   pausas: ReadonlySet<string>,
-  gasto: number,
-  limite: number | undefined,
+  gasto: Gasto,
+  limites: Limites,
 ): MotivoDeBloqueio | null {
   if (pausas.has(TUDO)) return "tudo"
   if (pausas.has(persona)) return "ueslei"
-  if (nivelDoOrcamento(gasto, limite) === "estourado") return "orcamento"
+  const niveis = niveisDoOrcamento(gasto, limites)
+  if (niveis.usd === "estourado" || niveis.tokens === "estourado") return "orcamento"
   return null
 }
 
