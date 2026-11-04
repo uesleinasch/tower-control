@@ -10,8 +10,10 @@ export interface Delegacao {
 
 export interface AcoesDaTarefa {
   comentar: (texto: string) => string
-  pedirAjuda: (motivo: string) => string
+  pedirAjuda?: (motivo: string) => string
   delegar?: (pedido: Delegacao) => string
+  aprovar?: (parecer: string) => string
+  pedirMudanca?: (oQueMudar: string) => string
 }
 
 function resposta(texto: string) {
@@ -28,7 +30,7 @@ function protegido(acao: () => string): string {
 
 // A tarefa é fixada na criação: nenhuma ferramenta recebe id de tarefa do modelo.
 export function servidorDaOrquestra(acoes: AcoesDaTarefa) {
-  const delegar = acoes.delegar
+  const { delegar, pedirAjuda, aprovar, pedirMudanca } = acoes
   return createSdkMcpServer({
     name: "orquestra",
     version: "1.0.0",
@@ -54,12 +56,36 @@ export function servidorDaOrquestra(acoes: AcoesDaTarefa) {
         { texto: z.string().min(1) },
         async ({ texto }) => resposta(protegido(() => acoes.comentar(texto))),
       ),
-      tool(
-        "pedir_ajuda",
-        "Pede ajuda ao Ueslei quando falta algo que muda o resultado. A tarefa fica bloqueada até ele responder; depois de chamar, pare.",
-        { motivo: z.string().min(1) },
-        async ({ motivo }) => resposta(protegido(() => acoes.pedirAjuda(motivo))),
-      ),
+      ...(pedirAjuda
+        ? [
+            tool(
+              "pedir_ajuda",
+              "Pede ajuda ao Ueslei quando falta algo que muda o resultado. A tarefa fica bloqueada até ele responder; depois de chamar, pare.",
+              { motivo: z.string().min(1) },
+              async ({ motivo }) => resposta(protegido(() => pedirAjuda(motivo))),
+            ),
+          ]
+        : []),
+      ...(aprovar
+        ? [
+            tool(
+              "aprovar",
+              "Aprova a entrega que você está revisando, com o seu parecer. Depois de chamar, pare.",
+              { parecer: z.string().min(1).describe("o que você conferiu e por que aprova") },
+              async ({ parecer }) => resposta(protegido(() => aprovar(parecer))),
+            ),
+          ]
+        : []),
+      ...(pedirMudanca
+        ? [
+            tool(
+              "pedir_mudanca",
+              "Devolve a entrega à executora pedindo uma mudança. A nova entrega volta para você. Depois de chamar, pare.",
+              { o_que_mudar: z.string().min(1).describe("o que precisa mudar e por quê") },
+              async ({ o_que_mudar }) => resposta(protegido(() => pedirMudanca(o_que_mudar))),
+            ),
+          ]
+        : []),
     ],
   })
 }

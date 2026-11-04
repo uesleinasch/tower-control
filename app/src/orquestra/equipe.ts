@@ -26,7 +26,12 @@ export interface Posicao {
   diretorio?: string
   aprovarPlano?: boolean
   delegaDireto?: boolean
+  politica?: Etapa[]
 }
+
+export type Etapa =
+  | { tipo: "revisao"; por: { posicao: string } | { board: true } }
+  | { tipo: "aprovacao"; por: { posicao: string } | { ueslei: true } }
 
 export interface Equipe {
   id: string
@@ -102,6 +107,41 @@ export function validarPersona(bruto: unknown): Persona {
   return persona
 }
 
+function lerEtapa(bruto: unknown, onde: string): Etapa {
+  const e = (bruto && typeof bruto === "object" ? bruto : {}) as { tipo?: unknown; por?: Record<string, unknown> }
+  const por = e.por && typeof e.por === "object" ? e.por : {}
+  if (typeof por.posicao === "string" && (e.tipo === "revisao" || e.tipo === "aprovacao")) {
+    return { tipo: e.tipo, por: { posicao: por.posicao } }
+  }
+  if (e.tipo === "revisao" && por.board === true) return { tipo: "revisao", por: { board: true } }
+  if (e.tipo === "aprovacao" && por.ueslei === true) return { tipo: "aprovacao", por: { ueslei: true } }
+  throw new Error(`${onde}: quem decide é inválido`)
+}
+
+export function errosDaPolitica(posicao: Posicao, posicoes: Posicao[]): string[] {
+  const politica = posicao.politica ?? []
+  const onde = `posição ${posicao.id}`
+  const erros: string[] = []
+  const aprovacoes = politica.filter((e) => e.tipo === "aprovacao").length
+  if (aprovacoes > 1) erros.push(`${onde}: só pode haver uma aprovação`)
+  else if (aprovacoes === 1 && politica.at(-1)!.tipo !== "aprovacao") erros.push(`${onde}: a aprovação precisa ser a última etapa`)
+  politica.forEach((etapa, i) => {
+    const aqui = `${onde}: etapa ${i + 1}`
+    if ("board" in etapa.por) {
+      const membros = posicoes.filter((p) => p.capacidades.includes("board") && p.persona !== null && p.persona !== posicao.persona)
+      if (!membros.length) erros.push(`${aqui}: o board da equipe não tem membros`)
+      return
+    }
+    if (!("posicao" in etapa.por)) return
+    const ref = etapa.por.posicao
+    const alvo = posicoes.find((p) => p.id === ref)
+    if (!alvo) erros.push(`${aqui}: posição inexistente (${ref})`)
+    else if (alvo.id === posicao.id) erros.push(`${aqui}: não pode revisar a própria posição`)
+    else if (alvo.persona !== null && alvo.persona === posicao.persona) erros.push(`${aqui}: ${alvo.persona} revisaria o próprio trabalho`)
+  })
+  return erros
+}
+
 function validarPosicao(bruto: unknown, personas: ReadonlySet<string>, erros: string[]): Posicao | undefined {
   try {
     const p = objeto(bruto, "posição")
@@ -127,6 +167,10 @@ function validarPosicao(bruto: unknown, personas: ReadonlySet<string>, erros: st
     if (p.diretorio !== undefined) posicao.diretorio = texto(p.diretorio, `${onde}: diretório`)
     if (p.aprovarPlano === true) posicao.aprovarPlano = true
     if (p.delegaDireto === true) posicao.delegaDireto = true
+    if (p.politica !== undefined) {
+      if (!Array.isArray(p.politica)) throw new Error(`${onde}: a política precisa ser uma lista`)
+      if (p.politica.length) posicao.politica = p.politica.map((e, i) => lerEtapa(e, `${onde}: etapa ${i + 1}`))
+    }
     return posicao
   } catch (erro) {
     erros.push((erro as Error).message)
@@ -169,6 +213,7 @@ export function validarEquipe(bruto: unknown, personas: ReadonlySet<string>): Eq
   }
   const ciclo = temCiclo(posicoes)
   if (ciclo) erros.push(`posição ${ciclo}: a cadeia de "responde a" forma um ciclo`)
+  for (const p of posicoes) erros.push(...errosDaPolitica(p, posicoes))
   if (erros.length) throw new Error(`equipe ${e.id}: ${erros.join("; ")}`)
   const layout: Equipe["layout"] = {}
   if (e.layout && typeof e.layout === "object") {
@@ -327,6 +372,7 @@ export function subordinadas(equipe: Equipe, posicao: string): Posicao[] {
 export interface TarefasDaPosicao {
   abertas: number
   emAndamento: number
+  citadas?: number
 }
 
 export function exigirMudancaDeEquipe(
@@ -339,8 +385,9 @@ export function exigirMudancaDeEquipe(
   if (antes.id === CASA && depois.nome !== antes.nome) erros.push("a Casa não pode ser renomeada")
   for (const velha of antes.posicoes) {
     const nova = depois.posicoes.find((p) => p.id === velha.id)
-    const { abertas, emAndamento } = tarefas(velha.id)
+    const { abertas, emAndamento, citadas = 0 } = tarefas(velha.id)
     if (!nova && abertas > 0) erros.push(`posição ${velha.id}: tem ${abertas} tarefa(s) aberta(s) e não pode sair`)
+    else if (!nova && citadas > 0) erros.push(`posição ${velha.id}: revisa ${citadas} tarefa(s) aberta(s) e não pode sair`)
     else if (nova && nova.persona !== velha.persona && emAndamento > 0) {
       erros.push(`posição ${velha.id}: tem tarefa em andamento e não pode trocar de persona agora`)
     }
@@ -363,7 +410,8 @@ export function resumoDaMudanca(antes: Equipe | undefined, depois: Equipe): stri
       velha.capacidades.join() !== p.capacidades.join() ||
       velha.aprovacao !== p.aprovacao ||
       Boolean(velha.aprovarPlano) !== Boolean(p.aprovarPlano) ||
-      Boolean(velha.delegaDireto) !== Boolean(p.delegaDireto)
+      Boolean(velha.delegaDireto) !== Boolean(p.delegaDireto) ||
+      JSON.stringify(velha.politica ?? []) !== JSON.stringify(p.politica ?? [])
     ) {
       partes.push(`${p.id}: capacidades`)
     }

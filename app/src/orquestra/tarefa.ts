@@ -1,4 +1,4 @@
-import type { Equipe } from "./equipe"
+import type { Equipe, Etapa } from "./equipe"
 
 export type StatusTarefa = "backlog" | "a_fazer" | "em_andamento" | "em_revisao" | "bloqueada" | "concluida" | "cancelada"
 
@@ -26,12 +26,16 @@ export interface Tarefa {
   criadaEm: string
   atualizadaEm: string
   dependeDe: number[]
+  politica: Etapa[]
+  etapa: number | null
+  retorno: number | null
+  voltas: number
 }
 
 export interface Registro {
   id: number
   tarefa: number
-  tipo: "comentario" | "status" | "entrega" | "ajuda" | "plano" | "plano-aprovado"
+  tipo: "comentario" | "status" | "entrega" | "ajuda" | "plano" | "plano-aprovado" | "aprovado" | "mudanca"
   autor: string
   texto: string
   em: string
@@ -46,13 +50,14 @@ export interface NovaTarefa {
   pai: number | null
   dependeDe: number[]
   status: StatusTarefa
+  politica?: Etapa[]
 }
 
 const TRANSICOES: Record<StatusTarefa, readonly StatusTarefa[]> = {
   backlog: ["a_fazer", "cancelada"],
   a_fazer: ["em_andamento", "backlog", "bloqueada", "cancelada"],
   em_andamento: ["em_revisao", "concluida", "bloqueada", "a_fazer", "cancelada"],
-  em_revisao: ["concluida", "em_andamento", "a_fazer", "cancelada"],
+  em_revisao: ["concluida", "em_andamento", "a_fazer", "bloqueada", "cancelada"],
   bloqueada: ["a_fazer", "cancelada"],
   concluida: ["a_fazer"],
   cancelada: ["backlog"],
@@ -116,5 +121,6 @@ export function lerNovaTarefa(bruto: unknown, equipes: (id: string) => Equipe | 
     pai,
     dependeDe: ids(t.dependeDe),
     status,
+    politica: posicao.politica ?? [],
   }
 }

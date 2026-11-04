@@ -2,7 +2,7 @@ import type { PersonaId } from "./equipe"
 import { NOMES_DE_STATUS, type Registro, type Tarefa } from "./tarefa"
 
 export type StatusExecucao = "na_fila" | "rodando" | "concluida" | "falhou" | "interrompida"
-export type Gatilho = "atribuicao" | "comentario" | "dependencia" | "retomada" | "nova_tentativa" | "plano_aprovado"
+export type Gatilho = "atribuicao" | "comentario" | "dependencia" | "retomada" | "nova_tentativa" | "plano_aprovado" | "revisao" | "mudanca"
 export type TipoDeEvento = "texto" | "ferramenta" | "comando" | "aprovacao" | "erro"
 
 export interface Execucao {
@@ -23,6 +23,7 @@ export interface Execucao {
   resultado: string | null
   erro: string | null
   custoUSD: number | null
+  etapa: number | null
 }
 
 export interface Evento {
@@ -44,6 +45,8 @@ export const NOMES_DE_GATILHO: Record<Gatilho, string> = {
   retomada: "retomada após queda",
   nova_tentativa: "nova tentativa",
   plano_aprovado: "plano aprovado",
+  revisao: "entrega para revisar",
+  mudanca: "pedido de mudança",
 }
 
 const TRANSICOES: Record<StatusExecucao, readonly StatusExecucao[]> = {
@@ -102,11 +105,16 @@ export function escolher(
     const { execucao, tarefa } = c
     if (execucao.naoAntes && Date.parse(execucao.naoAntes) > agora.getTime()) continue
     if (tarefasVivas.has(tarefa.id)) continue
-    if (tarefa.status !== "a_fazer") {
+    const etapa = execucao.etapa ?? null
+    if (etapa !== null) {
+      if (tarefa.status !== "em_revisao" || tarefa.etapa !== etapa) {
+        decisoes.push({ acao: "descartar", execucao: execucao.id, motivo: "nada a revisar: a tarefa saiu desta etapa" })
+        continue
+      }
+    } else if (tarefa.status !== "a_fazer") {
       decisoes.push({ acao: "descartar", execucao: execucao.id, motivo: `nada a fazer: a tarefa está ${NOMES_DE_STATUS[tarefa.status]}` })
       continue
-    }
-    if (!c.dependenciasConcluidas) {
+    } else if (!c.dependenciasConcluidas) {
       decisoes.push({ acao: "descartar", execucao: execucao.id, motivo: "nada a fazer: depende de tarefa não concluída" })
       continue
     }
@@ -143,7 +151,32 @@ Leia o que precisar e escreva o plano como sua última resposta: o que vai fazer
 ordem, que comandos pretende rodar e o que pode dar errado. O Ueslei aprova o plano antes
 de você executar.`
 
-export type ModoDaExecucao = { tipo: "normal" } | { tipo: "plano" } | { tipo: "plano_aprovado"; plano: string }
+function regrasDaRevisao(executora: string, final: boolean, semDecisao: boolean): string {
+  return [
+    `Você está ${final ? "dando a aprovação final" : "revisando"} a entrega de ${executora} numa tarefa do orquestrador, não numa conversa.`,
+    "",
+    "- Ninguém está olhando esta conversa. Leia a tarefa, a entrega e o que mais precisar, mas não altere nada.",
+    "- Decida chamando uma das ferramentas: aprovar, com o seu parecer, ou pedir_mudanca, dizendo o que muda e por quê.",
+    `- Pedido de mudança volta para ${executora}, e a nova entrega volta para você.`,
+    "- Use comentar só para registrar algo que vale ler mesmo se a execução cair.",
+    semDecisao ? "\nNa execução anterior você terminou sem decidir. Desta vez, chame aprovar ou pedir_mudanca antes de terminar." : "",
+  ]
+    .filter((l) => l !== "")
+    .join("\n")
+}
+
+export type ModoDaExecucao =
+  | { tipo: "normal" }
+  | { tipo: "plano" }
+  | { tipo: "plano_aprovado"; plano: string }
+  | { tipo: "revisao"; executora: string; final: boolean; semDecisao: boolean }
+  | { tipo: "board"; executora: string }
+
+function regrasDoBoard(executora: string): string {
+  return `O board está revisando a entrega de ${executora} numa tarefa do orquestrador.
+Leia a tarefa e a entrega mais recente no histórico e diga se ela pode seguir como está ou
+precisa de mudança; se precisar, diga o que muda e por quê. Não altere nada.`
+}
 
 function rotuloDoRegistro(r: Registro): string {
   const quem = r.autor === "ueslei" ? "Ueslei" : r.autor
@@ -158,6 +191,10 @@ function rotuloDoRegistro(r: Registro): string {
       return `- ${quem} propôs um plano: ${r.texto}`
     case "plano-aprovado":
       return `- ${quem} aprovou o plano`
+    case "aprovado":
+      return `- ${quem === "board" ? "o board" : quem} aprovou: ${r.texto}`
+    case "mudanca":
+      return `- ${quem === "board" ? "o board" : quem} pediu mudança: ${r.texto}`
     default:
       return `- status (${quem}): ${r.texto}`
   }
@@ -182,7 +219,11 @@ export function blocoDaTarefa(
     (r) => (desde === null || r.em > desde) && r.autor !== persona && !r.autor.startsWith("execucao:") && r.autor !== "orquestra",
   )
   const partes = [
-    REGRAS_DO_MODO_TAREFA,
+    modo.tipo === "revisao"
+      ? regrasDaRevisao(modo.executora, modo.final, modo.semDecisao)
+      : modo.tipo === "board"
+        ? regrasDoBoard(modo.executora)
+        : REGRAS_DO_MODO_TAREFA,
     modo.tipo === "plano" ? REGRAS_DO_PLANO : "",
     modo.tipo === "plano_aprovado" ? `### Plano aprovado pelo Ueslei\n\nExecute este plano:\n\n${modo.plano}` : "",
     `## Tarefa #${tarefa.id}: ${tarefa.titulo}`,

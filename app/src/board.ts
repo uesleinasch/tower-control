@@ -7,6 +7,7 @@ import { perguntarUmaVez } from "./sessions"
 import { dataLocal, slug } from "./texto"
 import type { Memoria } from "./memoria/tipos"
 import { montarBrief } from "./memoria/recuperacao"
+import { decisaoDaSintese, type Decisao } from "./orquestra/politica"
 
 export { slug }
 
@@ -55,11 +56,73 @@ export async function convocarBoard(
   return { sintese, ata }
 }
 
+export interface RevisaoDoBoard {
+  titulo: string
+  pauta: string
+  membros: Conselheiro[]
+  modelo: (persona: Conselheiro) => string
+  tarefaId: number
+  execucaoId: number
+  controle?: AbortController
+  memoria?: Memoria
+}
+
+export interface ResultadoDaRevisao {
+  sintese: string
+  ata: string
+  decisao: Decisao["tipo"] | null
+}
+
+const MODELO_DA_SINTESE_EM_TAREFA = "sonnet"
+
+const REGRA_DA_DECISAO = `Esta pauta é a revisão de uma entrega numa tarefa. Termine a síntese com uma linha
+sozinha, exatamente "DECISÃO: aprovar" se a entrega pode seguir como está, ou "DECISÃO: mudança"
+se ela precisa voltar à executora; nesse caso, a Recomendação final diz o que mudar e por quê.`
+
+export async function revisarComBoard(raiz: string, pedido: RevisaoDoBoard): Promise<ResultadoDaRevisao> {
+  const uso = { tipo: "tarefa" as const, tarefaId: pedido.tarefaId, execucaoId: pedido.execucaoId }
+  const pareceres = await Promise.all(
+    pedido.membros.map(async (perfil) => {
+      const brief = pedido.memoria ? await montarBrief(pedido.memoria, perfil, pedido.titulo) : ""
+      const system = await montarSystemPromptParecer(raiz, perfil, brief)
+      const modelo = pedido.modelo(perfil)
+      try {
+        const texto = await perguntarUmaVez({
+          raiz,
+          system,
+          prompt: montarPautaParecer(pedido.pauta),
+          permitirLeitura: true,
+          modelo,
+          uso: { ...uso, perfil, modelo },
+          controle: pedido.controle,
+        })
+        return { perfil, texto }
+      } catch (erro) {
+        if (pedido.controle?.signal.aborted) throw erro
+        return { perfil, texto: `_(parecer indisponível: ${(erro as Error).message})_` }
+      }
+    }),
+  )
+  if (!pareceres.some((p) => !p.texto.startsWith("_(parecer indisponível"))) throw new Error("nenhum membro do board conseguiu emitir parecer")
+  const { system, prompt } = montarPromptSintese(pedido.pauta, pareceres)
+  const sintese = await perguntarUmaVez({
+    raiz,
+    system: `${system}\n\n${REGRA_DA_DECISAO}`,
+    prompt,
+    modelo: MODELO_DA_SINTESE_EM_TAREFA,
+    uso: { ...uso, modelo: MODELO_DA_SINTESE_EM_TAREFA },
+    controle: pedido.controle,
+  })
+  const ata = await gravarAta(raiz, pedido.pauta, pareceres, sintese, pedido.titulo)
+  return { sintese, ata, decisao: decisaoDaSintese(sintese) }
+}
+
 async function gravarAta(
   raiz: string,
   pauta: string,
   pareceres: { perfil: Conselheiro; texto: string }[],
   sintese: string,
+  titulo = pauta,
 ): Promise<string> {
   const data = dataLocal()
   const corpo = [
@@ -73,7 +136,7 @@ async function gravarAta(
     sintese.trim(),
     ``,
   ].join("\n")
-  const nome = await gravarSemSobrescrever(join(raiz, "board", "minutes"), `${data}-${slug(pauta) || "convocacao"}`, corpo)
+  const nome = await gravarSemSobrescrever(join(raiz, "board", "minutes"), `${data}-${slug(titulo) || "convocacao"}`, corpo)
   return `board/minutes/${nome}`
 }
 

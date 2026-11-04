@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite"
 import { mkdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { NOMES_DE_STATUS, exigirMudanca, type NovaTarefa, type Registro, type StatusTarefa, type Tarefa } from "./tarefa"
+import type { Etapa } from "./equipe"
 import {
   exigirMudancaDeExecucao,
   truncar,
@@ -12,7 +13,7 @@ import {
   type TipoDeEvento,
 } from "./execucao"
 
-const VERSAO = 3
+const VERSAO = 4
 
 const ESQUEMA = `
 CREATE TABLE tarefas (
@@ -102,6 +103,14 @@ CREATE TABLE avisos_de_orcamento (
 );
 `
 
+const ESQUEMA_4 = `
+ALTER TABLE tarefas ADD COLUMN politica TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE tarefas ADD COLUMN etapa INTEGER;
+ALTER TABLE tarefas ADD COLUMN retorno INTEGER;
+ALTER TABLE tarefas ADD COLUMN voltas INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE execucoes ADD COLUMN etapa INTEGER;
+`
+
 export interface LinhaDeAuditoria {
   id: number
   em: string
@@ -130,6 +139,7 @@ interface LinhaExecucao {
   erro: string | null
   custo_usd: number | null
   custo_acumulado_usd: number | null
+  etapa: number | null
 }
 
 function montarExecucao(l: LinhaExecucao): Execucao {
@@ -151,6 +161,7 @@ function montarExecucao(l: LinhaExecucao): Execucao {
     resultado: l.resultado,
     erro: l.erro,
     custoUSD: l.custo_usd,
+    etapa: l.etapa,
   }
 }
 
@@ -178,6 +189,10 @@ interface LinhaTarefa {
   criada_por: string
   criada_em: string
   atualizada_em: string
+  politica: string
+  etapa: number | null
+  retorno: number | null
+  voltas: number
 }
 
 const SEM_DONO: readonly StatusTarefa[] = ["backlog", "a_fazer", "bloqueada"]
@@ -202,6 +217,7 @@ export class Repositorio {
         if (user_version < 1) this.db.exec(ESQUEMA)
         if (user_version < 2) this.db.exec(ESQUEMA_2)
         if (user_version < 3) this.db.exec(ESQUEMA_3)
+        if (user_version < 4) this.db.exec(ESQUEMA_4)
         this.db.exec(`PRAGMA user_version = ${VERSAO}`)
       })()
     }
@@ -232,6 +248,10 @@ export class Repositorio {
       criadaEm: linha.criada_em,
       atualizadaEm: linha.atualizada_em,
       dependeDe: this.dependencias(linha.id),
+      politica: JSON.parse(linha.politica) as Etapa[],
+      etapa: linha.etapa,
+      retorno: linha.retorno,
+      voltas: linha.voltas,
     }
   }
 
@@ -273,10 +293,22 @@ export class Repositorio {
       for (const dep of nova.dependeDe) this.exigir(dep)
       const { id } = this.db
         .query(
-          `INSERT INTO tarefas (equipe, posicao, titulo, descricao, porque, pai, status, criada_por, criada_em, atualizada_em)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          `INSERT INTO tarefas (equipe, posicao, titulo, descricao, porque, pai, status, criada_por, criada_em, atualizada_em, politica)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         )
-        .get(nova.equipe, nova.posicao, nova.titulo, nova.descricao, nova.porque, nova.pai, nova.status, autor, em, em) as {
+        .get(
+          nova.equipe,
+          nova.posicao,
+          nova.titulo,
+          nova.descricao,
+          nova.porque,
+          nova.pai,
+          nova.status,
+          autor,
+          em,
+          em,
+          JSON.stringify(nova.politica ?? []),
+        ) as {
         id: number
       }
       for (const dep of nova.dependeDe) {
@@ -293,7 +325,8 @@ export class Repositorio {
       const tarefa = this.exigir(id)
       exigirMudanca(tarefa, para, tarefa.dependeDe.map((d) => this.exigir(d).status))
       const dono = SEM_DONO.includes(para) ? null : para === "em_andamento" ? (tarefa.dono ?? autor) : tarefa.dono
-      this.db.query("UPDATE tarefas SET status = ?, dono = ?, atualizada_em = ? WHERE id = ?").run(para, dono, em, id)
+      const etapa = para === "em_revisao" ? tarefa.etapa : null
+      this.db.query("UPDATE tarefas SET status = ?, dono = ?, etapa = ?, atualizada_em = ? WHERE id = ?").run(para, dono, etapa, em, id)
       this.registrar(id, "status", autor, `${NOMES_DE_STATUS[tarefa.status]} → ${NOMES_DE_STATUS[para]}`, em)
       return this.exigir(id)
     })()
@@ -312,6 +345,42 @@ export class Repositorio {
       this.registrar(id, "status", dono, `${NOMES_DE_STATUS[tarefa.status]} → ${NOMES_DE_STATUS.em_andamento}`, em)
       return this.exigir(id)
     })()
+  }
+
+  checkoutDeEtapa(id: number, etapa: number, dono: string, agora = new Date()): Tarefa {
+    const mudou = this.db
+      .query("UPDATE tarefas SET dono = ?, atualizada_em = ? WHERE id = ? AND status = 'em_revisao' AND etapa = ? AND dono IS NULL")
+      .run(dono, agora.toISOString(), id, etapa)
+    if (mudou.changes !== 1) throw new Error(`tarefa ${id} não está esperando a etapa ${etapa + 1}`)
+    return this.exigir(id)
+  }
+
+  // Só solta se a etapa ainda é desta execução: o Ueslei pode ter movido a tarefa no meio.
+  soltarEtapa(execucao: number, agora = new Date()): Tarefa | undefined {
+    const { tarefa, etapa } = this.exigirExecucao(execucao)
+    const mudou = this.db
+      .query("UPDATE tarefas SET dono = NULL, atualizada_em = ? WHERE id = ? AND status = 'em_revisao' AND etapa IS ? AND dono = ?")
+      .run(agora.toISOString(), tarefa, etapa, donoDaExecucao(execucao))
+    return mudou.changes === 1 ? this.exigir(tarefa) : undefined
+  }
+
+  irParaEtapa(id: number, etapa: number, autor: string, texto: string, agora = new Date()): Tarefa {
+    const em = agora.toISOString()
+    return this.db.transaction(() => {
+      const tarefa = this.exigir(id)
+      if (tarefa.status !== "em_revisao") exigirMudanca(tarefa, "em_revisao", [])
+      if (!tarefa.politica[etapa]) throw new Error(`tarefa ${id}: a política não tem a etapa ${etapa + 1}`)
+      this.db
+        .query("UPDATE tarefas SET status = 'em_revisao', etapa = ?, dono = NULL, atualizada_em = ? WHERE id = ?")
+        .run(etapa, em, id)
+      this.registrar(id, "status", autor, texto, em)
+      return this.exigir(id)
+    })()
+  }
+
+  marcarRetorno(id: number, retorno: number | null, voltas: number): Tarefa {
+    this.db.query("UPDATE tarefas SET retorno = ?, voltas = ? WHERE id = ?").run(retorno, voltas, id)
+    return this.exigir(id)
   }
 
   comentar(id: number, autor: string, texto: string, agora = new Date(), tipo: Registro["tipo"] = "comentario"): Registro {
@@ -373,7 +442,7 @@ export class Repositorio {
     tarefa: number,
     gatilho: Gatilho,
     agora = new Date(),
-    extra: { tentativa?: number; naoAntes?: Date } = {},
+    extra: { tentativa?: number; naoAntes?: Date; etapa?: number; posicao?: string } = {},
   ): { execucao: Execucao; juntada: boolean } {
     const em = agora.toISOString()
     return this.db.transaction(() => {
@@ -382,10 +451,18 @@ export class Repositorio {
       if (existente) return { execucao: existente, juntada: true }
       const { id } = this.db
         .query(
-          `INSERT INTO execucoes (tarefa, posicao, gatilho, status, tentativa, nao_antes, criada_em)
-           VALUES (?, ?, ?, 'na_fila', ?, ?, ?) RETURNING id`,
+          `INSERT INTO execucoes (tarefa, posicao, gatilho, status, tentativa, nao_antes, criada_em, etapa)
+           VALUES (?, ?, ?, 'na_fila', ?, ?, ?, ?) RETURNING id`,
         )
-        .get(alvo.id, alvo.posicao, gatilho, extra.tentativa ?? 1, extra.naoAntes?.toISOString() ?? null, em) as { id: number }
+        .get(
+          alvo.id,
+          extra.posicao ?? alvo.posicao,
+          gatilho,
+          extra.tentativa ?? 1,
+          extra.naoAntes?.toISOString() ?? null,
+          em,
+          extra.etapa ?? null,
+        ) as { id: number }
       return { execucao: this.exigirExecucao(id), juntada: false }
     })()
   }
@@ -398,12 +475,13 @@ export class Repositorio {
     })()
   }
 
-  comecar(id: number, persona: string, modelo: string, agora = new Date()): Execucao {
+  comecar(id: number, persona: string | null, modelo: string, agora = new Date()): Execucao {
     const em = agora.toISOString()
     return this.db.transaction(() => {
       const execucao = this.exigirExecucao(id)
       exigirMudancaDeExecucao(execucao, "rodando")
-      this.checkout(execucao.tarefa, donoDaExecucao(id), agora)
+      if (execucao.etapa === null) this.checkout(execucao.tarefa, donoDaExecucao(id), agora)
+      else this.checkoutDeEtapa(execucao.tarefa, execucao.etapa, donoDaExecucao(id), agora)
       this.db
         .query("UPDATE execucoes SET status = 'rodando', persona = ?, modelo = ?, inicio = ? WHERE id = ?")
         .run(persona, modelo, em, id)
@@ -468,7 +546,8 @@ export class Repositorio {
       const vivas = this.comStatus("rodando")
       for (const e of vivas) {
         this.terminar(e.id, { status: "interrompida", falha: true, erro: "o servidor reiniciou no meio da execução" }, agora)
-        this.devolver(e.id, "a_fazer", "orquestra", agora)
+        if (e.etapa === null) this.devolver(e.id, "a_fazer", "orquestra", agora)
+        else this.soltarEtapa(e.id, agora)
       }
       return vivas.map((e) => this.exigirExecucao(e.id))
     })()

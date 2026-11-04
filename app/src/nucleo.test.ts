@@ -29,6 +29,7 @@ import {
   completarLayout,
   corDaPersona,
   elencoLegado,
+  errosDaPolitica,
   exigirMudancaDeEquipe,
   idDoNome,
   personaIdValido,
@@ -43,7 +44,8 @@ import { montarSystemPrompt as promptDaPosicao } from "./prompt"
 import { lerNovaTarefa, podeMudar } from "./orquestra/tarefa"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
 import { blocoDaTarefa, custoDaExecucao, escolher, falhasSeguidas, podeMudarExecucao } from "./orquestra/execucao"
-import { opcoesDaPosicao, opcoesDePlano } from "./orquestra/capacidades"
+import { opcoesDaPosicao, opcoesDePlano, opcoesDeRevisao } from "./orquestra/capacidades"
+import { SEM_DECISAO, aposAprovar, aposEntrega, aposMudanca, comQuem, decisaoDaSintese } from "./orquestra/politica"
 import { Contas, formatarTokens, gastosDoMes, motivoDeBloqueio, niveisDoOrcamento, nivelDoOrcamento, planoAprovado, precisaDePlano, recusaDeDelegacao } from "./orquestra/governanca"
 import { Orquestra } from "./orquestra/runtime"
 import type { trabalhar } from "./sessions"
@@ -542,7 +544,11 @@ describe("runtime de execução", () => {
       const caminho = caminhoDoBanco(raiz)
       new Repositorio(caminho).fechar()
       const db = new Database(caminho)
-      db.exec("DROP TABLE eventos; DROP TABLE execucoes; DROP TABLE pausas; DROP TABLE auditoria; DROP TABLE avisos_de_orcamento; PRAGMA user_version = 1")
+      db.exec(
+        "DROP TABLE eventos; DROP TABLE execucoes; DROP TABLE pausas; DROP TABLE auditoria; DROP TABLE avisos_de_orcamento; " +
+          "ALTER TABLE tarefas DROP COLUMN politica; ALTER TABLE tarefas DROP COLUMN etapa; " +
+          "ALTER TABLE tarefas DROP COLUMN retorno; ALTER TABLE tarefas DROP COLUMN voltas; PRAGMA user_version = 1",
+      )
       db.close()
       const repo = new Repositorio(caminho)
       repo.criar(nova(), "ueslei")
@@ -993,6 +999,351 @@ describe("governança", () => {
       orquestra.parar()
       repo.fechar()
     }
+  })
+})
+
+describe("execution policy", () => {
+  const personas = new Set(["alfred", "nati", "poe", "lucas"])
+  const posicao = (id: string, persona: string | null, extra: Record<string, unknown> = {}) => ({
+    id,
+    titulo: id,
+    persona,
+    capacidades: ["arquivos"],
+    ...extra,
+  })
+  const revisao = (posicao: string) => ({ tipo: "revisao", por: { posicao } })
+  const equipeCom = (politica: unknown[], extras: Record<string, unknown>[] = []) =>
+    validarEquipe(
+      {
+        id: "casa",
+        nome: "Casa",
+        posicoes: [
+          posicao("executor", "alfred", { politica }),
+          posicao("revisora", "nati"),
+          posicao("segunda", "poe"),
+          ...extras,
+        ],
+      },
+      personas,
+    )
+  const erroDe = (politica: unknown[], extras: Record<string, unknown>[] = []) => {
+    try {
+      equipeCom(politica, extras)
+      return ""
+    } catch (erro) {
+      return (erro as Error).message
+    }
+  }
+
+  test("a validação recusa política sem sentido e aceita a linear", () => {
+    expect(equipeCom([revisao("revisora"), { tipo: "aprovacao", por: { ueslei: true } }]).posicoes[0]!.politica).toHaveLength(2)
+    expect(equipeCom([]).posicoes[0]!.politica).toBeUndefined()
+    expect(erroDe([{ tipo: "aprovacao", por: { board: true } }])).toContain("posição executor: etapa 1: quem decide é inválido")
+    expect(erroDe([{ tipo: "revisao", por: { ueslei: true } }])).toContain("etapa 1: quem decide é inválido")
+    expect(erroDe([{ tipo: "aprovacao", por: { ueslei: true } }, revisao("revisora")])).toContain("a aprovação precisa ser a última etapa")
+    expect(erroDe([{ tipo: "aprovacao", por: { ueslei: true } }, { tipo: "aprovacao", por: { posicao: "revisora" } }])).toContain(
+      "só pode haver uma aprovação",
+    )
+    expect(erroDe([revisao("fantasma")])).toContain("etapa 1: posição inexistente (fantasma)")
+    expect(erroDe([revisao("executor")])).toContain("etapa 1: não pode revisar a própria posição")
+    expect(erroDe([revisao("revisora"), revisao("outra")], [posicao("outra", null)])).toBe("")
+    expect(
+      erroDe([revisao("revisora")], [posicao("dupla", "lucas", { politica: [revisao("revisora")] }), posicao("x", "lucas")]),
+    ).toContain("persona lucas: ocupa mais de uma posição")
+    expect(erroDe([{ tipo: "revisao", por: { board: true } }])).toContain("etapa 1: o board da equipe não tem membros")
+    expect(erroDe([{ tipo: "revisao", por: { board: true } }], [posicao("conselho", "lucas", { capacidades: ["board"] })])).toBe("")
+  })
+
+  test("a mesma persona não revisa o trabalho da própria posição", () => {
+    const erro = (() => {
+      try {
+        validarEquipe(
+          {
+            id: "casa",
+            nome: "Casa",
+            posicoes: [posicao("executor", "alfred", { politica: [revisao("vaga")] }), posicao("vaga", null)],
+          },
+          personas,
+        )
+        return ""
+      } catch (e) {
+        return (e as Error).message
+      }
+    })()
+    expect(erro).toBe("")
+    const casa = equipeCom([revisao("revisora")])
+    const comAlfredRevisando = { ...casa, posicoes: [...casa.posicoes.slice(0, 1), { ...casa.posicoes[1]!, persona: "alfred" }] }
+    expect(errosDaPolitica(comAlfredRevisando.posicoes[0]!, comAlfredRevisando.posicoes)).toEqual([
+      "posição executor: etapa 1: alfred revisaria o próprio trabalho",
+    ])
+  })
+
+  test("mudança volta à executora e a próxima entrega vai para a mesma etapa", () => {
+    const politica = equipeCom([revisao("revisora"), revisao("segunda"), { tipo: "aprovacao", por: { ueslei: true } }]).posicoes[0]!.politica!
+    expect(aposEntrega([], null)).toEqual({ tipo: "ueslei" })
+    expect(aposEntrega(politica, null)).toEqual({ tipo: "etapa", etapa: 0 })
+    expect(aposEntrega(politica, 1)).toEqual({ tipo: "etapa", etapa: 1 })
+    expect(aposAprovar(politica, 0)).toEqual({ tipo: "etapa", etapa: 1 })
+    expect(aposAprovar(politica, 2)).toEqual({ tipo: "concluida" })
+    expect(aposMudanca({ retorno: null, voltas: 0 }, 1, false)).toEqual({ retorno: 1, voltas: 1, estourou: false })
+    expect(aposMudanca({ retorno: 1, voltas: 3 }, 1, false)).toEqual({ retorno: 1, voltas: 4, estourou: true })
+    expect(aposMudanca({ retorno: 0, voltas: 3 }, 1, false).voltas).toBe(1)
+    expect(aposMudanca({ retorno: 2, voltas: 3 }, 2, true)).toEqual({ retorno: 2, voltas: 3, estourou: false })
+    expect(decisaoDaSintese("## Síntese\n\nRecomendação: seguir.\n\nDECISÃO: aprovar")).toBe("aprovar")
+    expect(decisaoDaSintese("**DECISÃO: mudança**")).toBe("mudanca")
+    expect(decisaoDaSintese("Decisão: Mudanca")).toBe("mudanca")
+    expect(decisaoDaSintese("sem a linha")).toBeNull()
+    const equipe = equipeCom(politica)
+    const nome = (p: string) => p.toUpperCase()
+    const tarefa = (status: string, etapa: number | null) => ({ status, etapa, politica }) as never
+    expect(comQuem(tarefa("em_revisao", 0), equipe, nome)).toBe("com NATI")
+    expect(comQuem(tarefa("em_revisao", 2), equipe, nome)).toBe("com você")
+    expect(comQuem(tarefa("em_revisao", null), equipe, nome)).toBe("com você")
+    expect(comQuem(tarefa("a_fazer", null), equipe, nome)).toBeNull()
+    expect(comQuem({ status: "em_revisao", etapa: 0, politica: [{ tipo: "revisao", por: { board: true } }] } as never, equipe, nome)).toBe(
+      "com o board",
+    )
+  })
+
+  test("o despachante só aceita execução de etapa na mesma etapa em revisão", () => {
+    const agora = new Date("2026-11-04T12:00:00Z")
+    const c = (id: number, etapaDaExecucao: number | null, status: string, etapaDaTarefa: number | null) => ({
+      execucao: { id, tarefa: id, naoAntes: null, etapa: etapaDaExecucao } as never,
+      tarefa: { id, status, etapa: etapaDaTarefa } as never,
+      persona: `p${id}`,
+      dependenciasConcluidas: true,
+    })
+    expect(
+      escolher([c(1, 0, "em_revisao", 0), c(2, 0, "em_revisao", 1), c(3, 1, "a_fazer", null), c(4, null, "em_revisao", 0)], [], 5, agora),
+    ).toEqual([
+      { acao: "comecar", execucao: 1, persona: "p1" },
+      { acao: "descartar", execucao: 2, motivo: "nada a revisar: a tarefa saiu desta etapa" },
+      { acao: "descartar", execucao: 3, motivo: "nada a revisar: a tarefa saiu desta etapa" },
+      { acao: "descartar", execucao: 4, motivo: "nada a fazer: a tarefa está em revisão" },
+    ])
+  })
+
+  test("a revisão só lê: nenhuma combinação dá Write, Edit, Bash, delegar ou TickTask à revisora", () => {
+    const todas = ["arquivos", "comandos", "ticktask", "memoria", "board"] as const
+    for (let mascara = 0; mascara < 1 << todas.length; mascara++) {
+      const capacidades = todas.filter((_, i) => mascara & (1 << i))
+      const o = opcoesDeRevisao({ id: "p", titulo: "p", persona: null, respondeA: null, capacidades: [...capacidades], aprovacao: "auto" })
+      for (const proibida of ["Write", "Edit", "Bash", "mcp__orquestra__delegar", "mcp__orquestra__pedir_ajuda"]) {
+        expect(o.nativas).not.toContain(proibida)
+        expect(o.autoAprovadas).not.toContain(proibida)
+      }
+      expect(o.comandos).toBe(false)
+      expect(o.ticktask).toBe(false)
+      expect(o.memoria).toBe(capacidades.includes("memoria"))
+      expect(o.autoAprovadas).toContain("mcp__orquestra__aprovar")
+    }
+    const bloco = blocoDaTarefa(
+      { id: 3, titulo: "t", descricao: "", porque: "", dependeDe: [] } as never,
+      [],
+      [{ id: 1, tarefa: 3, tipo: "mudanca", autor: "nati", texto: "faltou o teste", em: "x" }],
+      "alfred",
+      null,
+      [],
+      { tipo: "revisao", executora: "Alfred", final: false, semDecisao: true },
+    )
+    expect(bloco).toContain("revisando a entrega de Alfred")
+    expect(bloco).toContain("Desta vez, chame aprovar ou pedir_mudanca")
+    expect(bloco).toContain("nati pediu mudança: faltou o teste")
+  })
+
+  const ate = async (condicao: () => boolean) => {
+    for (let i = 0; i < 200 && !condicao(); i++) await Bun.sleep(5)
+  }
+  type Roteiro = (o: Parameters<typeof trabalhar>[0], vez: number) => string | void
+
+  function montar(
+    repo: Repositorio,
+    equipe: () => ReturnType<typeof equipeCom>,
+    roteiro: Record<string, Roteiro>,
+    extra: { bloqueio?: (p: string) => "orcamento" | null; board?: (pedido: { membros: string[] }) => { decisao: "aprovar" | "mudanca" | null } } = {},
+  ) {
+    const avisos: string[] = []
+    const chamadas: Parameters<typeof trabalhar>[0][] = []
+    const vezes = new Map<string, number>()
+    const membros: string[][] = []
+    const orquestra = new Orquestra({
+      raiz: "/tmp/nao-usado",
+      repo,
+      teto: 2,
+      equipe: (id) => (id === "casa" ? equipe() : undefined),
+      nome: (p) => p,
+      modelo: () => "haiku",
+      trabalhar: async (o) => {
+        chamadas.push(o)
+        const vez = (vezes.get(o.persona) ?? 0) + 1
+        vezes.set(o.persona, vez)
+        return { texto: roteiro[o.persona]?.(o, vez) ?? "ok" }
+      },
+      revisarComBoard: async (pedido) => {
+        membros.push(pedido.membros)
+        const decisao = extra.board?.(pedido).decisao ?? null
+        return { sintese: "síntese", ata: "board/minutes/ata.md", decisao }
+      },
+      publicarTarefa: () => {},
+      publicarExecucao: () => {},
+      publicarEvento: () => {},
+      avisar: (a) => avisos.push(a.titulo),
+      pedirComando: async () => false,
+      cancelarPedidos: () => {},
+      bloqueio: extra.bloqueio,
+    })
+    return { orquestra, avisos, chamadas, membros }
+  }
+
+  const criar = (repo: Repositorio, equipe: ReturnType<typeof equipeCom>) =>
+    repo.criar(lerNovaTarefa({ equipe: "casa", posicao: "executor", titulo: "Atualizar o pacote" }, (id) => (id === "casa" ? equipe : undefined)), "ueslei")
+
+  test("executa, revisa, pede mudança, volta à mesma revisora e termina na aprovação do Ueslei", async () => {
+    const repo = new Repositorio(":memory:")
+    const equipe = equipeCom([revisao("revisora"), revisao("segunda"), { tipo: "aprovacao", por: { ueslei: true } }])
+    const { orquestra, avisos, chamadas } = montar(repo, () => equipe, {
+      alfred: (_, vez) => `entrega ${vez}`,
+      nati: (o) => void o.acoes.aprovar!("bom"),
+      poe: (o, vez) => void (vez === 1 ? o.acoes.pedirMudanca!("faltou o changelog") : o.acoes.aprovar!("agora sim")),
+    })
+    try {
+      const tarefa = criar(repo, equipe)
+      expect(tarefa.politica).toHaveLength(3)
+      orquestra.aoCriar(tarefa)
+      await ate(() => repo.exigir(1).etapa === 2)
+      const quem = chamadas.map((c) => `${c.persona}${c.revisao ? ":revisa" : ""}`)
+      expect(quem).toEqual(["alfred", "nati:revisa", "poe:revisa", "alfred", "poe:revisa"])
+      expect(chamadas[1]!.bloco).toContain("revisando a entrega de alfred")
+      expect(chamadas[3]!.bloco).toContain("poe pediu mudança: faltou o changelog")
+      expect(chamadas[3]!.sessionId).toBeUndefined()
+      expect(repo.exigir(1)).toMatchObject({ status: "em_revisao", etapa: 2, retorno: 1, voltas: 1, dono: null })
+      expect(repo.registros(1).filter((r) => r.tipo === "aprovado" || r.tipo === "mudanca").map((r) => `${r.autor}:${r.tipo}`)).toEqual([
+        "nati:aprovado",
+        "poe:mudanca",
+        "poe:aprovado",
+      ])
+      expect(avisos).toEqual(["#1 espera sua aprovação"])
+      expect(() => orquestra.decidir(1, "mudanca", "  ")).toThrow("diga o que precisa mudar")
+      orquestra.decidir(1, "aprovar")
+      expect(repo.exigir(1).status).toBe("concluida")
+      expect(repo.auditoria().map((a) => a.acao)).toEqual(["aprovou a entrega"])
+      expect(() => orquestra.decidir(1, "aprovar")).toThrow("não está esperando sua decisão")
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("sem aprovação no fim, a última revisão conclui e avisa; o comentário do Ueslei acorda a revisora", async () => {
+    const repo = new Repositorio(":memory:")
+    const equipe = equipeCom([revisao("revisora")])
+    let liberar = false
+    const { orquestra, avisos, chamadas } = montar(repo, () => equipe, {
+      nati: (o) => void (liberar ? o.acoes.aprovar!("ok") : undefined),
+    })
+    try {
+      orquestra.aoCriar(criar(repo, equipe))
+      await ate(() => repo.execucoesDaTarefa(1).some((e) => e.etapa === 0 && e.status === "falhou"))
+      expect(repo.execucoesDaTarefa(1).find((e) => e.etapa === 0)).toMatchObject({ status: "falhou", erro: SEM_DECISAO })
+      expect(repo.naFilaDa(1)).toMatchObject({ etapa: 0, gatilho: "nova_tentativa" })
+      liberar = true
+      repo.comentar(1, "ueslei", "olha o README também")
+      orquestra.aoComentar(1)
+      expect(repo.exigir(1).status).toBe("em_revisao")
+      expect(chamadas.filter((c) => c.persona === "alfred")).toHaveLength(1)
+      repo.db.query("UPDATE execucoes SET nao_antes = NULL").run()
+      orquestra.despachar()
+      await ate(() => repo.exigir(1).status === "concluida")
+      expect(chamadas.at(-1)!.bloco).toContain("Ueslei comentou: olha o README também")
+      expect(chamadas.at(-1)!.bloco).toContain("Desta vez, chame aprovar ou pedir_mudanca")
+      expect(avisos).toEqual(["nati aprovou #1; tarefa concluída"])
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("o quarto pedido de mudança na mesma etapa bloqueia", async () => {
+    const repo = new Repositorio(":memory:")
+    const equipe = equipeCom([revisao("revisora")])
+    const { orquestra, avisos } = montar(repo, () => equipe, { nati: (o) => void o.acoes.pedirMudanca!("ainda não") })
+    try {
+      orquestra.aoCriar(criar(repo, equipe))
+      await ate(() => repo.exigir(1).status === "bloqueada")
+      expect(repo.registros(1).filter((r) => r.tipo === "mudanca")).toHaveLength(4)
+      expect(repo.registros(1).filter((r) => r.tipo === "entrega")).toHaveLength(4)
+      expect(repo.exigir(1)).toMatchObject({ retorno: 0, voltas: 4 })
+      expect(avisos).toEqual(["nati e alfred não convergiram em #1"])
+      repo.comentar(1, "ueslei", "tenta de novo")
+      orquestra.aoComentar(1)
+      expect(repo.exigir(1)).toMatchObject({ status: "em_andamento", retorno: 0, voltas: 0 })
+      await ate(() => repo.exigir(1).status === "bloqueada" && !orquestra.rodando(1))
+      expect(repo.registros(1).filter((r) => r.tipo === "mudanca")).toHaveLength(8)
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("a executora que virou revisora no meio do caminho para a tarefa", async () => {
+    const repo = new Repositorio(":memory:")
+    let equipe = equipeCom([revisao("revisora")])
+    let natiSemOrcamento = true
+    const { orquestra, avisos, chamadas } = montar(repo, () => equipe, {}, { bloqueio: (p) => (p === "nati" && natiSemOrcamento ? "orcamento" : null) })
+    try {
+      orquestra.aoCriar(criar(repo, equipe))
+      await ate(() => repo.exigir(1).status === "em_revisao")
+      expect(repo.naFilaDa(1)).toMatchObject({ etapa: 0 })
+      equipe = { ...equipe, posicoes: equipe.posicoes.map((p) => (p.id === "revisora" ? { ...p, persona: "alfred" } : p.id === "executor" ? { ...p, persona: "poe" } : p)) }
+      natiSemOrcamento = false
+      orquestra.despachar()
+      expect(repo.exigir(1)).toMatchObject({ status: "bloqueada", retorno: 0 })
+      expect(chamadas.filter((c) => c.revisao)).toHaveLength(0)
+      expect(avisos).toEqual(["#1 parada: alfred revisaria o próprio trabalho"])
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("o board revisa sem a executora, e síntese sem decisão conta como falha", async () => {
+    const repo = new Repositorio(":memory:")
+    const conselho = [posicao("c-nati", "nati", { capacidades: ["board"] }), posicao("c-lucas", "lucas", { capacidades: ["board"] })]
+    const equipe = validarEquipe(
+      {
+        id: "casa",
+        nome: "Casa",
+        posicoes: [posicao("executor", "alfred", { politica: [{ tipo: "revisao", por: { board: true } }] }), posicao("velho", "poe", { capacidades: ["board"] }), ...conselho],
+      },
+      personas,
+    )
+    let vez = 0
+    const { orquestra, membros, avisos } = montar(repo, () => equipe, {}, {
+      board: () => ({ decisao: ++vez === 1 ? null : "aprovar" }),
+      bloqueio: (p) => (p === "poe" ? "orcamento" : null),
+    })
+    try {
+      orquestra.aoCriar(criar(repo, equipe))
+      await ate(() => repo.execucoesDaTarefa(1).some((e) => e.status === "falhou"))
+      expect(repo.execucoesDaTarefa(1).find((e) => e.etapa === 0)).toMatchObject({ persona: null, erro: SEM_DECISAO })
+      repo.db.query("UPDATE execucoes SET nao_antes = NULL").run()
+      orquestra.despachar()
+      await ate(() => repo.exigir(1).status === "concluida")
+      expect(membros[0]).toEqual(["nati", "lucas"])
+      expect(repo.registros(1).find((r) => r.tipo === "aprovado")).toMatchObject({ autor: "board", texto: "síntese\n\nAta: board/minutes/ata.md" })
+      expect(avisos).toEqual(["O board aprovou #1; tarefa concluída"])
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("não dá para tirar da equipe uma posição que revisa tarefa aberta", () => {
+    const antes = equipeCom([revisao("revisora")])
+    const depois = { ...antes, posicoes: antes.posicoes.filter((p) => p.id !== "revisora").map((p) => ({ ...p, politica: undefined })) }
+    expect(() =>
+      exigirMudancaDeEquipe(antes, depois, (p) => ({ abertas: 0, emAndamento: 0, citadas: p === "revisora" ? 1 : 0 })),
+    ).toThrow("posição revisora: revisa 1 tarefa(s) aberta(s) e não pode sair")
   })
 })
 

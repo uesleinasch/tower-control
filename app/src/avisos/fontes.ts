@@ -88,3 +88,15 @@ export function avisoDeOrcamento(
     acoes: [],
   }
 }
+
+export const avisoDeAprovacaoPendente = (tarefaId: number, entrega: string) =>
+  avisoDeTarefa(tarefaId, `#${tarefaId} espera sua aprovação`, entrega)
+
+export const avisoDeConclusaoPelaPolitica = (tarefaId: number, quem: string, parecer: string) =>
+  avisoDeTarefa(tarefaId, `${quem} aprovou #${tarefaId}; tarefa concluída`, parecer)
+
+export const avisoDeVoltas = (tarefaId: number, revisora: string, executora: string, pedido: string) =>
+  avisoDeTarefa(tarefaId, `${revisora} e ${executora} não convergiram em #${tarefaId}`, `Último pedido de mudança: ${pedido}`)
+
+export const avisoDeAutorrevisao = (tarefaId: number, nome: string) =>
+  avisoDeTarefa(tarefaId, `#${tarefaId} parada: ${nome} revisaria o próprio trabalho`, "Troque a persona da etapa ou a política e comente na tarefa para seguir.")

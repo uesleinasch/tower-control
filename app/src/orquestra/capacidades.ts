@@ -4,7 +4,13 @@ import { FERRAMENTAS_TICKTASK } from "../ticktask"
 
 export const NATIVAS_DE_ARQUIVO = ["Read", "Write", "Edit", "Grep", "Glob"]
 
-export const FERRAMENTAS_ORQUESTRA = ["mcp__orquestra__comentar", "mcp__orquestra__pedir_ajuda", "mcp__orquestra__delegar"]
+export const FERRAMENTAS_ORQUESTRA = [
+  "mcp__orquestra__comentar",
+  "mcp__orquestra__pedir_ajuda",
+  "mcp__orquestra__delegar",
+  "mcp__orquestra__aprovar",
+  "mcp__orquestra__pedir_mudanca",
+]
 
 export interface OpcoesDaPosicao {
   nativas: string[]
@@ -51,5 +57,24 @@ export function opcoesDePlano(posicao: Posicao): OpcoesDaPosicao {
     ),
     comandos: false,
     permissionMode: "default",
+  }
+}
+
+export function opcoesDeRevisao(posicao: Posicao): OpcoesDaPosicao {
+  const memoria = posicao.capacidades.includes("memoria")
+  return {
+    nativas: NATIVAS_DE_LEITURA,
+    autoAprovadas: [
+      ...NATIVAS_DE_LEITURA,
+      "mcp__orquestra__comentar",
+      "mcp__orquestra__aprovar",
+      "mcp__orquestra__pedir_mudanca",
+      ...(memoria ? FERRAMENTAS_MEMORIA : []),
+    ],
+    comandos: false,
+    memoria,
+    ticktask: false,
+    permissionMode: "default",
+    liberaComandoComum: false,
   }
 }
