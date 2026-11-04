@@ -81,7 +81,20 @@ class TelaEquipes extends StatelessWidget {
         : personasVisiveis
             ? _PainelDePersonas(estado: estado, personasVisiveis: personasVisiveis)
             : null;
-    if (painel == null) return canvas;
+    if (painel == null) {
+      return Stack(children: [
+        Positioned.fill(child: canvas),
+        Positioned(
+          top: 12,
+          right: 12,
+          child: FilledButton.tonalIcon(
+            onPressed: () => estado.alternarPersonas(false),
+            icon: const Icon(Icons.people_alt_outlined),
+            label: const Text('Personas'),
+          ),
+        ),
+      ]);
+    }
     if (largo) {
       return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(child: canvas),
@@ -174,9 +187,15 @@ class _Topo extends StatelessWidget {
           ),
           if (editar && estado.alterada && !compacto)
             const Padding(padding: EdgeInsets.only(left: 8), child: Chip(label: Text('não salvo'), visualDensity: VisualDensity.compact)),
-          const Spacer(),
+          if (!editar) const Spacer(),
           if (editar)
-            Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Expanded(
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
               acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
               acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
               acao(Icons.people_alt_outlined, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
@@ -185,7 +204,9 @@ class _Topo extends StatelessWidget {
               if (estado.alterada) acao(Icons.undo, 'Descartar', estado.descartar),
               if (equipe != null && equipe.id != 'casa')
                 IconButton(tooltip: 'Excluir equipe', onPressed: () => _excluirEquipe(context, equipe), icon: const Icon(Icons.delete_outline)),
-            ]),
+                ],
+              ),
+            ),
         ]),
       );
     });
