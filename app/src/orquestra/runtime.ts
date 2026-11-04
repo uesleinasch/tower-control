@@ -12,14 +12,16 @@ import {
   type Evento,
   type Execucao,
   type Gatilho,
+  type ModoDaExecucao,
   type TipoDeEvento,
 } from "./execucao"
+import { TUDO, planoAprovado, planoPendente, precisaDePlano, recusaDeDelegacao, type MotivoDeBloqueio } from "./governanca"
 import type { StatusTarefa, Tarefa } from "./tarefa"
 import { subordinadas, type Equipe, type Posicao } from "./equipe"
 import type { Delegacao } from "./ferramentas"
 import type { Memoria } from "../memoria/tipos"
 import type { NovoAviso } from "../avisos/central"
-import { avisoDeBloqueio, avisoDeDelegacao, avisoDeEntrega, avisoDePedidoDeAjuda } from "../avisos/fontes"
+import { avisoDeBloqueio, avisoDeDelegacao, avisoDeEntrega, avisoDePedidoDeAjuda, avisoDePlano } from "../avisos/fontes"
 import type { trabalhar } from "../sessions"
 import type { RegistroDeUso } from "../uso"
 
@@ -38,6 +40,8 @@ export interface Ambiente {
   avisar: (aviso: NovoAviso) => void
   pedirComando: (tarefaId: number, persona: string, comando: string, aprovar: boolean) => Promise<boolean>
   cancelarPedidos: (tarefaId: number) => void
+  bloqueio?: (persona: string) => MotivoDeBloqueio | null
+  aposExecucao?: (persona: string) => void
 }
 
 interface Viva {
@@ -45,6 +49,7 @@ interface Viva {
   persona: string
   controle: AbortController
   parada: boolean
+  devolver: boolean
 }
 
 const INTERVALO_DE_SEGURANCA_MS = 30_000
@@ -147,7 +152,13 @@ export class Orquestra {
       }
     })
     const rodando = [...this.vivas.values()].map((v) => ({ tarefa: v.tarefa, persona: v.persona }))
-    for (const decisao of escolher(candidatas, rodando, this.amb.teto, new Date())) {
+    const pausas = this.repo.pausas()
+    const bloqueadas = new Set(
+      candidatas.flatMap((c) =>
+        c.persona !== null && (pausas.has(TUDO) || pausas.has(c.persona) || this.amb.bloqueio?.(c.persona)) ? [c.persona] : [],
+      ),
+    )
+    for (const decisao of escolher(candidatas, rodando, this.amb.teto, new Date(), bloqueadas)) {
       if (decisao.acao === "descartar") {
         this.amb.publicarExecucao(this.repo.descartar(decisao.execucao, decisao.motivo))
         continue
@@ -159,13 +170,20 @@ export class Orquestra {
         this.amb.publicarExecucao(this.repo.descartar(decisao.execucao, (erro as Error).message))
         continue
       }
-      const viva: Viva = { tarefa: execucao.tarefa, persona: decisao.persona, controle: new AbortController(), parada: false }
+      const viva: Viva = {
+        tarefa: execucao.tarefa,
+        persona: decisao.persona,
+        controle: new AbortController(),
+        parada: false,
+        devolver: false,
+      }
       this.vivas.set(execucao.id, viva)
       this.amb.publicarExecucao(execucao)
       this.amb.publicarTarefa(execucao.tarefa)
       void this.rodar(execucao, viva).finally(() => {
         this.vivas.delete(execucao.id)
         this.amb.publicarTarefa(execucao.tarefa)
+        this.amb.aposExecucao?.(viva.persona)
         this.despachar()
       })
     }
@@ -182,7 +200,11 @@ export class Orquestra {
     const sessao = this.repo.sessaoDoPar(tarefa.id, persona, execucao.id)
     const anterior = this.repo.anteriorDoPar(tarefa.id, persona, execucao.id)
     const equipe = this.amb.equipe(tarefa.equipe)!
-    const abaixo = subordinadas(equipe, posicao.id)
+    const registros = this.repo.registros(tarefa.id)
+    const deTrabalho = !precisaDePlano(posicao, registros)
+    const aprovado = planoAprovado(registros)
+    const modo: ModoDaExecucao = !deTrabalho ? { tipo: "plano" } : aprovado ? { tipo: "plano_aprovado", plano: aprovado } : { tipo: "normal" }
+    const abaixo = deTrabalho ? subordinadas(equipe, posicao.id) : []
     let pedidoDeAjuda: string | undefined
     let uso: RegistroDeUso | undefined
     try {
@@ -190,13 +212,15 @@ export class Orquestra {
         raiz: this.amb.raiz,
         persona,
         posicao,
+        plano: !deTrabalho,
         bloco: blocoDaTarefa(
           tarefa,
           this.repo.cadeiaDePais(tarefa.id),
-          this.repo.registros(tarefa.id),
+          registros,
           persona,
           anterior?.inicio ?? null,
           abaixo.map((p) => ({ id: p.id, titulo: p.titulo, persona: p.persona ? this.amb.nome(p.persona) : null })),
+          modo,
         ),
         consulta: [tarefa.titulo, tarefa.descricao].filter(Boolean).join("\n"),
         modelo: execucao.modelo ?? this.amb.modelo(persona),
@@ -217,7 +241,7 @@ export class Orquestra {
             this.amb.publicarTarefa(tarefa.id)
             return "Pedido registrado. A tarefa fica bloqueada até o Ueslei responder: pare agora."
           },
-          delegar: abaixo.length ? (pedido) => this.delegar(tarefa, execucao, persona, abaixo, pedido) : undefined,
+          delegar: abaixo.length ? (pedido) => this.delegar(tarefa, execucao, persona, posicao, abaixo, pedido) : undefined,
         },
         onEvento: (tipo, conteudo) => this.evento(execucao, tipo, conteudo),
         onComando: (comando, aprovar) => this.amb.pedirComando(tarefa.id, persona, comando, aprovar),
@@ -226,22 +250,28 @@ export class Orquestra {
       })
       const custo = this.custo(uso, sessao?.custoAcumuladoUSD ?? null)
       if (viva.parada) {
-        this.terminar(execucao, { status: "interrompida", falha: false, erro: "parada pelo Ueslei", ...custo })
+        this.interrompida(execucao, viva, custo)
         return
       }
       const entrega = resposta.texto || "(a execução terminou sem texto)"
       this.terminar(execucao, { status: "concluida", falha: false, resultado: entrega, ...custo })
-      this.repo.comentar(tarefa.id, persona, entrega, new Date(), "entrega")
+      this.repo.comentar(tarefa.id, persona, entrega, new Date(), deTrabalho ? "entrega" : "plano")
       const comentouNoMeio = this.repo.naFilaDa(tarefa.id) !== undefined
       const destino: StatusTarefa = comentouNoMeio ? "a_fazer" : pedidoDeAjuda ? "bloqueada" : "em_revisao"
       if (!this.repo.devolver(execucao.id, destino, donoDaExecucao(execucao.id))) return
       if (comentouNoMeio) return
       const nome = this.amb.nome(persona)
-      this.amb.avisar(pedidoDeAjuda ? avisoDePedidoDeAjuda(tarefa.id, nome, pedidoDeAjuda) : avisoDeEntrega(tarefa.id, nome, entrega))
+      this.amb.avisar(
+        pedidoDeAjuda
+          ? avisoDePedidoDeAjuda(tarefa.id, nome, pedidoDeAjuda)
+          : deTrabalho
+            ? avisoDeEntrega(tarefa.id, nome, entrega)
+            : avisoDePlano(tarefa.id, nome, entrega),
+      )
     } catch (erro) {
       const custo = this.custo(uso, sessao?.custoAcumuladoUSD ?? null)
       if (viva.parada) {
-        this.terminar(execucao, { status: "interrompida", falha: false, erro: "parada pelo Ueslei", ...custo })
+        this.interrompida(execucao, viva, custo)
         return
       }
       const mensagem = (erro as Error).message
@@ -252,11 +282,27 @@ export class Orquestra {
     }
   }
 
-  private delegar(tarefa: Tarefa, execucao: Execucao, persona: string, abaixo: Posicao[], pedido: Delegacao): string {
+  private interrompida(execucao: Execucao, viva: Viva, custo: ReturnType<Orquestra["custo"]>): void {
+    this.terminar(execucao, { status: "interrompida", falha: false, erro: viva.devolver ? "pausada" : "parada pelo Ueslei", ...custo })
+    if (!viva.devolver) return
+    if (this.repo.devolver(execucao.id, "a_fazer", "orquestra")) this.acordar(execucao.tarefa, "retomada")
+  }
+
+  private delegar(
+    tarefa: Tarefa,
+    execucao: Execucao,
+    persona: string,
+    posicao: Posicao,
+    abaixo: Posicao[],
+    pedido: Delegacao,
+  ): string {
     const alvo = abaixo.find((p) => p.id === pedido.posicao)
     if (!alvo) return `A posição ${pedido.posicao} não responde a você. Pode delegar a: ${abaixo.map((p) => p.id).join(", ")}.`
     const titulo = pedido.titulo.trim().slice(0, 200)
     if (!titulo) return "A subtarefa precisa de um título."
+    const recusa = recusaDeDelegacao(this.repo.cadeiaDePais(tarefa.id).length + 1, this.repo.filhasAbertas(tarefa.id))
+    if (recusa) return recusa
+    const direto = posicao.delegaDireto === true
     const sub = this.repo.criar(
       {
         equipe: tarefa.equipe,
@@ -266,15 +312,48 @@ export class Orquestra {
         porque: (pedido.porque ?? "").trim().slice(0, 4_000),
         pai: tarefa.id,
         dependeDe: [],
-        status: "backlog",
+        status: direto ? "a_fazer" : "backlog",
       },
       donoDaExecucao(execucao.id),
     )
     this.repo.comentar(tarefa.id, persona, `delegou #${sub.id} a ${alvo.id}: ${titulo}`, new Date(), "status")
     this.amb.publicarTarefa(sub.id)
     this.amb.publicarTarefa(tarefa.id)
+    if (direto) {
+      this.repo.auditar(donoDaExecucao(execucao.id), "delegou direto", `tarefa:${sub.id}`, `${persona} → ${alvo.id}: ${titulo}`)
+      this.acordar(sub.id, "atribuicao")
+      return `Subtarefa #${sub.id} criada para ${alvo.id}. Ela já entrou na fila e roda sozinha.`
+    }
     this.amb.avisar(avisoDeDelegacao(sub.id, this.amb.nome(persona), titulo))
     return `Subtarefa #${sub.id} criada para ${alvo.id}, no backlog. Ela só roda quando o Ueslei liberar.`
+  }
+
+  pausar(alvo: string, quem = "ueslei"): void {
+    this.repo.pausar(alvo, quem)
+    this.repo.auditar(quem, "pausou", alvo === TUDO ? "tudo" : `persona:${alvo}`)
+    for (const viva of this.vivas.values()) {
+      if (alvo !== TUDO && viva.persona !== alvo) continue
+      viva.parada = true
+      viva.devolver = true
+      viva.controle.abort()
+      this.amb.cancelarPedidos(viva.tarefa)
+    }
+  }
+
+  retomar(alvo: string, quem = "ueslei"): void {
+    if (this.repo.retomar(alvo)) this.repo.auditar(quem, "retomou", alvo === TUDO ? "tudo" : `persona:${alvo}`)
+    this.despachar()
+  }
+
+  aprovarPlano(id: number, quem = "ueslei"): void {
+    const tarefa = this.repo.exigir(id)
+    if (tarefa.status !== "em_revisao" || !planoPendente(this.repo.registros(id))) {
+      throw new Error(`a tarefa ${id} não tem plano esperando aprovação`)
+    }
+    this.repo.comentar(id, quem, "aprovou o plano", new Date(), "plano-aprovado")
+    this.repo.mudarStatus(id, "a_fazer", quem)
+    this.repo.auditar(quem, "aprovou o plano", `tarefa:${id}`)
+    this.acordar(id, "plano_aprovado")
   }
 
   interromperPersona(persona: string): void {

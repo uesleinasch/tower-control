@@ -38,3 +38,18 @@ export function opcoesDaPosicao(posicao: Posicao): OpcoesDaPosicao {
     liberaComandoComum: posicao.aprovacao !== "sempre",
   }
 }
+
+export const NATIVAS_DE_LEITURA = ["Read", "Grep", "Glob"]
+
+export function opcoesDePlano(posicao: Posicao): OpcoesDaPosicao {
+  const base = opcoesDaPosicao(posicao)
+  return {
+    ...base,
+    nativas: NATIVAS_DE_LEITURA,
+    autoAprovadas: base.autoAprovadas.filter(
+      (f) => (!NATIVAS_DE_ARQUIVO.includes(f) || NATIVAS_DE_LEITURA.includes(f)) && f !== "mcp__orquestra__delegar",
+    ),
+    comandos: false,
+    permissionMode: "default",
+  }
+}

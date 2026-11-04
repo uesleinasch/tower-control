@@ -42,7 +42,8 @@ import { montarSystemPrompt as promptDaPosicao } from "./prompt"
 import { lerNovaTarefa, podeMudar } from "./orquestra/tarefa"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
 import { blocoDaTarefa, custoDaExecucao, escolher, falhasSeguidas, podeMudarExecucao } from "./orquestra/execucao"
-import { opcoesDaPosicao } from "./orquestra/capacidades"
+import { opcoesDaPosicao, opcoesDePlano } from "./orquestra/capacidades"
+import { Contas, gastosDoMes, motivoDeBloqueio, nivelDoOrcamento, planoAprovado, precisaDePlano, recusaDeDelegacao } from "./orquestra/governanca"
 import { Orquestra } from "./orquestra/runtime"
 import type { trabalhar } from "./sessions"
 import { Database } from "bun:sqlite"
@@ -540,7 +541,7 @@ describe("runtime de execução", () => {
       const caminho = caminhoDoBanco(raiz)
       new Repositorio(caminho).fechar()
       const db = new Database(caminho)
-      db.exec("DROP TABLE eventos; DROP TABLE execucoes; PRAGMA user_version = 1")
+      db.exec("DROP TABLE eventos; DROP TABLE execucoes; DROP TABLE pausas; DROP TABLE auditoria; DROP TABLE avisos_de_orcamento; PRAGMA user_version = 1")
       db.close()
       const repo = new Repositorio(caminho)
       repo.criar(nova(), "ueslei")
@@ -797,6 +798,190 @@ describe("organograma de personas", () => {
       }
     },
   )
+})
+
+describe("governança", () => {
+  const uso = (ts: string, perfil: string, tipo: RegistroDeUso["tipo"], sessionId: string, acumulado: number, retomada = false): RegistroDeUso => ({
+    ts, tipo, perfil, sessionId, custoAcumuladoUSD: acumulado, retomada,
+    chamadas: 1, entrada: 0, escritaCache: 0, leituraCache: 0, saida: 0, duracaoMs: 1,
+  })
+
+  test("o gasto do mês soma só o mês e separa tarefas do total, pela diferença do acumulado da sessão", () => {
+    const registros = [
+      uso("2026-10-30T12:00:00Z", "alfred", "tarefa", "s1", 1),
+      uso("2026-11-02T12:00:00Z", "alfred", "tarefa", "s1", 1.5, true),
+      uso("2026-11-03T12:00:00Z", "alfred", "chat", "s2", 0.2),
+      uso("2026-11-03T13:00:00Z", "nati", "tarefa", "s3", 0.7),
+    ]
+    const gastos = gastosDoMes(registros, "2026-11")
+    expect(gastos.get("alfred")!.tarefas).toBeCloseTo(0.5)
+    expect(gastos.get("alfred")!.total).toBeCloseTo(0.7)
+    expect(gastos.get("nati")!.tarefas).toBeCloseTo(0.7)
+    const contas = new Contas()
+    contas.carregar(registros)
+    contas.registrar(uso("2026-11-04T12:00:00Z", "alfred", "tarefa", "s4", 2))
+    expect(contas.gasto("alfred", new Date("2026-11-04T15:00:00Z")).tarefas).toBeCloseTo(2.5)
+    expect(contas.gasto("zeca").tarefas).toBe(0)
+  })
+
+  test("orçamento alerta em 80%, para em 100%, e pausa ganha do orçamento", () => {
+    expect(nivelDoOrcamento(3, undefined)).toBeNull()
+    expect(nivelDoOrcamento(3.9, 5)).toBeNull()
+    expect(nivelDoOrcamento(4, 5)).toBe("alerta")
+    expect(nivelDoOrcamento(5, 5)).toBe("estourado")
+    expect(nivelDoOrcamento(0, 0)).toBe("estourado")
+    expect(motivoDeBloqueio("alfred", new Set(["*"]), 0, undefined)).toBe("tudo")
+    expect(motivoDeBloqueio("alfred", new Set(["alfred"]), 9, 5)).toBe("ueslei")
+    expect(motivoDeBloqueio("alfred", new Set(), 9, 5)).toBe("orcamento")
+    expect(motivoDeBloqueio("alfred", new Set(["nati"]), 1, 5)).toBeNull()
+  })
+
+  test("plano: pede enquanto não houver aprovação depois do último plano, e a execução de plano só lê", () => {
+    const r = (tipo: string, texto = "x") => ({ id: 0, tarefa: 1, tipo, autor: "alfred", texto, em: "" }) as never
+    expect(precisaDePlano({ aprovarPlano: false }, [])).toBe(false)
+    expect(precisaDePlano({ aprovarPlano: true }, [])).toBe(true)
+    expect(precisaDePlano({ aprovarPlano: true }, [r("plano")])).toBe(true)
+    expect(precisaDePlano({ aprovarPlano: true }, [r("plano"), r("plano-aprovado")])).toBe(false)
+    expect(precisaDePlano({ aprovarPlano: true }, [r("plano"), r("plano-aprovado"), r("plano")])).toBe(true)
+    expect(planoAprovado([r("plano", "passo 1"), r("comentario"), r("plano-aprovado")])).toBe("passo 1")
+    expect(planoAprovado([r("plano", "passo 1")])).toBeNull()
+    const todas = ["arquivos", "comandos", "ticktask", "memoria", "board"] as const
+    for (let mascara = 0; mascara < 1 << todas.length; mascara++) {
+      const capacidades = todas.filter((_, i) => mascara & (1 << i))
+      const o = opcoesDePlano({ id: "p", titulo: "p", persona: null, respondeA: null, capacidades: [...capacidades], aprovacao: "auto" })
+      for (const proibida of ["Write", "Edit", "Bash", "mcp__orquestra__delegar"]) {
+        expect(o.nativas).not.toContain(proibida)
+        expect(o.autoAprovadas).not.toContain(proibida)
+      }
+      expect(o.comandos).toBe(false)
+    }
+  })
+
+  test("delegação recusa fundo demais e largura demais", () => {
+    expect(recusaDeDelegacao(3, 4)).toBeNull()
+    expect(recusaDeDelegacao(4, 0)).toContain("3 níveis")
+    expect(recusaDeDelegacao(1, 5)).toContain("5 subtarefas abertas")
+  })
+
+  const casa = casaInicial(["alfred", "nati"])
+  const comPlano = { ...casa, posicoes: casa.posicoes.map((p) => (p.persona === "alfred" ? { ...p, aprovarPlano: true } : p)) }
+  const nova = () => lerNovaTarefa({ equipe: "casa", posicao: "executor", titulo: "Limpar o disco" }, (id) => (id === "casa" ? casa : undefined))
+  const ate = async (condicao: () => boolean) => {
+    for (let i = 0; i < 100 && !condicao(); i++) await Bun.sleep(5)
+  }
+
+  function montar(repo: Repositorio, equipe: typeof casa, trabalho: (o: Parameters<typeof trabalhar>[0]) => Promise<{ texto: string }>, bloqueio?: (p: string) => "tudo" | "ueslei" | "orcamento" | null) {
+    const avisos: string[] = []
+    const chamadas: Parameters<typeof trabalhar>[0][] = []
+    const orquestra = new Orquestra({
+      raiz: "/tmp/nao-usado",
+      repo,
+      teto: 2,
+      equipe: (id) => (id === "casa" ? equipe : undefined),
+      nome: (p) => p,
+      modelo: () => "haiku",
+      trabalhar: async (o) => {
+        chamadas.push(o)
+        return trabalho(o)
+      },
+      publicarTarefa: () => {},
+      publicarExecucao: () => {},
+      publicarEvento: () => {},
+      avisar: (a) => avisos.push(a.titulo),
+      pedirComando: async () => false,
+      cancelarPedidos: () => {},
+      bloqueio,
+    })
+    return { orquestra, avisos, chamadas }
+  }
+
+  test("posição com plano propõe, espera a aprovação e depois executa o plano aprovado", async () => {
+    const repo = new Repositorio(":memory:")
+    const { orquestra, avisos, chamadas } = montar(repo, comPlano, async (o) => ({ texto: o.plano ? "1. apagar /tmp" : "feito" }))
+    try {
+      orquestra.aoCriar(repo.criar(nova(), "ueslei"))
+      await ate(() => repo.exigir(1).status === "em_revisao")
+      expect(chamadas[0]!.plano).toBe(true)
+      expect(chamadas[0]!.bloco).toContain("Esta execução é de PLANO")
+      expect(repo.registros(1).at(-2)).toMatchObject({ tipo: "plano", texto: "1. apagar /tmp" })
+      expect(avisos).toEqual(["alfred propôs um plano para #1"])
+      expect(() => orquestra.aprovarPlano(9)).toThrow()
+      orquestra.aprovarPlano(1)
+      await ate(() => chamadas.length === 2 && repo.exigir(1).status === "em_revisao")
+      expect(chamadas[1]!.plano).toBe(false)
+      expect(chamadas[1]!.bloco).toContain("Execute este plano:\n\n1. apagar /tmp")
+      expect(repo.registros(1).some((r) => r.tipo === "entrega" && r.texto === "feito")).toBe(true)
+      expect(repo.auditoria().map((a) => a.acao)).toEqual(["aprovou o plano"])
+      expect(() => orquestra.aprovarPlano(1)).toThrow("não tem plano esperando")
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("persona bloqueada espera na fila sem descartar, e pausar devolve a tarefa à fila", async () => {
+    const repo = new Repositorio(":memory:")
+    let bloqueada = true
+    const { orquestra, chamadas } = montar(
+      repo,
+      casa,
+      (o) => new Promise((resolver, rejeitar) => o.controle.signal.addEventListener("abort", () => rejeitar(new Error("abortado")))),
+      () => (bloqueada ? "orcamento" : null),
+    )
+    try {
+      orquestra.aoCriar(repo.criar(nova(), "ueslei"))
+      await Bun.sleep(30)
+      expect(chamadas).toHaveLength(0)
+      expect(repo.comStatus("na_fila")).toHaveLength(1)
+      bloqueada = false
+      orquestra.despachar()
+      await ate(() => orquestra.rodando(1))
+      orquestra.pausar("alfred")
+      await ate(() => !orquestra.rodando(1) && repo.comStatus("na_fila").length === 1)
+      expect(repo.execucoesDaTarefa(1)[0]).toMatchObject({ status: "interrompida", falha: false, erro: "pausada" })
+      expect(repo.exigir(1).status).toBe("a_fazer")
+      expect(repo.pausas().get("alfred")).toBe("ueslei")
+      orquestra.retomar("alfred")
+      expect(repo.pausas().size).toBe(0)
+      expect(repo.auditoria().map((a) => a.acao)).toEqual(["retomou", "pausou"])
+      await ate(() => orquestra.rodando(1))
+      orquestra.pausar("*")
+      await ate(() => !orquestra.rodando(1))
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("delegação direta cria a subtarefa já na fila", async () => {
+    const repo = new Repositorio(":memory:")
+    const equipe = validarEquipe(
+      {
+        id: "casa",
+        nome: "Casa",
+        posicoes: [
+          { id: "chefe", titulo: "chefe", persona: "nati", capacidades: ["arquivos"], delegaDireto: true },
+          { id: "executor", titulo: "executor", persona: "alfred", respondeA: "chefe", capacidades: ["arquivos"] },
+        ],
+      },
+      new Set(["nati", "alfred"]),
+    )
+    let resposta = ""
+    const { orquestra } = montar(repo, equipe, async (o) => {
+      if (o.persona === "nati") resposta = o.acoes.delegar!({ posicao: "executor", titulo: "rodar" })
+      return { texto: "ok" }
+    })
+    try {
+      orquestra.aoCriar(repo.criar({ equipe: "casa", posicao: "chefe", titulo: "Lançar", descricao: "", porque: "", pai: null, dependeDe: [], status: "a_fazer" }, "ueslei"))
+      await ate(() => repo.ler(2)?.status === "em_revisao")
+      expect(resposta).toContain("roda sozinha")
+      expect(repo.exigir(2)).toMatchObject({ status: "em_revisao", pai: 1 })
+      expect(repo.auditoria().some((a) => a.acao === "delegou direto")).toBe(true)
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
 })
 
 describe("conselheiro e executor", () => {

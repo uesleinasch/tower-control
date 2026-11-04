@@ -31,7 +31,7 @@ export interface Tarefa {
 export interface Registro {
   id: number
   tarefa: number
-  tipo: "comentario" | "status" | "entrega" | "ajuda"
+  tipo: "comentario" | "status" | "entrega" | "ajuda" | "plano" | "plano-aprovado"
   autor: string
   texto: string
   em: string

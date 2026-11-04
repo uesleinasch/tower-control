@@ -12,7 +12,7 @@ import {
   type TipoDeEvento,
 } from "./execucao"
 
-const VERSAO = 2
+const VERSAO = 3
 
 const ESQUEMA = `
 CREATE TABLE tarefas (
@@ -79,6 +79,37 @@ CREATE TABLE eventos (
 );
 CREATE INDEX eventos_por_execucao ON eventos(execucao, id);
 `
+
+const ESQUEMA_3 = `
+CREATE TABLE pausas (
+  alvo TEXT PRIMARY KEY,
+  motivo TEXT NOT NULL,
+  em TEXT NOT NULL
+);
+CREATE TABLE auditoria (
+  id INTEGER PRIMARY KEY,
+  em TEXT NOT NULL,
+  quem TEXT NOT NULL,
+  acao TEXT NOT NULL,
+  alvo TEXT NOT NULL,
+  detalhe TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE avisos_de_orcamento (
+  persona TEXT NOT NULL,
+  mes TEXT NOT NULL,
+  nivel TEXT NOT NULL,
+  PRIMARY KEY (persona, mes, nivel)
+);
+`
+
+export interface LinhaDeAuditoria {
+  id: number
+  em: string
+  quem: string
+  acao: string
+  alvo: string
+  detalhe: string
+}
 
 interface LinhaExecucao {
   id: number
@@ -170,6 +201,7 @@ export class Repositorio {
       this.db.transaction(() => {
         if (user_version < 1) this.db.exec(ESQUEMA)
         if (user_version < 2) this.db.exec(ESQUEMA_2)
+        if (user_version < 3) this.db.exec(ESQUEMA_3)
         this.db.exec(`PRAGMA user_version = ${VERSAO}`)
       })()
     }
@@ -451,5 +483,42 @@ export class Repositorio {
 
   eventos(execucao: number): Evento[] {
     return this.db.query("SELECT * FROM eventos WHERE execucao = ? ORDER BY id").all(execucao) as Evento[]
+  }
+
+  filhasAbertas(id: number): number {
+    const { n } = this.db
+      .query("SELECT COUNT(*) AS n FROM tarefas WHERE pai = ? AND status NOT IN ('concluida', 'cancelada')")
+      .get(id) as { n: number }
+    return n
+  }
+
+  pausas(): Map<string, string> {
+    const linhas = this.db.query("SELECT alvo, motivo FROM pausas").all() as { alvo: string; motivo: string }[]
+    return new Map(linhas.map((l) => [l.alvo, l.motivo]))
+  }
+
+  pausar(alvo: string, motivo: string, agora = new Date()): void {
+    this.db.query("INSERT OR REPLACE INTO pausas (alvo, motivo, em) VALUES (?, ?, ?)").run(alvo, motivo, agora.toISOString())
+  }
+
+  retomar(alvo: string): boolean {
+    return this.db.query("DELETE FROM pausas WHERE alvo = ?").run(alvo).changes > 0
+  }
+
+  auditar(quem: string, acao: string, alvo: string, detalhe = "", agora = new Date()): void {
+    this.db
+      .query("INSERT INTO auditoria (em, quem, acao, alvo, detalhe) VALUES (?, ?, ?, ?, ?)")
+      .run(agora.toISOString(), quem, acao, alvo, detalhe.slice(0, 2_000))
+  }
+
+  auditoria(limite = 200): LinhaDeAuditoria[] {
+    return this.db.query("SELECT * FROM auditoria ORDER BY id DESC LIMIT ?").all(limite) as LinhaDeAuditoria[]
+  }
+
+  marcarAvisoDeOrcamento(persona: string, mes: string, nivel: string): boolean {
+    return (
+      this.db.query("INSERT OR IGNORE INTO avisos_de_orcamento (persona, mes, nivel) VALUES (?, ?, ?)").run(persona, mes, nivel)
+        .changes > 0
+    )
   }
 }

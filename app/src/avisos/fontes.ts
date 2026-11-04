@@ -63,3 +63,17 @@ export const avisoDeBloqueio = (tarefaId: number, erro: string) =>
 
 export const avisoDeDelegacao = (tarefaId: number, nome: string, titulo: string) =>
   avisoDeTarefa(tarefaId, `${nome} delegou #${tarefaId}`, `${titulo}. Está no backlog: libere quando quiser que rode.`)
+
+export const avisoDePlano = (tarefaId: number, nome: string, plano: string) =>
+  avisoDeTarefa(tarefaId, `${nome} propôs um plano para #${tarefaId}`, plano)
+
+export function avisoDeOrcamento(nome: string, nivel: "alerta" | "estourado", gasto: number, limite: number): NovoAviso {
+  const valores = `US$ ${gasto.toFixed(2)} de US$ ${limite.toFixed(2)} no mês`
+  return {
+    tipo: "tarefa",
+    titulo: nivel === "alerta" ? `${nome} passou de 80% do orçamento` : `${nome} parou: orçamento do mês estourado`,
+    corpo: nivel === "alerta" ? valores : `${valores}. As tarefas dele esperam na fila até você subir o limite ou o mês virar.`,
+    alvo: {},
+    acoes: [],
+  }
+}

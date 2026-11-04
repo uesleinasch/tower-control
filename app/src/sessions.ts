@@ -14,7 +14,7 @@ import { FERRAMENTA_LEMBRETE, servidorDeLembretes } from "./avisos/ferramenta"
 import type { PedidoDeLembrete } from "./avisos/lembretes"
 import type { Posicao } from "./orquestra/equipe"
 import type { TipoDeEvento } from "./orquestra/execucao"
-import { opcoesDaPosicao } from "./orquestra/capacidades"
+import { opcoesDaPosicao, opcoesDePlano } from "./orquestra/capacidades"
 import { servidorDaOrquestra, type AcoesDaTarefa } from "./orquestra/ferramentas"
 
 // allowedTools é lista de AUTO-APROVADAS, não de disponíveis. Pôr "Bash" aqui faria o
@@ -190,6 +190,7 @@ interface OpcoesTrabalho {
   raiz: string
   persona: Perfil
   posicao: Posicao
+  plano?: boolean
   bloco: string
   consulta: string
   modelo: string
@@ -213,7 +214,7 @@ function resumirEntrada(entrada: unknown): string {
 }
 
 export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string; sessionId?: string }> {
-  const posicao = opcoesDaPosicao(opcoes.posicao)
+  const posicao = opcoes.plano ? opcoesDePlano(opcoes.posicao) : opcoesDaPosicao(opcoes.posicao)
   const comMemoria = posicao.memoria ? opcoes.memoria : undefined
   const brief = comMemoria ? await montarBrief(comMemoria, opcoes.persona, opcoes.consulta) : ""
   const prompt = [opcoes.bloco, brief ? `<memória>\n${brief}\n</memória>` : ""].filter(Boolean).join("\n\n")
@@ -251,7 +252,7 @@ export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string
         resume: opcoes.sessionId,
         settingSources: [],
         model: opcoes.modelo,
-        systemPrompt: await montarSystemPrompt(opcoes.raiz, opcoes.persona, undefined, posicao.comandos),
+        systemPrompt: await montarSystemPrompt(opcoes.raiz, opcoes.persona, undefined, opcoes.posicao.capacidades.includes("comandos")),
         tools: posicao.nativas,
         allowedTools: posicao.autoAprovadas,
         mcpServers: mcp,

@@ -2,7 +2,7 @@ import type { PersonaId } from "./equipe"
 import { NOMES_DE_STATUS, type Registro, type Tarefa } from "./tarefa"
 
 export type StatusExecucao = "na_fila" | "rodando" | "concluida" | "falhou" | "interrompida"
-export type Gatilho = "atribuicao" | "comentario" | "dependencia" | "retomada" | "nova_tentativa"
+export type Gatilho = "atribuicao" | "comentario" | "dependencia" | "retomada" | "nova_tentativa" | "plano_aprovado"
 export type TipoDeEvento = "texto" | "ferramenta" | "comando" | "aprovacao" | "erro"
 
 export interface Execucao {
@@ -43,6 +43,7 @@ export const NOMES_DE_GATILHO: Record<Gatilho, string> = {
   dependencia: "dependência concluída",
   retomada: "retomada após queda",
   nova_tentativa: "nova tentativa",
+  plano_aprovado: "plano aprovado",
 }
 
 const TRANSICOES: Record<StatusExecucao, readonly StatusExecucao[]> = {
@@ -91,6 +92,7 @@ export function escolher(
   rodando: Pick<Execucao, "tarefa" | "persona">[],
   teto: number,
   agora: Date,
+  bloqueadas: ReadonlySet<string> = new Set(),
 ): Decisao[] {
   const ocupadas = new Set(rodando.map((r) => r.persona))
   const tarefasVivas = new Set(rodando.map((r) => r.tarefa))
@@ -108,7 +110,7 @@ export function escolher(
       decisoes.push({ acao: "descartar", execucao: execucao.id, motivo: "nada a fazer: depende de tarefa não concluída" })
       continue
     }
-    if (c.persona === null || ocupadas.has(c.persona) || vagas <= 0) continue
+    if (c.persona === null || bloqueadas.has(c.persona) || ocupadas.has(c.persona) || vagas <= 0) continue
     decisoes.push({ acao: "comecar", execucao: execucao.id, persona: c.persona })
     ocupadas.add(c.persona)
     tarefasVivas.add(tarefa.id)
@@ -136,6 +138,13 @@ const REGRAS_DO_MODO_TAREFA = `Você está trabalhando numa tarefa do orquestrad
 - Use a ferramenta comentar só para registrar progresso que vale ler mesmo se a execução cair.
 - Comando negado é definitivo: relate na entrega e pare.`
 
+const REGRAS_DO_PLANO = `Esta execução é de PLANO: não execute nada, não altere arquivos e não rode comandos.
+Leia o que precisar e escreva o plano como sua última resposta: o que vai fazer, em que
+ordem, que comandos pretende rodar e o que pode dar errado. O Ueslei aprova o plano antes
+de você executar.`
+
+export type ModoDaExecucao = { tipo: "normal" } | { tipo: "plano" } | { tipo: "plano_aprovado"; plano: string }
+
 function rotuloDoRegistro(r: Registro): string {
   const quem = r.autor === "ueslei" ? "Ueslei" : r.autor
   switch (r.tipo) {
@@ -145,6 +154,10 @@ function rotuloDoRegistro(r: Registro): string {
       return `- ${quem} entregou: ${r.texto}`
     case "ajuda":
       return `- ${quem} pediu ajuda: ${r.texto}`
+    case "plano":
+      return `- ${quem} propôs um plano: ${r.texto}`
+    case "plano-aprovado":
+      return `- ${quem} aprovou o plano`
     default:
       return `- status (${quem}): ${r.texto}`
   }
@@ -163,12 +176,15 @@ export function blocoDaTarefa(
   persona: PersonaId,
   desde: string | null,
   subordinadas: Subordinada[] = [],
+  modo: ModoDaExecucao = { tipo: "normal" },
 ): string {
   const novos = registros.filter(
     (r) => (desde === null || r.em > desde) && r.autor !== persona && !r.autor.startsWith("execucao:") && r.autor !== "orquestra",
   )
   const partes = [
     REGRAS_DO_MODO_TAREFA,
+    modo.tipo === "plano" ? REGRAS_DO_PLANO : "",
+    modo.tipo === "plano_aprovado" ? `### Plano aprovado pelo Ueslei\n\nExecute este plano:\n\n${modo.plano}` : "",
     `## Tarefa #${tarefa.id}: ${tarefa.titulo}`,
     tarefa.descricao ? `### Descrição\n\n${tarefa.descricao}` : "",
     tarefa.porque ? `### Por quê\n\n${tarefa.porque}` : "",

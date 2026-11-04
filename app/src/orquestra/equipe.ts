@@ -23,6 +23,8 @@ export interface Posicao {
   capacidades: Capacidade[]
   aprovacao: PoliticaDeAprovacao
   diretorio?: string
+  aprovarPlano?: boolean
+  delegaDireto?: boolean
 }
 
 export interface Equipe {
@@ -116,6 +118,8 @@ function validarPosicao(bruto: unknown, personas: ReadonlySet<string>, erros: st
       aprovacao: aprovacao as PoliticaDeAprovacao,
     }
     if (p.diretorio !== undefined) posicao.diretorio = texto(p.diretorio, `${onde}: diretório`)
+    if (p.aprovarPlano === true) posicao.aprovarPlano = true
+    if (p.delegaDireto === true) posicao.delegaDireto = true
     return posicao
   } catch (erro) {
     erros.push((erro as Error).message)
@@ -348,7 +352,14 @@ export function resumoDaMudanca(antes: Equipe | undefined, depois: Equipe): stri
     }
     if (velha.persona !== p.persona) partes.push(`${p.id} com ${p.persona ?? "vaga"}`)
     if (velha.respondeA !== p.respondeA) partes.push(`${p.id} responde a ${p.respondeA ?? "Ueslei"}`)
-    if (velha.capacidades.join() !== p.capacidades.join() || velha.aprovacao !== p.aprovacao) partes.push(`${p.id}: capacidades`)
+    if (
+      velha.capacidades.join() !== p.capacidades.join() ||
+      velha.aprovacao !== p.aprovacao ||
+      Boolean(velha.aprovarPlano) !== Boolean(p.aprovarPlano) ||
+      Boolean(velha.delegaDireto) !== Boolean(p.delegaDireto)
+    ) {
+      partes.push(`${p.id}: capacidades`)
+    }
     if (velha.titulo !== p.titulo || velha.diretorio !== p.diretorio) partes.push(`${p.id}: dados`)
   }
   for (const v of antes.posicoes) if (!depois.posicoes.some((p) => p.id === v.id)) partes.push(`-${v.id}`)

@@ -170,11 +170,33 @@ export function caminhoDoUso(raiz: string): string {
   return join(raiz, "conversations", "uso.jsonl")
 }
 
+const ouvintes = new Set<(registro: RegistroDeUso) => void>()
+
+export function aoGravarUso(ouvinte: (registro: RegistroDeUso) => void): () => void {
+  ouvintes.add(ouvinte)
+  return () => ouvintes.delete(ouvinte)
+}
+
 export async function gravarUso(raiz: string, registro: RegistroDeUso): Promise<void> {
+  for (const ouvinte of ouvintes) ouvinte(registro)
   try {
     await mkdir(join(raiz, "conversations"), { recursive: true })
     await appendFile(caminhoDoUso(raiz), JSON.stringify(registro) + "\n")
   } catch (erro) {
     console.warn(`[uso] registro não gravado — ${(erro as Error).message}`)
   }
+}
+
+export async function lerUso(raiz: string): Promise<RegistroDeUso[]> {
+  const arquivo = Bun.file(caminhoDoUso(raiz))
+  if (!(await arquivo.exists())) return []
+  return (await arquivo.text()).split("\n").flatMap((linha) => {
+    if (!linha.trim()) return []
+    try {
+      const r = JSON.parse(linha) as RegistroDeUso
+      return typeof r?.ts === "string" && typeof r.tipo === "string" ? [r] : []
+    } catch {
+      return []
+    }
+  })
 }
