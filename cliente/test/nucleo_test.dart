@@ -478,6 +478,35 @@ void main() {
       expect((json['posicoes'] as List).first, isNot(contains('personaNome')));
     });
 
+    test('zoom mantém fixo o ponto sob o cursor, e ajustar cabe tudo na tela', () {
+      const v = (dx: 10.0, dy: 20.0, escala: 1.0);
+      final antes = paraMundo(v, 300, 200);
+      final z = zoomEm(v, 300, 200, 2);
+      final depois = paraMundo(z, 300, 200);
+      expect([depois.x, depois.y], [antes.x, antes.y]);
+      expect(zoomEm(v, 0, 0, 99).escala, escalaMaxima);
+      expect(zoomEm(v, 0, 0, 0.01).escala, escalaMinima);
+      expect(deslocarVista(v, 5, -5), (dx: 15.0, dy: 15.0, escala: 1.0));
+      final e = codigo();
+      final ajuste = ajustarVista(e, 400, 300);
+      expect(ajuste.escala, lessThan(1));
+      for (final p in e.posicoes) {
+        final c = cantoDoCartao(e, p.id);
+        final x = c.x * ajuste.escala + ajuste.dx;
+        final y = c.y * ajuste.escala + ajuste.dy;
+        expect(x >= 0 && x + larguraDoCartao * ajuste.escala <= 400, isTrue, reason: p.id);
+        expect(y >= 0 && y + alturaDoCartao * ajuste.escala <= 300, isTrue, reason: p.id);
+      }
+      expect(ajustarVista(e, 4000, 3000).escala, 1);
+    });
+
+    test('a alça é achada pelo círculo abaixo do cartão', () {
+      final e = codigo();
+      final c = cantoDoCartao(e, 'executor');
+      expect(alcaEm(e, c.x + larguraDoCartao / 2, c.y + alturaDoCartao + 5), 'executor');
+      expect(alcaEm(e, c.x + 5, c.y + 5), isNull);
+    });
+
     test('personas do servidor substituem o registro fixo', () {
       final original = Perfil.todos;
       try {

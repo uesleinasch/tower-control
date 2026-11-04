@@ -18,6 +18,7 @@ class EstadoEquipes extends ChangeNotifier {
   String? selecionada;
   String? erro;
   bool salvando = false;
+  bool? mostrarPersonas;
 
   bool get alterada => rascunho != null;
 
@@ -36,6 +37,11 @@ class EstadoEquipes extends ChangeNotifier {
     rascunho = null;
     selecionada = null;
     erro = null;
+    notifyListeners();
+  }
+
+  void alternarPersonas(bool visivelAgora) {
+    mostrarPersonas = !visivelAgora;
     notifyListeners();
   }
 

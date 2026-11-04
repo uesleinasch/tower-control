@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../estado/equipes.dart';
 import '../estado/sala.dart';
@@ -12,6 +14,9 @@ bool get edicaoDisponivel =>
     defaultTargetPlatform == TargetPlatform.linux ||
     defaultTargetPlatform == TargetPlatform.windows ||
     defaultTargetPlatform == TargetPlatform.macOS;
+
+const _larguraParaPainelFixo = 900.0;
+const _larguraDoPainel = 340.0;
 
 class TelaEquipes extends StatelessWidget {
   const TelaEquipes({super.key, required this.sala, this.edicao});
@@ -27,52 +32,84 @@ class TelaEquipes extends StatelessWidget {
           final editar = edicao ?? edicaoDisponivel;
           final equipe = estado.atual;
           final cores = Theme.of(context).colorScheme;
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Material(
-              color: cores.surface,
-              child: SafeArea(bottom: false, child: _Topo(estado: estado, editar: editar)),
-            ),
-            if (estado.erro != null)
-              MaterialBanner(
-                content: Text(estado.erro!),
-                backgroundColor: cores.errorContainer,
-                actions: [TextButton(onPressed: estado.limparErro, child: const Text('Ok'))],
+          return LayoutBuilder(builder: (context, limites) {
+            final largo = limites.maxWidth >= _larguraParaPainelFixo;
+            final personasVisiveis = estado.mostrarPersonas ?? largo;
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Material(
+                color: cores.surface,
+                child: SafeArea(
+                  bottom: false,
+                  child: _Topo(estado: estado, editar: editar, personasVisiveis: personasVisiveis),
+                ),
               ),
-            const Divider(height: 1),
-            Expanded(
-              child: !estado.carregada || equipe == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : editar
-                      ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                          Expanded(child: _Canvas(estado: estado, equipe: equipe, editar: true)),
-                          const VerticalDivider(width: 1),
-                          SizedBox(
-                            width: 320,
-                            child: estado.selecionada != null && equipe.posicao(estado.selecionada!) != null
-                                ? _PainelDaPosicao(
-                                    key: ValueKey('${equipe.id}/${estado.selecionada}'),
-                                    estado: estado,
-                                    posicao: equipe.posicao(estado.selecionada!)!,
-                                  )
-                                : _PainelDePersonas(estado: estado),
-                          ),
-                        ])
-                      : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                          Expanded(child: _Canvas(estado: estado, equipe: equipe, editar: false)),
-                          if (estado.selecionada != null && equipe.posicao(estado.selecionada!) != null)
-                            _DetalheDaPosicao(sala: sala, equipe: equipe, posicao: equipe.posicao(estado.selecionada!)!),
-                        ]),
-            ),
-          ]);
+              if (estado.erro != null)
+                MaterialBanner(
+                  content: Text(estado.erro!),
+                  backgroundColor: cores.errorContainer,
+                  actions: [TextButton(onPressed: estado.limparErro, child: const Text('Ok'))],
+                ),
+              const Divider(height: 1),
+              Expanded(
+                child: !estado.carregada || equipe == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : _corpo(context, estado, equipe, editar: editar, largo: largo, personasVisiveis: personasVisiveis),
+              ),
+            ]);
+          });
         },
       );
+
+  Widget _corpo(
+    BuildContext context,
+    EstadoEquipes estado,
+    EquipeResumo equipe, {
+    required bool editar,
+    required bool largo,
+    required bool personasVisiveis,
+  }) {
+    final selecionada = estado.selecionada == null ? null : equipe.posicao(estado.selecionada!);
+    final canvas = _Canvas(estado: estado, equipe: equipe, editar: editar);
+    if (!editar) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: canvas),
+        if (selecionada != null) _DetalheDaPosicao(sala: sala, equipe: equipe, posicao: selecionada),
+      ]);
+    }
+    final Widget? painel = selecionada != null
+        ? _PainelDaPosicao(key: ValueKey('${equipe.id}/${selecionada.id}'), estado: estado, posicao: selecionada)
+        : personasVisiveis
+            ? _PainelDePersonas(estado: estado, personasVisiveis: personasVisiveis)
+            : null;
+    if (painel == null) return canvas;
+    if (largo) {
+      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: canvas),
+        const VerticalDivider(width: 1),
+        SizedBox(width: _larguraDoPainel, child: painel),
+      ]);
+    }
+    return LayoutBuilder(
+      builder: (context, limites) => Stack(children: [
+        Positioned.fill(child: canvas),
+        Positioned(
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: limites.maxWidth * 0.9 < _larguraDoPainel ? limites.maxWidth * 0.9 : _larguraDoPainel,
+          child: Material(elevation: 8, child: painel),
+        ),
+      ]),
+    );
+  }
 }
 
 class _Topo extends StatelessWidget {
-  const _Topo({required this.estado, required this.editar});
+  const _Topo({required this.estado, required this.editar, required this.personasVisiveis});
 
   final EstadoEquipes estado;
   final bool editar;
+  final bool personasVisiveis;
 
   Future<void> _novaEquipe(BuildContext context) async {
     final nome = await pedirTexto(context, titulo: 'Nova equipe', rotulo: 'Nome da equipe');
@@ -94,41 +131,68 @@ class _Topo extends StatelessWidget {
     final equipe = estado.atual;
     final ids = {for (final e in estado.equipes) e.id};
     final opcoes = [
-      for (final e in estado.equipes) DropdownMenuItem(value: e.id, child: Text(e.nome)),
-      if (equipe != null && !ids.contains(equipe.id)) DropdownMenuItem(value: equipe.id, child: Text('${equipe.nome} (nova)')),
+      for (final e in estado.equipes) DropdownMenuItem(value: e.id, child: Text(e.nome, overflow: TextOverflow.ellipsis)),
+      if (equipe != null && !ids.contains(equipe.id))
+        DropdownMenuItem(value: equipe.id, child: Text('${equipe.nome} (nova)', overflow: TextOverflow.ellipsis)),
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 32),
-        DropdownButton<String>(
-          value: equipe?.id,
-          items: opcoes,
-          onChanged: (id) async {
-            if (id == null || id == equipe?.id) return;
-            if (estado.alterada && !await confirmar(context, 'Descartar as mudanças?', 'Há mudanças não salvas nesta equipe.')) {
-              return;
-            }
-            estado.escolher(id);
-          },
-        ),
-        if (editar) ...[
-          if (estado.alterada) const Chip(label: Text('não salvo')),
-          OutlinedButton.icon(onPressed: () => _novaEquipe(context), icon: const Icon(Icons.group_add_outlined), label: const Text('Nova equipe')),
-          OutlinedButton.icon(onPressed: () => _novaPosicao(context), icon: const Icon(Icons.add_box_outlined), label: const Text('Posição')),
-          FilledButton(onPressed: estado.alterada && !estado.salvando ? estado.salvar : null, child: const Text('Salvar')),
-          TextButton(onPressed: estado.alterada ? estado.descartar : null, child: const Text('Descartar')),
-          if (equipe != null && equipe.id != 'casa')
-            IconButton(
-              tooltip: 'Excluir equipe',
-              onPressed: () => _excluirEquipe(context, equipe),
-              icon: const Icon(Icons.delete_outline),
+    return LayoutBuilder(builder: (context, limites) {
+      final compacto = limites.maxWidth < 760;
+      Widget acao(IconData icone, String rotulo, VoidCallback? aoTocar, {bool principal = false, bool marcado = false}) {
+        if (compacto) {
+          return IconButton(
+            tooltip: rotulo,
+            isSelected: marcado,
+            onPressed: aoTocar,
+            icon: Icon(icone),
+            style: principal ? IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primaryContainer) : null,
+          );
+        }
+        if (principal) return FilledButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+        if (marcado) return FilledButton.tonalIcon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+        return OutlinedButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+      }
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(children: [
+          const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 32),
+          const SizedBox(width: 8),
+          Flexible(
+            child: DropdownButton<String>(
+              value: equipe?.id,
+              isExpanded: compacto,
+              items: opcoes,
+              underline: const SizedBox.shrink(),
+              onChanged: (id) async {
+                if (id == null || id == equipe?.id) return;
+                if (estado.alterada && !await confirmar(context, 'Descartar as mudanças?', 'Há mudanças não salvas nesta equipe.')) {
+                  return;
+                }
+                estado.escolher(id);
+              },
             ),
-        ],
-      ]),
-    );
+          ),
+          if (editar && estado.alterada && !compacto)
+            const Padding(padding: EdgeInsets.only(left: 8), child: Chip(label: Text('não salvo'), visualDensity: VisualDensity.compact)),
+          const Spacer(),
+          if (editar)
+            Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
+              acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
+              acao(Icons.people_alt_outlined, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
+              acao(Icons.save_outlined, estado.alterada ? 'Salvar' : 'Salvo', estado.alterada && !estado.salvando ? estado.salvar : null,
+                  principal: true),
+              if (estado.alterada) acao(Icons.undo, 'Descartar', estado.descartar),
+              if (equipe != null && equipe.id != 'casa')
+                IconButton(tooltip: 'Excluir equipe', onPressed: () => _excluirEquipe(context, equipe), icon: const Icon(Icons.delete_outline)),
+            ]),
+        ]),
+      );
+    });
   }
 }
+
+enum _Gesto { fundo, cartao, alca }
 
 class _Canvas extends StatefulWidget {
   const _Canvas({required this.estado, required this.equipe, required this.editar});
@@ -142,132 +206,305 @@ class _Canvas extends StatefulWidget {
 }
 
 class _CanvasState extends State<_Canvas> {
-  final _area = GlobalKey();
-  String? _ligandoDe;
-  Offset? _ponteiro;
+  Vista? _vista;
+  String? _ajustadaPara;
+  Size _tamanho = Size.zero;
+  _Gesto? _gesto;
+  String? _alvo;
+  Ponto _pegaNoCartao = (x: 0, y: 0);
+  Ponto? _cartaoEm;
+  Ponto? _ponteiro;
+  double _escalaNoInicio = 1;
+  MouseCursor _cursor = SystemMouseCursors.grab;
 
-  Offset? _local(Offset global) {
-    final caixa = _area.currentContext?.findRenderObject() as RenderBox?;
-    return caixa?.globalToLocal(global);
+  Vista get _v => _vista ?? (dx: 0, dy: 0, escala: 1);
+
+  EquipeResumo get _mostrada {
+    final id = _alvo;
+    final em = _cartaoEm;
+    if (_gesto == _Gesto.cartao && id != null && em != null && widget.equipe.posicao(id) != null) {
+      return mover(widget.equipe, id, em.x, em.y);
+    }
+    return widget.equipe;
+  }
+
+  void _ajustar() => setState(() => _vista = ajustarVista(widget.equipe, _tamanho.width, _tamanho.height));
+
+  void _zoom(double fator, {Offset? foco}) {
+    final centro = foco ?? Offset(_tamanho.width / 2, _tamanho.height / 2);
+    setState(() => _vista = zoomEm(_v, centro.dx, centro.dy, _v.escala * fator));
+  }
+
+  _Gesto _gestoEm(Ponto mundo) {
+    if (!widget.editar) return _Gesto.fundo;
+    if (alcaEm(widget.equipe, mundo.x, mundo.y) != null) return _Gesto.alca;
+    return alvoEm(widget.equipe, mundo.x, mundo.y) is NaPosicao ? _Gesto.cartao : _Gesto.fundo;
+  }
+
+  void _aoPassar(PointerHoverEvent e) {
+    final mundo = paraMundo(_v, e.localPosition.dx, e.localPosition.dy);
+    final cursor = switch (_gestoEm(mundo)) {
+      _Gesto.alca => SystemMouseCursors.precise,
+      _Gesto.cartao => SystemMouseCursors.move,
+      _Gesto.fundo => alvoEm(widget.equipe, mundo.x, mundo.y) is NaPosicao ? SystemMouseCursors.click : SystemMouseCursors.grab,
+    };
+    if (cursor != _cursor) setState(() => _cursor = cursor);
+  }
+
+  void _roda(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    final teclado = HardwareKeyboard.instance;
+    if (teclado.isControlPressed || teclado.isMetaPressed) {
+      _zoom(e.scrollDelta.dy > 0 ? 0.9 : 1 / 0.9, foco: e.localPosition);
+    } else if (teclado.isShiftPressed) {
+      setState(() => _vista = deslocarVista(_v, -e.scrollDelta.dy, 0));
+    } else {
+      setState(() => _vista = deslocarVista(_v, -e.scrollDelta.dx, -e.scrollDelta.dy));
+    }
+  }
+
+  void _inicio(ScaleStartDetails d) {
+    final mundo = paraMundo(_v, d.localFocalPoint.dx, d.localFocalPoint.dy);
+    _escalaNoInicio = _v.escala;
+    final gesto = d.pointerCount > 1 || d.kind == PointerDeviceKind.trackpad ? _Gesto.fundo : _gestoEm(mundo);
+    setState(() {
+      _gesto = gesto;
+      _alvo = null;
+      _cartaoEm = null;
+      _ponteiro = null;
+      if (gesto == _Gesto.alca) {
+        _alvo = alcaEm(widget.equipe, mundo.x, mundo.y);
+        _ponteiro = mundo;
+      } else if (gesto == _Gesto.cartao) {
+        final id = (alvoEm(widget.equipe, mundo.x, mundo.y) as NaPosicao).id;
+        final canto = cantoDoCartao(widget.equipe, id);
+        _alvo = id;
+        _pegaNoCartao = (x: mundo.x - canto.x, y: mundo.y - canto.y);
+      } else {
+        _cursor = SystemMouseCursors.grabbing;
+      }
+    });
+  }
+
+  void _durante(ScaleUpdateDetails d) {
+    final mundo = paraMundo(_v, d.localFocalPoint.dx, d.localFocalPoint.dy);
+    setState(() {
+      switch (_gesto) {
+        case _Gesto.cartao:
+          _cartaoEm = (
+            x: mundo.x - _pegaNoCartao.x - margemDoOrganograma,
+            y: mundo.y - _pegaNoCartao.y - topoDoOrganograma,
+          );
+        case _Gesto.alca:
+          _ponteiro = mundo;
+        case _Gesto.fundo || null:
+          var v = _v;
+          if (d.scale != 1) v = zoomEm(v, d.localFocalPoint.dx, d.localFocalPoint.dy, _escalaNoInicio * d.scale);
+          _vista = deslocarVista(v, d.focalPointDelta.dx, d.focalPointDelta.dy);
+      }
+    });
+  }
+
+  void _fim(ScaleEndDetails _) {
+    final gesto = _gesto;
+    final id = _alvo;
+    final em = _cartaoEm;
+    final ponteiro = _ponteiro;
+    setState(() {
+      _gesto = null;
+      _alvo = null;
+      _cartaoEm = null;
+      _ponteiro = null;
+      _cursor = SystemMouseCursors.grab;
+    });
+    if (id == null) return;
+    if (gesto == _Gesto.cartao && em != null) widget.estado.aplicar((e) => mover(e, id, em.x, em.y));
+    if (gesto == _Gesto.alca && ponteiro != null) {
+      widget.estado.aplicar((e) => ligarPelaAlca(e, id, alvoEm(e, ponteiro.x, ponteiro.y)));
+    }
+  }
+
+  void _toque(TapUpDetails d) {
+    final mundo = paraMundo(_v, d.localPosition.dx, d.localPosition.dy);
+    final alvo = alvoEm(widget.equipe, mundo.x, mundo.y);
+    if (alvo is NaPosicao) {
+      widget.estado.selecionar(widget.estado.selecionada == alvo.id ? null : alvo.id);
+    } else if (widget.estado.selecionada != null) {
+      widget.estado.selecionar(null);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final equipe = widget.equipe;
-    final tamanho = tamanhoDoOrganograma(equipe);
     final cores = Theme.of(context).colorScheme;
-    final ueslei = cantoDoUeslei(equipe);
-    final area = SizedBox(
-      key: _area,
-      width: tamanho.largura,
-      height: tamanho.altura,
-      child: Stack(children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _Ligacoes(
-              equipe: equipe,
-              cor: cores.outlineVariant,
-              destaque: cores.primary,
-              ligandoDe: _ligandoDe,
-              ponteiro: _ponteiro,
-            ),
-          ),
-        ),
-        Positioned(
-          left: ueslei.x,
-          top: ueslei.y,
-          width: larguraDoUeslei,
-          height: alturaDoUeslei,
-          child: Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: cores.primary, borderRadius: BorderRadius.circular(22)),
-            child: Text('Ueslei', style: TextStyle(color: cores.onPrimary, fontWeight: FontWeight.w600)),
-          ),
-        ),
-        for (final p in equipe.posicoes) _cartao(context, equipe, p),
-      ]),
-    );
-    if (equipe.posicoes.isEmpty) {
+    if (widget.equipe.posicoes.isEmpty) {
       return Center(
-        child: Text(widget.editar ? 'Equipe sem posições. Use "Posição" para começar.' : 'Equipe sem posições.',
-            style: TextStyle(color: cores.onSurfaceVariant)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            widget.editar ? 'Equipe sem posições. Use "Posição" para começar.' : 'Equipe sem posições.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: cores.onSurfaceVariant),
+          ),
+        ),
       );
     }
-    if (!widget.editar) {
-      return InteractiveViewer(constrained: false, boundaryMargin: const EdgeInsets.all(200), minScale: 0.4, maxScale: 2, child: area);
-    }
-    return Scrollbar(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(child: area),
-      ),
-    );
-  }
-
-  Widget _cartao(BuildContext context, EquipeResumo equipe, PosicaoResumo p) {
-    final canto = cantoDoCartao(equipe, p.id);
-    final escolhida = widget.estado.selecionada == p.id;
-    final cartao = _Cartao(posicao: p, escolhida: escolhida);
-    return Positioned(
-      left: canto.x,
-      top: canto.y,
-      width: larguraDoCartao,
-      height: alturaDoCartao + (widget.editar ? 14 : 0),
-      child: Stack(clipBehavior: Clip.none, children: [
-        SizedBox(
-          width: larguraDoCartao,
-          height: alturaDoCartao,
+    return LayoutBuilder(builder: (context, limites) {
+      _tamanho = limites.biggest;
+      if (_vista == null || _ajustadaPara != widget.equipe.id) {
+        _vista = ajustarVista(widget.equipe, _tamanho.width, _tamanho.height);
+        _ajustadaPara = widget.equipe.id;
+      }
+      final equipe = _mostrada;
+      final v = _v;
+      final tamanho = tamanhoDoOrganograma(equipe);
+      return Listener(
+        onPointerSignal: _roda,
+        child: MouseRegion(
+          cursor: _cursor,
+          onHover: _aoPassar,
           child: GestureDetector(
-            onTap: () => widget.estado.selecionar(escolhida ? null : p.id),
-            onPanUpdate: widget.editar
-                ? (d) {
-                    final atual = (widget.estado.atual ?? equipe).ponto(p.id);
-                    widget.estado.aplicar((e) => mover(e, p.id, atual.x + d.delta.dx, atual.y + d.delta.dy));
-                  }
-                : null,
-            child: MouseRegion(cursor: widget.editar ? SystemMouseCursors.move : SystemMouseCursors.click, child: cartao),
-          ),
-        ),
-        if (widget.editar)
-          Positioned(
-            left: larguraDoCartao / 2 - 9,
-            top: alturaDoCartao - 4,
-            child: Tooltip(
-              message: 'Arraste até outro cartão para ele responder a este, ou até "Ueslei" para soltar',
-              child: GestureDetector(
-                onPanStart: (d) => setState(() {
-                  _ligandoDe = p.id;
-                  _ponteiro = _local(d.globalPosition);
-                }),
-                onPanUpdate: (d) => setState(() => _ponteiro = _local(d.globalPosition)),
-                onPanEnd: (_) {
-                  final ponto = _ponteiro;
-                  final origem = _ligandoDe;
-                  setState(() {
-                    _ligandoDe = null;
-                    _ponteiro = null;
-                  });
-                  if (ponto == null || origem == null) return;
-                  widget.estado.aplicar((e) => ligarPelaAlca(e, origem, alvoEm(e, ponto.dx, ponto.dy)));
-                },
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.precise,
-                  child: Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2),
+            behavior: HitTestBehavior.opaque,
+            onTapUp: _toque,
+            onScaleStart: _inicio,
+            onScaleUpdate: _durante,
+            onScaleEnd: _fim,
+            child: ClipRect(
+              child: Stack(children: [
+                Positioned.fill(child: ColoredBox(color: cores.surfaceContainerLowest)),
+                OverflowBox(
+                  alignment: Alignment.topLeft,
+                  minWidth: 0,
+                  minHeight: 0,
+                  maxWidth: double.infinity,
+                  maxHeight: double.infinity,
+                  child: Transform(
+                    transform: Matrix4.identity()
+                      ..translateByDouble(v.dx, v.dy, 0, 1)
+                      ..scaleByDouble(v.escala, v.escala, 1, 1),
+                    child: IgnorePointer(
+                      child: SizedBox(
+                        width: tamanho.largura,
+                        height: tamanho.altura,
+                        child: _Area(
+                          equipe: equipe,
+                          editar: widget.editar,
+                          selecionada: widget.estado.selecionada,
+                          ligandoDe: _gesto == _Gesto.alca ? _alvo : null,
+                          ponteiro: _ponteiro,
+                        ),
+                      ),
                     ),
                   ),
                 ),
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: _ControlesDeZoom(
+                    escala: v.escala,
+                    aoAproximar: () => _zoom(1.2),
+                    aoAfastar: () => _zoom(1 / 1.2),
+                    aoAjustar: _ajustar,
+                    aoTamanhoReal: () => _zoom(1 / v.escala),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _Area extends StatelessWidget {
+  const _Area({required this.equipe, required this.editar, this.selecionada, this.ligandoDe, this.ponteiro});
+
+  final EquipeResumo equipe;
+  final bool editar;
+  final String? selecionada;
+  final String? ligandoDe;
+  final Ponto? ponteiro;
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = Theme.of(context).colorScheme;
+    final ueslei = cantoDoUeslei(equipe);
+    return Stack(clipBehavior: Clip.none, children: [
+      Positioned.fill(
+        child: CustomPaint(
+          painter: _Ligacoes(
+            equipe: equipe,
+            cor: cores.outlineVariant,
+            destaque: cores.primary,
+            ligandoDe: ligandoDe,
+            ponteiro: ponteiro == null ? null : Offset(ponteiro!.x, ponteiro!.y),
+          ),
+        ),
+      ),
+      Positioned(
+        left: ueslei.x,
+        top: ueslei.y,
+        width: larguraDoUeslei,
+        height: alturaDoUeslei,
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: cores.primary, borderRadius: BorderRadius.circular(22)),
+          child: Text('Ueslei', style: TextStyle(color: cores.onPrimary, fontWeight: FontWeight.w600)),
+        ),
+      ),
+      for (final p in equipe.posicoes) ...[
+        Positioned(
+          left: cantoDoCartao(equipe, p.id).x,
+          top: cantoDoCartao(equipe, p.id).y,
+          width: larguraDoCartao,
+          height: alturaDoCartao,
+          child: _Cartao(posicao: p, escolhida: selecionada == p.id),
+        ),
+        if (editar)
+          Positioned(
+            left: cantoDoCartao(equipe, p.id).x + larguraDoCartao / 2 - 9,
+            top: cantoDoCartao(equipe, p.id).y + alturaDoCartao - 4,
+            child: Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: cores.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: cores.surface, width: 2),
               ),
             ),
           ),
-      ]),
-    );
+      ],
+    ]);
   }
+}
+
+class _ControlesDeZoom extends StatelessWidget {
+  const _ControlesDeZoom({
+    required this.escala,
+    required this.aoAproximar,
+    required this.aoAfastar,
+    required this.aoAjustar,
+    required this.aoTamanhoReal,
+  });
+
+  final double escala;
+  final VoidCallback aoAproximar;
+  final VoidCallback aoAfastar;
+  final VoidCallback aoAjustar;
+  final VoidCallback aoTamanhoReal;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        elevation: 3,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(tooltip: 'Afastar (Ctrl + roda)', onPressed: escala > escalaMinima ? aoAfastar : null, icon: const Icon(Icons.remove)),
+          TextButton(onPressed: aoTamanhoReal, child: Text('${(escala * 100).round()}%')),
+          IconButton(tooltip: 'Aproximar (Ctrl + roda)', onPressed: escala < escalaMaxima ? aoAproximar : null, icon: const Icon(Icons.add)),
+          IconButton(tooltip: 'Ajustar à tela', onPressed: aoAjustar, icon: const Icon(Icons.fit_screen_outlined)),
+        ]),
+      );
 }
 
 class _Cartao extends StatelessWidget {
@@ -473,9 +710,10 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
 }
 
 class _PainelDePersonas extends StatelessWidget {
-  const _PainelDePersonas({required this.estado});
+  const _PainelDePersonas({required this.estado, required this.personasVisiveis});
 
   final EstadoEquipes estado;
+  final bool personasVisiveis;
 
   Future<void> _nova(BuildContext context) async {
     final dados = await showDialog<_NovaPersona>(context: context, builder: (_) => const _DialogoNovaPersona());
@@ -501,6 +739,7 @@ class _PainelDePersonas extends StatelessWidget {
       Row(children: [
         Expanded(child: Text('Personas', style: Theme.of(context).textTheme.titleSmall)),
         FilledButton.icon(onPressed: () => _nova(context), icon: const Icon(Icons.person_add_alt), label: const Text('Nova')),
+        IconButton(tooltip: 'Ocultar personas', icon: const Icon(Icons.close), onPressed: () => estado.alternarPersonas(personasVisiveis)),
       ]),
       const SizedBox(height: 4),
       Text('Clique num cartão para editar a posição.', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),

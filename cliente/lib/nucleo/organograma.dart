@@ -194,3 +194,55 @@ EquipeResumo ligarPelaAlca(EquipeResumo e, String origem, Alvo? destino) => swit
       NaPosicao(:final id) when id != origem => ligar(e, id, origem),
       _ => e,
     };
+
+const raioDaAlca = 11.0;
+const escalaMinima = 0.25;
+const escalaMaxima = 2.5;
+
+String? alcaEm(EquipeResumo e, double x, double y) {
+  for (final p in e.posicoes.reversed) {
+    final c = cantoDoCartao(e, p.id);
+    final dx = x - (c.x + larguraDoCartao / 2);
+    final dy = y - (c.y + alturaDoCartao + 5);
+    if (dx * dx + dy * dy <= raioDaAlca * raioDaAlca) return p.id;
+  }
+  return null;
+}
+
+typedef Vista = ({double dx, double dy, double escala});
+
+Ponto paraMundo(Vista v, double x, double y) => (x: (x - v.dx) / v.escala, y: (y - v.dy) / v.escala);
+
+Vista deslocarVista(Vista v, double dx, double dy) => (dx: v.dx + dx, dy: v.dy + dy, escala: v.escala);
+
+Vista zoomEm(Vista v, double focoX, double focoY, double escala) {
+  final nova = escala.clamp(escalaMinima, escalaMaxima).toDouble();
+  final mundo = paraMundo(v, focoX, focoY);
+  return (dx: focoX - mundo.x * nova, dy: focoY - mundo.y * nova, escala: nova);
+}
+
+Vista ajustarVista(EquipeResumo e, double largura, double altura) {
+  if (e.posicoes.isEmpty || largura <= 0 || altura <= 0) return (dx: 0, dy: 0, escala: 1);
+  var minX = cantoDoUeslei(e).x;
+  var minY = cantoDoUeslei(e).y;
+  var maxX = minX + larguraDoUeslei;
+  var maxY = minY + alturaDoUeslei;
+  for (final p in e.posicoes) {
+    final c = cantoDoCartao(e, p.id);
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x + larguraDoCartao > maxX) maxX = c.x + larguraDoCartao;
+    if (c.y + alturaDoCartao + 16 > maxY) maxY = c.y + alturaDoCartao + 16;
+  }
+  const folga = 32.0;
+  final escala = [
+    (largura - 2 * folga) / (maxX - minX),
+    (altura - 2 * folga) / (maxY - minY),
+    1.0,
+  ].reduce((a, b) => a < b ? a : b).clamp(escalaMinima, escalaMaxima).toDouble();
+  return (
+    dx: (largura - (maxX - minX) * escala) / 2 - minX * escala,
+    dy: (altura - (maxY - minY) * escala) / 2 - minY * escala,
+    escala: escala,
+  );
+}
