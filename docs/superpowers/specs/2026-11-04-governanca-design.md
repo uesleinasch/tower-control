@@ -57,8 +57,13 @@ persona e mês em memória; cada registro novo de uso atualiza a soma
 (`uso.ts` ganha um ouvinte de registros gravados). Núcleo puro: `gastoDoMes(registros, persona,
 mes)`.
 
-**Limite:** `orcamentoMensalUSD` de `persona.json`, que já existe. Sem o campo, a persona não
-tem limite. Zero significa que ela não roda tarefa nenhuma.
+**Limites:** dois, independentes, em `persona.json`: `orcamentoMensalUSD` (já existia) e
+`orcamentoMensalTokens` (inteiro), pedido do Ueslei para ter controles distintos. Sem o campo,
+aquela dimensão não tem limite. Zero significa que ela não roda tarefa nenhuma. O que estourar
+primeiro segura as tarefas, e cada dimensão tem os próprios avisos de 80% e 100%. Tokens
+contam entrada, saída, escrita e leitura de cache, ou seja, tudo o que o modelo processou
+**(decisão desta fase)**; a leitura de cache costuma ser a maior parte, então os limites em
+tokens tendem a ser números grandes.
 
 **Quando checa:**
 
@@ -73,12 +78,12 @@ Os avisos de 80% e 100% saem uma vez por persona por mês. A marca de "já avisa
 **Voltar a rodar:** subir o limite, tirar o limite ou virar o mês. O despachante roda de
 novo quando o orçamento muda, e o relógio de 30 s cobre a virada do mês.
 
-**Mudar o limite:** cliente→servidor `persona-salvar`: `{ id, orcamentoMensalUSD?, modelo?,
-cor?, nome? }`. Grava `persona.json`, commita ("orçamento de Alfred: US$ 5") e manda
+**Mudar o limite:** cliente→servidor `persona-salvar`: `{ id, orcamentoMensalUSD?,
+orcamentoMensalTokens?, modelo?, cor?, nome? }`. Grava `persona.json`, commita ("orçamento de Alfred: US$ 5") e manda
 `personas` para todos. `null` em `orcamentoMensalUSD` tira o limite.
 
-A mensagem `personas` ganha `orcamentoMensalUSD`, `gastoMesUSD` (tarefas), `gastoTotalMesUSD`
-(tudo) e `pausa` (seção 2).
+A mensagem `personas` ganha `orcamentoMensalUSD`, `orcamentoMensalTokens`, `gastoMesUSD` e
+`tokensMes` (tarefas), `gastoTotalMesUSD` e `tokensTotalMes` (tudo) e `pausa` (seção 2).
 
 ## 2. Pausar e retomar
 
