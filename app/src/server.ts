@@ -2,14 +2,16 @@ import { join } from "node:path"
 import { dirModelos, dirWeb, raizDoCodigo, raizDosDados } from "./caminhos"
 import { garantirIgnorado, origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import { migrarPendentes } from "./memoria/migracao"
-import { carregarElenco, elenco, migrarParaPersonas } from "./orquestra/elenco"
+import { apagarEquipe, carregarElenco, elenco, gravarEquipe, migrarParaPersonas } from "./orquestra/elenco"
+import { corDaPersona, exigirMudancaDeEquipe, resumoDaMudanca, slugValido, validarEquipe } from "./orquestra/equipe"
+import { criarPersona, excluirPersona, gerarPerfil, lerPedidoDePersona } from "./orquestra/personas"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
 import { lerNovaTarefa, statusValido } from "./orquestra/tarefa"
 import { Orquestra, tetoDeExecucoes } from "./orquestra/runtime"
 import type { Evento, Execucao } from "./orquestra/execucao"
 import { randomUUID } from "node:crypto"
 import type { ServerWebSocket } from "bun"
-import { MODELO_PADRAO, ehConselheiro, ehPerfil, lerFoco, modeloEfetivo, nomeDe, type Anexo } from "./tipos"
+import { MODELO_PADRAO, ehConselheiro, ehPerfil, lerFoco, modeloEfetivo, nomeDe, perfilExcluivel, rodaComandos, type Anexo } from "./tipos"
 import { gravarAnexo, lerAnexo, lerAnexos, mimeDeEntrega, montarBlocoDeAnexos } from "./anexos"
 import { carregarAtalhos } from "./atalhos"
 import { conversar, trabalhar } from "./sessions"
@@ -32,6 +34,7 @@ import { sonhar } from "./memoria/sonho"
 import { CentralDeAvisos, caminhoDosAvisos, type Como } from "./avisos/central"
 import { Presenca, type Mudanca } from "./avisos/presenca"
 import { avisoDeAprovacao, avisoDeAprovacaoEmTarefa, avisoDeResposta } from "./avisos/fontes"
+import type { NovoAviso } from "./avisos/central"
 import { executorDeAvisos, lerDesde, streamDeAvisos, tratarAcao } from "./avisos/http"
 import { Lembretes } from "./avisos/motor"
 import { chamarTickTask } from "./avisos/ticktask-cliente"
@@ -128,24 +131,109 @@ function mandarATodos(msg: Record<string, unknown>): void {
 }
 
 function equipesParaCliente() {
-  const { casa } = elenco()
-  return [
-    {
-      id: casa.id,
-      nome: casa.nome,
-      posicoes: casa.posicoes.map((p) => ({
-        id: p.id,
-        titulo: p.titulo,
-        persona: p.persona,
-        personaNome: p.persona ? elenco().nome(p.persona) : null,
-        respondeA: p.respondeA,
-        capacidades: p.capacidades,
-      })),
-    },
-  ]
+  return elenco()
+    .equipes()
+    .map((e) => ({
+      id: e.id,
+      nome: e.nome,
+      layout: e.layout,
+      posicoes: e.posicoes.map((p) => ({ ...p, personaNome: p.persona ? elenco().nome(p.persona) : null })),
+    }))
 }
 
-const equipePorId = (id: string) => (id === elenco().casa.id ? elenco().casa : undefined)
+const GERANDO_PERFIL = new Set<string>()
+
+function personasParaCliente() {
+  return elenco()
+    .personas()
+    .map((p) => {
+      const naCasa = elenco().posicaoNaCasa(p.id)
+      return {
+        id: p.id,
+        nome: p.nome,
+        inicial: p.nome.charAt(0).toUpperCase(),
+        cor: corDaPersona(p),
+        titulo: naCasa?.titulo ?? null,
+        conversa: Boolean(naCasa),
+        executor: rodaComandos(p.id),
+        excluivel: perfilExcluivel(p.id),
+        modelo: p.modelo ?? null,
+        gerandoPerfil: GERANDO_PERFIL.has(p.id),
+      }
+    })
+}
+
+function publicarElenco(): void {
+  mandarATodos({ tipo: "personas", lista: personasParaCliente() })
+  mandarATodos({ tipo: "equipes", lista: equipesParaCliente() })
+}
+
+const equipePorId = (id: string) => elenco().equipe(id)
+
+function contarTarefas(equipe: string) {
+  const tarefas = TAREFAS.listar(equipe)
+  return (posicao: string) => {
+    const daPosicao = tarefas.filter((t) => t.posicao === posicao)
+    return {
+      abertas: daPosicao.filter((t) => t.status !== "concluida" && t.status !== "cancelada").length,
+      emAndamento: daPosicao.filter((t) => t.status === "em_andamento").length,
+    }
+  }
+}
+
+async function salvarEquipe(bruto: unknown): Promise<void> {
+  const equipe = validarEquipe(bruto, new Set(elenco().ids()))
+  const antes = elenco().equipe(equipe.id)
+  exigirMudancaDeEquipe(antes, equipe, contarTarefas(equipe.id))
+  await gravarEquipe(RAIZ, equipe)
+  await carregarElenco(RAIZ)
+  await registrarNoGit(RAIZ, resumoDaMudanca(antes, equipe))
+  publicarElenco()
+}
+
+async function removerEquipe(id: string): Promise<void> {
+  const equipe = elenco().equipe(id)
+  if (!equipe) throw new Error(`a equipe ${id} não existe`)
+  const abertas = TAREFAS.listar(id).filter((t) => t.status !== "concluida" && t.status !== "cancelada").length
+  if (abertas) throw new Error(`a equipe ${equipe.nome} tem ${abertas} tarefa(s) aberta(s) e não pode ser excluída`)
+  await apagarEquipe(RAIZ, id)
+  await carregarElenco(RAIZ)
+  await registrarNoGit(RAIZ, `equipe ${equipe.nome} excluída`)
+  publicarElenco()
+}
+
+async function novaPersonaPeloCliente(bruto: unknown): Promise<void> {
+  const pedido = lerPedidoDePersona(bruto)
+  const persona = await criarPersona(RAIZ, pedido)
+  await registrarNoGit(RAIZ, `persona ${persona.nome} criada`)
+  GERANDO_PERFIL.add(persona.id)
+  publicarElenco()
+  void gerarPerfil(RAIZ, persona, pedido.base)
+    .then(() => registrarNoGit(RAIZ, `perfil de ${persona.nome} gerado`))
+    .catch((erro: Error) => {
+      console.warn(`[personas] perfil de ${persona.id} não foi gerado — ${erro.message}`)
+      const aviso: NovoAviso = {
+        tipo: "tarefa",
+        titulo: `O perfil de ${persona.nome} não foi gerado`,
+        corpo: `Ficou o perfil provisório (a descrição). Erro: ${erro.message}`.slice(0, 180),
+        alvo: {},
+        acoes: [],
+      }
+      avisar(AVISOS.criar(aviso))
+    })
+    .finally(() => {
+      GERANDO_PERFIL.delete(persona.id)
+      publicarElenco()
+    })
+}
+
+async function excluirPersonaPeloCliente(id: string, confirmacao: string): Promise<void> {
+  if (!elenco().existe(id)) throw new Error(`a persona ${id} não existe`)
+  ORQUESTRA.interromperPersona(id)
+  const nome = await excluirPersona(RAIZ, id, confirmacao)
+  await registrarNoGit(RAIZ, `persona ${nome} excluída`)
+  publicarElenco()
+}
 
 function idDeTarefa(bruto: unknown): number {
   const id = Number(bruto)
@@ -318,6 +406,7 @@ async function responderNaConversa(
   foco?: unknown,
 ): Promise<void> {
   let meta = await lerMeta(RAIZ, id)
+  if (!ehPerfil(meta.perfil)) throw new Error(`a persona ${meta.perfil} foi excluída: esta conversa é só leitura`)
   const focoPedido = lerFoco(meta.perfil, foco)
   const focoDesligado = focoPedido === null && meta.foco !== undefined
   if (focoPedido !== undefined && focoPedido !== (meta.foco ?? null)) {
@@ -495,6 +584,28 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       mandar(ws, { tipo: "equipes", lista: equipesParaCliente() })
       return
     }
+    case "personas": {
+      mandar(ws, { tipo: "personas", lista: personasParaCliente() })
+      return
+    }
+    case "persona-criar": {
+      await novaPersonaPeloCliente(msg.persona)
+      return
+    }
+    case "persona-excluir": {
+      await excluirPersonaPeloCliente(String(msg.id ?? ""), String(msg.confirmacao ?? ""))
+      return
+    }
+    case "equipe-salvar": {
+      await salvarEquipe(msg.equipe)
+      return
+    }
+    case "equipe-excluir": {
+      const id = String(msg.id ?? "")
+      if (!slugValido(id)) throw new Error("equipe inválida")
+      await removerEquipe(id)
+      return
+    }
     case "tarefas": {
       const equipe = typeof msg.equipe === "string" ? msg.equipe : undefined
       mandar(ws, { tipo: "tarefas", lista: TAREFAS.listar(equipe).map((t) => ({ ...t, rodando: ORQUESTRA.rodando(t.id) })) })
@@ -616,6 +727,7 @@ const servidor = Bun.serve({
     // Relido a cada conexão: editar atalhos.md e recarregar a página basta.
     open(ws: Cliente) {
       CLIENTES.add(ws)
+      mandar(ws, { tipo: "personas", lista: personasParaCliente() })
       void carregarAtalhos(RAIZ)
         .then((lista) => mandar(ws, { tipo: "atalhos", lista }))
         .catch((erro: Error) => console.warn(`[atalhos] não carregaram — ${erro.message}`))

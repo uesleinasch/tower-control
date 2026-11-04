@@ -16,7 +16,12 @@
     "tarefa-criar",
     "tarefa-status",
     "tarefa-comentar",
-    "execucao"
+    "execucao",
+    "personas",
+    "persona-criar",
+    "persona-excluir",
+    "equipe-salvar",
+    "equipe-excluir"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -39,6 +44,11 @@
     "tarefa",
     "tarefas",
     "execucao",
-    "execucao-evento"
+    "execucao-evento",
+    "personas"
+  ],
+  "cliente→servidor só no desktop": [
+    "equipe-salvar",
+    "equipe-excluir"
   ]
 }

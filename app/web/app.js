@@ -1,9 +1,11 @@
 "use strict"
 
-const NOMES = { poe: "Poe", nati: "Nati", lucas: "Lucas", pami: "Pami", alfred: "Alfred", board: "Board" }
-const INICIAIS = { poe: "P", nati: "N", lucas: "L", pami: "P", alfred: "A", board: "B", decisoes: "D", tarefas: "T" }
-
-const EXECUTORES = ["alfred"]
+const FIXOS = {
+  board: { nome: "Board", inicial: "B" },
+  decisoes: { nome: "Decisões", inicial: "D" },
+  tarefas: { nome: "Tarefas", inicial: "T" },
+  equipes: { nome: "Equipes", inicial: "E" },
+}
 const ROTULOS_PERMISSAO = { aprovado: "permitido", negado: "negado", expirado: "expirou — comando negado" }
 const ICONES_ANEXO = { imagem: "🖼", texto: "📄", pdf: "📕" }
 const LADO_MAXIMO = 1600
@@ -20,7 +22,11 @@ const estado = {
   atalhos: [],
   auto: false,
   foco: null,
+  personas: [],
   equipes: [],
+  equipeVista: "casa",
+  equipeDasTarefas: "casa",
+  posicaoVista: null,
   tarefas: [],
   tarefaId: null,
   detalhe: null,
@@ -48,6 +54,11 @@ const el = {
   veu: document.getElementById("veu"),
   fab: document.getElementById("nova-conversa"),
 }
+
+const personaDe = (id) => estado.personas.find((p) => p.id === id)
+const nomeDe = (id) => personaDe(id)?.nome ?? FIXOS[id]?.nome ?? id
+const inicialDe = (id) => personaDe(id)?.inicial ?? FIXOS[id]?.inicial ?? "?"
+const ehExecutor = (id) => personaDe(id)?.executor === true
 
 // ── telas ──────────────────────────────────────────────────────────
 
@@ -117,7 +128,7 @@ function definirCabecalho(perfil, texto) {
   el.avatar.hidden = !perfil
   if (perfil) {
     el.avatar.className = `avatar ${perfil}`
-    el.avatar.textContent = INICIAIS[perfil] ?? "?"
+    el.avatar.textContent = inicialDe(perfil)
   }
 }
 
@@ -126,7 +137,7 @@ function focarEntrada() {
 }
 
 function refletirAuto() {
-  const ligado = estado.auto && EXECUTORES.includes(estado.perfil)
+  const ligado = estado.auto && ehExecutor(estado.perfil)
   el.auto.setAttribute("aria-pressed", String(estado.auto))
   el.auto.textContent = ligado ? "auto · Opus 5.5" : "auto"
   el.modelo.disabled = ligado
@@ -137,12 +148,12 @@ function refletirFoco() {
   const ligado = estado.foco === "ticktask"
   el.ticktask.setAttribute("aria-pressed", String(ligado))
   if (estado.modo === "chat" && estado.perfil) {
-    el.entrada.placeholder = ligado ? "O que registrar no TickTask…" : `Mensagem para ${NOMES[estado.perfil]}…`
+    el.entrada.placeholder = ligado ? "O que registrar no TickTask…" : `Mensagem para ${nomeDe(estado.perfil)}…`
   }
 }
 
 function ajustarAoModo() {
-  const executor = estado.modo === "chat" && EXECUTORES.includes(estado.perfil)
+  const executor = estado.modo === "chat" && ehExecutor(estado.perfil)
   el.clipe.hidden = estado.modo !== "chat"
   el.auto.hidden = !executor
   el.ticktask.hidden = !executor
@@ -404,8 +415,8 @@ function mensagemDoUsuario(texto, citacao, ts, anexos) {
 
 function mensagemDoPerfil(perfil, texto, comAutor = true, ts = new Date()) {
   const cabeca = comAutor
-    ? `<span class="avatar avatar-balao ${perfil}">${INICIAIS[perfil] ?? "?"}</span>` +
-      `<span class="autor ${perfil}">${NOMES[perfil] ?? perfil}</span>`
+    ? `<span class="avatar avatar-balao ${perfil}">${inicialDe(perfil)}</span>` +
+      `<span class="autor ${perfil}">${escapar(nomeDe(perfil))}</span>`
     : ""
   const div = adicionarMensagem(
     comAutor ? "perfil-msg inicio-grupo" : "perfil-msg",
@@ -441,9 +452,9 @@ function abrirPerfil(perfil) {
   estado.auto = false
   ajustarAoModo()
   selecionarBotao(`[data-perfil="${perfil}"]`)
-  definirCabecalho(perfil, `Nova conversa com ${NOMES[perfil]}`)
+  definirCabecalho(perfil, `Nova conversa com ${nomeDe(perfil)}`)
   limparTela()
-  adicionarMensagem("aviso", `Você está falando com ${NOMES[perfil]}. A conversa é criada na primeira mensagem.`)
+  adicionarMensagem("aviso", `Você está falando com ${nomeDe(perfil)}. A conversa é criada na primeira mensagem.`)
   irParaConversa()
   informarVisivel()
   focarEntrada()
@@ -459,7 +470,7 @@ function abrirBoard() {
   limparTela()
   adicionarMensagem(
     "aviso",
-    "Apresente a pauta. Os quatro perfis vão deliberar em paralelo e você recebe a síntese; a ata completa fica em board/minutes/.",
+    "Apresente a pauta. Os conselheiros do board vão deliberar em paralelo e você recebe a síntese; a ata completa fica em board/minutes/.",
   )
   el.entrada.placeholder = "Pauta para o board…"
   irParaConversa()
@@ -516,22 +527,25 @@ const NOMES_GATILHO = {
 }
 const ORDEM_STATUS = ["em_andamento", "em_revisao", "a_fazer", "bloqueada", "backlog", "concluida", "cancelada"]
 
-function posicoesDaCasa() {
-  return estado.equipes.find((e) => e.id === "casa")?.posicoes ?? []
+const equipeDe = (id) => estado.equipes.find((e) => e.id === id)
+
+function posicoesDa(equipe) {
+  return equipeDe(equipe)?.posicoes ?? []
 }
 
-function rotuloDaPosicao(id) {
-  const p = posicoesDaCasa().find((x) => x.id === id)
+function rotuloDaPosicao(id, equipe = estado.equipeDasTarefas) {
+  const p = posicoesDa(equipe).find((x) => x.id === id)
   if (!p) return id
   return p.personaNome ? `${p.personaNome} · ${p.titulo}` : `${p.titulo} (vaga)`
 }
 
 function refletirComposerDeTarefas() {
-  const listando = estado.modo === "tarefas" && !estado.tarefaId
+  const listando = (estado.modo === "tarefas" && !estado.tarefaId) || estado.modo === "equipes"
   el.entrada.disabled = listando
   if (estado.modo === "tarefas") {
     el.entrada.placeholder = listando ? "Abra uma tarefa para comentar" : "Comentar na tarefa…"
   }
+  if (estado.modo === "equipes") el.entrada.placeholder = "Edite as equipes no app desktop"
 }
 
 function abrirTarefas() {
@@ -541,12 +555,31 @@ function abrirTarefas() {
   estado.tarefaId = null
   ajustarAoModo()
   selecionarBotao("#botao-tarefas")
-  definirCabecalho("tarefas", "Tarefas — Casa")
+  definirCabecalho("tarefas", tituloDasTarefas())
   limparTela()
   irParaConversa()
   informarVisivel()
   enviar({ tipo: "equipes" })
-  enviar({ tipo: "tarefas", equipe: "casa" })
+  enviar({ tipo: "tarefas" })
+}
+
+function tituloDasTarefas() {
+  return `Tarefas — ${equipeDe(estado.equipeDasTarefas)?.nome ?? estado.equipeDasTarefas}`
+}
+
+function seletorDeEquipe(valor, aoMudar) {
+  const select = document.createElement("select")
+  select.className = "seletor-equipe"
+  select.setAttribute("aria-label", "equipe")
+  for (const e of estado.equipes) {
+    const op = document.createElement("option")
+    op.value = e.id
+    op.textContent = e.nome
+    op.selected = e.id === valor
+    select.appendChild(op)
+  }
+  select.onchange = () => aoMudar(select.value)
+  return select
 }
 
 function voltarParaTarefas() {
@@ -554,14 +587,14 @@ function voltarParaTarefas() {
   estado.detalhe = null
   estado.log = null
   refletirComposerDeTarefas()
-  definirCabecalho("tarefas", "Tarefas — Casa")
+  definirCabecalho("tarefas", tituloDasTarefas())
   renderTarefas()
 }
 
 function formNovaTarefa() {
   const form = document.createElement("form")
   form.className = "nova-tarefa"
-  const opcoes = posicoesDaCasa()
+  const opcoes = posicoesDa(estado.equipeDasTarefas)
     .map((p) => `<option value="${escapar(p.id)}">${escapar(rotuloDaPosicao(p.id))}</option>`)
     .join("")
   form.innerHTML =
@@ -576,7 +609,7 @@ function formNovaTarefa() {
     if (!titulo) return
     enviar({
       tipo: "tarefa-criar",
-      tarefa: { equipe: "casa", posicao: dados.get("posicao"), titulo, porque: String(dados.get("porque") ?? "") },
+      tarefa: { equipe: estado.equipeDasTarefas, posicao: dados.get("posicao"), titulo, porque: String(dados.get("porque") ?? "") },
     })
     form.reset()
   }
@@ -586,10 +619,20 @@ function formNovaTarefa() {
 function renderTarefas() {
   if (estado.modo !== "tarefas" || estado.tarefaId) return
   limparTela()
+  definirCabecalho("tarefas", tituloDasTarefas())
+  if (estado.equipes.length > 1) {
+    el.mensagens.appendChild(
+      seletorDeEquipe(estado.equipeDasTarefas, (id) => {
+        estado.equipeDasTarefas = id
+        renderTarefas()
+      }),
+    )
+  }
   el.mensagens.appendChild(formNovaTarefa())
-  if (!estado.tarefas.length) adicionarMensagem("aviso", "Nenhuma tarefa ainda.")
+  const daEquipe = estado.tarefas.filter((t) => t.equipe === estado.equipeDasTarefas)
+  if (!daEquipe.length) adicionarMensagem("aviso", "Nenhuma tarefa ainda.")
   for (const status of ORDEM_STATUS) {
-    const doStatus = estado.tarefas.filter((t) => t.status === status)
+    const doStatus = daEquipe.filter((t) => t.status === status)
     if (!doStatus.length) continue
     const titulo = document.createElement("h3")
     titulo.className = "grupo-tarefas"
@@ -650,6 +693,7 @@ function pedirLogSePreciso() {
 function renderTarefa() {
   const { tarefa, registros, execucoes = [], custoUSD = 0 } = estado.detalhe
   estado.tarefaId = tarefa.id
+  estado.equipeDasTarefas = tarefa.equipe
   refletirComposerDeTarefas()
   definirCabecalho("tarefas", `#${tarefa.id} — ${tarefa.titulo}`)
   limparTela()
@@ -714,6 +758,233 @@ function renderTarefa() {
   rolarAoFim()
 }
 
+// ── personas e equipes ─────────────────────────────────────────────
+
+function renderPersonas() {
+  const lista = document.getElementById("lista-personas")
+  lista.innerHTML = ""
+  const visiveis = estado.personas.filter((p) => p.conversa).sort((a, b) => Number(a.executor) - Number(b.executor))
+  for (const p of visiveis) {
+    const botao = document.createElement("button")
+    botao.className = "perfil"
+    botao.dataset.perfil = p.id
+    botao.innerHTML =
+      `<span class="avatar ${p.id}">${escapar(p.inicial)}</span>` +
+      `<span class="nome">${escapar(p.nome)}<small>${escapar(p.titulo ?? "")}</small></span>`
+    botao.onclick = () => abrirPerfil(p.id)
+    if (estado.modo === "chat" && estado.perfil === p.id) botao.classList.add("ativo")
+    lista.appendChild(botao)
+  }
+  let estilo = document.getElementById("cores-personas")
+  if (!estilo) {
+    estilo = document.createElement("style")
+    estilo.id = "cores-personas"
+    document.head.appendChild(estilo)
+  }
+  estilo.textContent = estado.personas
+    .map((p) => `.avatar.${p.id}{background:${p.cor}}.autor.${p.id}{color:${p.cor}}`)
+    .join("\n")
+}
+
+const LARGURA_NO = 220
+const ALTURA_NO = 78
+const TOPO_DO_ORGANOGRAMA = 110
+const NOMES_CAPACIDADE = { arquivos: "arquivos", comandos: "comandos", ticktask: "TickTask", memoria: "memória", board: "board" }
+
+function abrirEquipes() {
+  estado.modo = "equipes"
+  estado.perfil = null
+  estado.conversaId = null
+  estado.posicaoVista = null
+  ajustarAoModo()
+  selecionarBotao("#botao-equipes")
+  definirCabecalho("equipes", "Equipes")
+  irParaConversa()
+  informarVisivel()
+  enviar({ tipo: "equipes" })
+  enviar({ tipo: "personas" })
+  enviar({ tipo: "tarefas" })
+  renderEquipes()
+}
+
+function svgDoOrganograma(equipe) {
+  const ponto = (p) => equipe.layout[p.id] ?? { x: 0, y: 0 }
+  const xs = equipe.posicoes.map((p) => ponto(p).x)
+  const ys = equipe.posicoes.map((p) => ponto(p).y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs) + LARGURA_NO
+  const maxY = Math.max(...ys) + ALTURA_NO
+  const desloca = 20 - minX
+  const no = (p) => ({ x: ponto(p).x + desloca, y: ponto(p).y + TOPO_DO_ORGANOGRAMA })
+  const ueslei = { x: (minX + maxX) / 2 + desloca - 60, y: 16, w: 120, h: 44 }
+  const largura = maxX - minX + 40
+  const altura = maxY + TOPO_DO_ORGANOGRAMA + 20
+  const linhas = equipe.posicoes.map((p) => {
+    const chefe = equipe.posicoes.find((c) => c.id === p.respondeA)
+    const de = no(p)
+    const x1 = de.x + LARGURA_NO / 2
+    const [x2, y2] = chefe ? [no(chefe).x + LARGURA_NO / 2, no(chefe).y + ALTURA_NO] : [ueslei.x + ueslei.w / 2, ueslei.y + ueslei.h]
+    const meio = (de.y + y2) / 2
+    return `<path class="ligacao" d="M${x1} ${de.y} V${meio} H${x2} V${y2}" />`
+  })
+  const nos = equipe.posicoes.map((p) => {
+    const { x, y } = no(p)
+    const persona = p.persona ? personaDe(p.persona) : null
+    const capacidades = p.capacidades.map((c) => NOMES_CAPACIDADE[c] ?? c).join(" · ")
+    return (
+      `<g class="no-org${estado.posicaoVista === p.id ? " escolhido" : ""}" data-posicao="${escapar(p.id)}" tabindex="0">` +
+      `<rect x="${x}" y="${y}" width="${LARGURA_NO}" height="${ALTURA_NO}" rx="10" />` +
+      `<circle cx="${x + 22}" cy="${y + 26}" r="12" fill="${persona?.cor ?? "var(--borda)"}" />` +
+      `<text class="inicial" x="${x + 22}" y="${y + 30}">${escapar(persona?.inicial ?? "?")}</text>` +
+      `<text class="titulo-no" x="${x + 42}" y="${y + 24}">${escapar(p.titulo)}</text>` +
+      `<text class="persona-no" x="${x + 42}" y="${y + 42}">${escapar(p.personaNome ?? "vaga")}</text>` +
+      `<text class="capacidades-no" x="${x + 12}" y="${y + 66}">${escapar(capacidades)}</text>` +
+      `</g>`
+    )
+  })
+  return (
+    `<svg class="organograma" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}" role="img" aria-label="organograma da equipe ${escapar(equipe.nome)}">` +
+    linhas.join("") +
+    `<g class="no-ueslei"><rect x="${ueslei.x}" y="${ueslei.y}" width="${ueslei.w}" height="${ueslei.h}" rx="22" />` +
+    `<text x="${ueslei.x + ueslei.w / 2}" y="${ueslei.y + 27}">Ueslei</text></g>` +
+    nos.join("") +
+    `</svg>`
+  )
+}
+
+function detalheDaPosicao(equipe, p) {
+  const div = document.createElement("div")
+  div.className = "msg perfil-msg documento detalhe-posicao"
+  const chefe = equipe.posicoes.find((c) => c.id === p.respondeA)
+  const abertas = estado.tarefas.filter(
+    (t) => t.equipe === equipe.id && t.posicao === p.id && t.status !== "concluida" && t.status !== "cancelada",
+  )
+  const linhas = [
+    `<strong>${escapar(p.titulo)}</strong> <small>(${escapar(p.id)})</small>`,
+    `Persona: ${escapar(p.personaNome ?? "vaga")}`,
+    `Responde a: ${escapar(chefe ? chefe.titulo : "Ueslei")}`,
+    `Capacidades: ${escapar(p.capacidades.map((c) => NOMES_CAPACIDADE[c] ?? c).join(", ") || "nenhuma")}`,
+    p.capacidades.includes("comandos") ? `Aprovação de comando: ${escapar(p.aprovacao)}` : "",
+    p.diretorio ? `Diretório: <code>${escapar(p.diretorio)}</code>` : "",
+  ]
+  div.innerHTML = linhas.filter(Boolean).join("<br>")
+  if (abertas.length) {
+    const ul = document.createElement("ul")
+    ul.className = "lista-decisoes"
+    for (const t of abertas) {
+      const li = document.createElement("li")
+      li.innerHTML = `<span class="status ${t.status}">#${t.id}</span>${escapar(t.titulo)}`
+      li.onclick = () => {
+        estado.equipeDasTarefas = t.equipe
+        abrirTarefas()
+        enviar({ tipo: "tarefa", id: t.id })
+      }
+      ul.appendChild(li)
+    }
+    div.appendChild(ul)
+  }
+  return div
+}
+
+let formDePersona = null
+
+function formNovaPersona() {
+  if (formDePersona) return formDePersona
+  const form = document.createElement("form")
+  form.className = "nova-tarefa nova-persona"
+  form.innerHTML =
+    `<input name="nome" placeholder="Nome da persona" maxlength="40" required />` +
+    `<input name="titulo" placeholder="Papel curto (aparece na lista)" maxlength="60" />` +
+    `<textarea name="base" rows="4" maxlength="4000" required placeholder="Quem é, que papel tem com você e qual é o jeito dela"></textarea>` +
+    `<select name="modelo" aria-label="modelo"><option value="">modelo padrão</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>` +
+    `<label class="cor-persona">cor <input name="cor" type="color" value="#5b8def" /></label>` +
+    `<button type="submit">Criar persona</button>`
+  let corEscolhida = false
+  form.querySelector('[name="cor"]').addEventListener("input", () => (corEscolhida = true))
+  form.onsubmit = (ev) => {
+    ev.preventDefault()
+    const dados = new FormData(form)
+    const persona = {
+      nome: String(dados.get("nome") ?? "").trim(),
+      titulo: String(dados.get("titulo") ?? "").trim(),
+      base: String(dados.get("base") ?? "").trim(),
+      modelo: String(dados.get("modelo") ?? "") || undefined,
+      cor: corEscolhida ? String(dados.get("cor")) : undefined,
+    }
+    if (!persona.nome || !persona.base) return
+    enviar({ tipo: "persona-criar", persona })
+    form.reset()
+    corEscolhida = false
+  }
+  formDePersona = form
+  return form
+}
+
+function secaoDePersonas() {
+  const secao = document.createElement("section")
+  secao.className = "secao-personas"
+  const titulo = document.createElement("h3")
+  titulo.className = "grupo-tarefas"
+  titulo.textContent = `Personas · ${estado.personas.length}`
+  secao.appendChild(titulo)
+  const ul = document.createElement("ul")
+  ul.className = "lista-decisoes"
+  for (const p of estado.personas) {
+    const li = document.createElement("li")
+    li.innerHTML =
+      `<span class="avatar avatar-balao ${p.id}">${escapar(p.inicial)}</span>${escapar(p.nome)}` +
+      `<small>${escapar([p.titulo, p.modelo, p.gerandoPerfil ? "gerando perfil…" : ""].filter(Boolean).join(" · "))}</small>`
+    if (p.excluivel) {
+      const excluir = document.createElement("button")
+      excluir.className = "excluir-persona"
+      excluir.textContent = "Excluir"
+      excluir.onclick = () => {
+        const confirmacao = prompt(
+          `Excluir ${p.nome}? As posições dela ficam vagas e as conversas viram só leitura. Digite ${p.nome} para confirmar.`,
+        )
+        if (confirmacao !== null) enviar({ tipo: "persona-excluir", id: p.id, confirmacao })
+      }
+      li.appendChild(excluir)
+    }
+    ul.appendChild(li)
+  }
+  secao.appendChild(ul)
+  secao.appendChild(formNovaPersona())
+  return secao
+}
+
+function renderEquipes() {
+  if (estado.modo !== "equipes") return
+  limparTela()
+  const equipe = equipeDe(estado.equipeVista) ?? estado.equipes[0]
+  if (equipe) {
+    estado.equipeVista = equipe.id
+    definirCabecalho("equipes", `Equipes — ${equipe.nome}`)
+    if (estado.equipes.length > 1) {
+      el.mensagens.appendChild(
+        seletorDeEquipe(equipe.id, (id) => {
+          estado.equipeVista = id
+          estado.posicaoVista = null
+          renderEquipes()
+        }),
+      )
+    }
+    const rolagem = document.createElement("div")
+    rolagem.className = "organograma-rolagem"
+    rolagem.innerHTML = equipe.posicoes.length ? svgDoOrganograma(equipe) : "<p>Equipe sem posições.</p>"
+    rolagem.onclick = (ev) => {
+      const no = ev.target.closest("[data-posicao]")
+      if (!no) return
+      estado.posicaoVista = estado.posicaoVista === no.dataset.posicao ? null : no.dataset.posicao
+      renderEquipes()
+    }
+    el.mensagens.appendChild(rolagem)
+    const vista = equipe.posicoes.find((p) => p.id === estado.posicaoVista)
+    if (vista) el.mensagens.appendChild(detalheDaPosicao(equipe, vista))
+  }
+  el.mensagens.appendChild(secaoDePersonas())
+}
+
 // ── envio ──────────────────────────────────────────────────────────
 
 function submeter() {
@@ -723,6 +994,7 @@ function submeter() {
   if (estado.respostaEmCurso) return
   if (!texto && !(noChat && anexos.length)) return
   if (estado.modo === "tarefas" && !estado.tarefaId) return
+  if (estado.modo === "equipes") return
   el.entrada.value = ""
   ajustarEntrada()
 
@@ -752,7 +1024,7 @@ function submeter() {
       anexos: ids,
       modelo: el.modelo.value,
       auto: estado.auto,
-      foco: EXECUTORES.includes(estado.perfil) ? (estado.foco ?? "") : undefined,
+      foco: ehExecutor(estado.perfil) ? (estado.foco ?? "") : undefined,
     }
     if (estado.conversaId) {
       enviar({ tipo: "mensagem", conversaId: estado.conversaId, ...comum })
@@ -775,8 +1047,8 @@ function mostrarDigitando(perfil) {
     indicadorDigitando = document.createElement("div")
     indicadorDigitando.className = "msg digitando"
     indicadorDigitando.innerHTML =
-      `<span class="avatar avatar-balao ${perfil}">${INICIAIS[perfil] ?? "?"}</span>` +
-      `<span class="autor ${perfil}">${NOMES[perfil] ?? ""}</span>` +
+      `<span class="avatar avatar-balao ${perfil}">${inicialDe(perfil)}</span>` +
+      `<span class="autor ${perfil}">${escapar(nomeDe(perfil))}</span>` +
       `<span class="pontos"><i></i><i></i><i></i></span>`
   }
   el.mensagens.appendChild(indicadorDigitando)
@@ -834,7 +1106,7 @@ function tratar(msg) {
       for (const meta of msg.lista) {
         const li = document.createElement("li")
         li.innerHTML =
-          `<span class="avatar ${meta.perfil}">${INICIAIS[meta.perfil] ?? "?"}</span>` +
+          `<span class="avatar ${meta.perfil}">${inicialDe(meta.perfil)}</span>` +
           `<span class="linha"><span class="titulo">${escapar(meta.titulo)}</span>` +
           `<time>${quando(meta.criadaEm)}</time></span>`
         li.onclick = () => {
@@ -861,7 +1133,7 @@ function tratar(msg) {
     }
     case "criada": {
       estado.conversaId = msg.meta.id
-      definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
+      definirCabecalho(msg.meta.perfil, `${nomeDe(msg.meta.perfil)} — ${msg.meta.titulo}`)
       enviar({ tipo: "listar" })
       informarVisivel()
       break
@@ -874,7 +1146,7 @@ function tratar(msg) {
       estado.foco = msg.meta.foco ?? null
       ajustarAoModo()
       selecionarBotao(`[data-perfil="${msg.meta.perfil}"]`)
-      definirCabecalho(msg.meta.perfil, `${NOMES[msg.meta.perfil]} — ${msg.meta.titulo}`)
+      definirCabecalho(msg.meta.perfil, `${nomeDe(msg.meta.perfil)} — ${msg.meta.titulo}`)
       el.modelo.value = msg.meta.modelo ?? "haiku"
       irParaConversa()
       informarVisivel()
@@ -938,11 +1210,19 @@ function tratar(msg) {
     case "equipes": {
       estado.equipes = msg.lista
       renderTarefas()
+      renderEquipes()
+      break
+    }
+    case "personas": {
+      estado.personas = msg.lista
+      renderPersonas()
+      renderEquipes()
       break
     }
     case "tarefas": {
       estado.tarefas = msg.lista
       renderTarefas()
+      renderEquipes()
       break
     }
     case "tarefa": {
@@ -993,10 +1273,6 @@ function tratar(msg) {
 
 // ── ligação da UI ──────────────────────────────────────────────────
 
-document.querySelectorAll(".perfil").forEach((b) => {
-  b.onclick = () => abrirPerfil(b.dataset.perfil)
-})
-
 el.auto.onclick = () => {
   estado.auto = !estado.auto
   refletirAuto()
@@ -1014,6 +1290,7 @@ el.ticktask.onclick = () => {
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
 document.getElementById("botao-tarefas").onclick = abrirTarefas
+document.getElementById("botao-equipes").onclick = abrirEquipes
 document.getElementById("citacao-fechar").onclick = limparCitacao
 el.voltar.onclick = irParaLista
 el.fab.onclick = () => (document.body.dataset.folha === "aberta" ? fecharFolha() : abrirFolha())

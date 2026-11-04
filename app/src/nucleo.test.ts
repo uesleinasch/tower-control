@@ -1145,7 +1145,8 @@ describe("contrato do protocolo", () => {
   test("app.js envia e trata exatamente os tipos de docs/protocolo.json", async () => {
     const protocolo = (await Bun.file(join(raiz, "docs", "protocolo.json")).json()) as Protocolo
     const web = await ler("app/web/app.js")
-    expect(tiposEmitidos(web)).toEqual([...protocolo["cliente→servidor"]].sort())
+    const soDesktop = new Set(protocolo["cliente→servidor só no desktop"] ?? [])
+    expect(tiposEmitidos(web)).toEqual(protocolo["cliente→servidor"].filter((t) => !soDesktop.has(t)).sort())
     expect(tiposTratados(web)).toEqual([...protocolo["servidor→cliente"]].sort())
   })
 

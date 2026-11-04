@@ -85,6 +85,7 @@ body {
 .avatar.board { background: var(--board); }
 .avatar.decisoes { background: var(--decisoes); }
 .avatar.tarefas { background: var(--tarefas); }
+.avatar.equipes { background: var(--board); }
 .avatar[hidden] { display: none; }
 
 .nome { display: flex; flex-direction: column; font-size: 14px; }
@@ -768,3 +769,23 @@ body {
 @media (prefers-reduced-motion: reduce) {
   #lateral, #principal, #perfis, #veu { animation: none; }
 }
+
+.seletor-equipe { margin: 4px 0 8px; background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 6px 8px; max-width: 100%; }
+.organograma-rolagem { overflow-x: auto; max-width: 100%; margin-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.organograma { display: block; }
+.organograma .ligacao { fill: none; stroke: var(--borda); stroke-width: 2; }
+.organograma .no-org { cursor: pointer; }
+.organograma .no-org rect { fill: var(--painel-2); stroke: var(--borda); }
+.organograma .no-org.escolhido rect, .organograma .no-org:focus rect { stroke: var(--acento); stroke-width: 2; outline: none; }
+.organograma .no-org:focus { outline: none; }
+.organograma text { fill: var(--texto); font-size: 13px; }
+.organograma .titulo-no { font-weight: 600; }
+.organograma .persona-no, .organograma .capacidades-no { fill: var(--texto-2); font-size: 12px; }
+.organograma .inicial { fill: #10131a; font-size: 12px; font-weight: 700; text-anchor: middle; }
+.organograma .no-ueslei rect { fill: var(--acento); }
+.organograma .no-ueslei text { fill: #fff; text-anchor: middle; font-weight: 600; }
+.detalhe-posicao { margin-bottom: 8px; }
+.secao-personas .lista-decisoes li { display: flex; align-items: center; gap: 8px; }
+.secao-personas .excluir-persona { margin-left: auto; background: transparent; color: var(--perigo); border: 1px solid var(--perigo); border-radius: 8px; padding: 2px 10px; cursor: pointer; }
+.nova-persona textarea { width: 100%; box-sizing: border-box; background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 8px; font: inherit; resize: vertical; }
+.nova-persona .cor-persona { display: flex; align-items: center; gap: 6px; color: var(--texto-2); font-size: 13px; }

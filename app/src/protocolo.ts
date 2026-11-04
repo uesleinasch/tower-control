@@ -1,6 +1,7 @@
 export interface Protocolo {
   "cliente→servidor": string[]
   "servidor→cliente": string[]
+  "cliente→servidor só no desktop"?: string[]
 }
 
 function unicos(fonte: string, padrao: RegExp): string[] {
