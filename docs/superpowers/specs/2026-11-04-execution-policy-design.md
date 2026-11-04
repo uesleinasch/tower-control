@@ -81,8 +81,10 @@ A tarefa ganha duas colunas:
   primeira.
 
 O status continua o mesmo: com a executora, a tarefa segue `a_fazer`/`em_andamento`; em
-qualquer etapa, fica `em_revisao`. A máquina de estados de `tarefa.ts` e os espelhos em
-`app.js` e `tarefas.dart` não mudam. As regras ficam puras, num `politica.ts`:
+qualquer etapa, fica `em_revisao`. A máquina de estados de `tarefa.ts` ganha só
+`em_revisao → bloqueada` (voltas demais, autorrevisão e falhas seguidas na revisão), espelhada
+em `app.js` e `tarefas.dart`. A coluna `voltas` guarda quantos pedidos de mudança a etapa de
+`retorno` já fez. As regras ficam puras, num `politica.ts`:
 
 - `aposEntrega(politica, retorno)` → `{ etapa: retorno ?? 0 }`, ou `ueslei` quando não há
   política (comportamento da fase 5);
@@ -113,8 +115,10 @@ da revisora tenha essas capacidades. O MCP `orquestra` da revisão troca `delega
 - `aprovar(parecer)`: registra o parecer e aprova;
 - `pedir_mudanca(o_que_mudar)`: registra o pedido e devolve à executora.
 
-`comentar` e `pedir_ajuda` continuam. A sessão é a do par (tarefa, persona), então a
-revisora retoma a própria sessão na segunda rodada.
+`comentar` continua; `pedir_ajuda` não entra na revisão **(decisão desta fase)**: a revisora
+que acha que falta algo pede mudança dizendo o quê, e quem não decide cai na regra abaixo. A
+sessão é a do par (tarefa, persona), então a revisora retoma a própria sessão na segunda
+rodada.
 
 **Bloco da tarefa:** a revisora recebe o bloco `<tarefa>` de sempre (descrição, porquê,
 cadeia de pais, histórico desde a última execução dela) mais as regras de revisão: "Você
@@ -218,8 +222,10 @@ também não gera mais o aviso de entrega; ele só sai quando a entrega cai no U
   `comQuem` (rótulo pronto da seção 8);
 - a posição em `equipes` ganha `politica`.
 
-`orquestra.db` sobe para a versão 4: `tarefas` ganha `politica` (JSON), `etapa` e `retorno`;
-`execucoes` ganha `etapa`. Tarefas antigas ficam com política vazia.
+`orquestra.db` sobe para a versão 4: `tarefas` ganha `politica` (JSON), `etapa`, `retorno` e
+`voltas`; `execucoes` ganha `etapa`. Tarefas antigas ficam com política vazia. A tarefa nas
+mensagens também leva `voltas`, e os gatilhos `revisao` e `mudanca` entram nos nomes de
+gatilho dos clientes.
 
 ## 10. Testes
 
