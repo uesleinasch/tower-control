@@ -31,7 +31,7 @@ export interface Tarefa {
 export interface Registro {
   id: number
   tarefa: number
-  tipo: "comentario" | "status"
+  tipo: "comentario" | "status" | "entrega" | "ajuda"
   autor: string
   texto: string
   em: string
@@ -52,7 +52,7 @@ const TRANSICOES: Record<StatusTarefa, readonly StatusTarefa[]> = {
   backlog: ["a_fazer", "cancelada"],
   a_fazer: ["em_andamento", "backlog", "bloqueada", "cancelada"],
   em_andamento: ["em_revisao", "concluida", "bloqueada", "a_fazer", "cancelada"],
-  em_revisao: ["concluida", "em_andamento", "cancelada"],
+  em_revisao: ["concluida", "em_andamento", "a_fazer", "cancelada"],
   bloqueada: ["a_fazer", "cancelada"],
   concluida: ["a_fazer"],
   cancelada: ["backlog"],

@@ -1,13 +1,15 @@
 import { join } from "node:path"
 import { appendFile, mkdir } from "node:fs/promises"
 
-export type TipoDeUso = "chat" | "board-parecer" | "board-sintese" | "consolidacao" | "sonho" | "migracao"
+export type TipoDeUso = "chat" | "board-parecer" | "board-sintese" | "consolidacao" | "sonho" | "migracao" | "tarefa"
 
 export interface RegistroDeUso {
   ts: string
   tipo: TipoDeUso
   perfil?: string
   conversaId?: string
+  tarefaId?: number
+  execucaoId?: number
   sessionId?: string
   modelo?: string
   chamadas: number
@@ -31,6 +33,8 @@ export function coletorDeUso(base: {
   tipo: TipoDeUso
   perfil?: string
   conversaId?: string
+  tarefaId?: number
+  execucaoId?: number
   modelo?: string
   retomada?: boolean
 }) {
@@ -80,6 +84,8 @@ export function coletorDeUso(base: {
         tipo: base.tipo,
         perfil: base.perfil,
         conversaId: base.conversaId,
+        tarefaId: base.tarefaId,
+        execucaoId: base.execucaoId,
         sessionId,
         modelo: base.modelo,
         chamadas: porMensagem.size,
@@ -99,6 +105,7 @@ export async function* comUso<T>(
   raiz: string,
   base: Parameters<typeof coletorDeUso>[0],
   fluxo: AsyncIterable<T>,
+  aoRegistrar?: (registro: RegistroDeUso) => void,
 ): AsyncGenerator<T> {
   const coletor = coletorDeUso(base)
   try {
@@ -107,7 +114,9 @@ export async function* comUso<T>(
       yield msg
     }
   } finally {
-    await gravarUso(raiz, coletor.registro())
+    const registro = coletor.registro()
+    aoRegistrar?.(registro)
+    await gravarUso(raiz, registro)
   }
 }
 

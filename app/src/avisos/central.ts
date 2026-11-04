@@ -2,7 +2,7 @@ import { join } from "node:path"
 import { randomUUID } from "node:crypto"
 import { appendFile, mkdir, rename } from "node:fs/promises"
 
-export type TipoDeAviso = "resposta" | "aprovacao" | "lembrete" | "resumo" | "atrasada"
+export type TipoDeAviso = "resposta" | "aprovacao" | "lembrete" | "resumo" | "atrasada" | "tarefa"
 export type Acao = "aprovar" | "negar" | "concluir" | "adiar" | "responder"
 export type Como = "aprovado" | "negado" | "concluida" | "adiada" | "respondido" | "lido" | "expirado"
 

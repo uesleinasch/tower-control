@@ -29,3 +29,34 @@ export function avisoDeAprovacao(permissaoId: string, conversaId: string, comand
     expiraEm: expiraEm.toISOString(),
   }
 }
+
+export function avisoDeAprovacaoEmTarefa(
+  permissaoId: string,
+  tarefaId: number,
+  nome: string,
+  comando: string,
+  expiraEm: Date,
+): NovoAviso {
+  return {
+    id: permissaoId,
+    tipo: "aprovacao",
+    titulo: `${nome} quer rodar um comando em #${tarefaId}`,
+    corpo: comando,
+    alvo: { tarefaId, permissaoId },
+    acoes: ["aprovar", "negar"],
+    expiraEm: expiraEm.toISOString(),
+  }
+}
+
+function avisoDeTarefa(tarefaId: number, titulo: string, corpo: string): NovoAviso {
+  return { tipo: "tarefa", titulo, corpo: resumir(corpo) || "(sem texto)", alvo: { tarefaId }, acoes: [] }
+}
+
+export const avisoDeEntrega = (tarefaId: number, nome: string, entrega: string) =>
+  avisoDeTarefa(tarefaId, `${nome} entregou #${tarefaId}`, entrega)
+
+export const avisoDePedidoDeAjuda = (tarefaId: number, nome: string, motivo: string) =>
+  avisoDeTarefa(tarefaId, `${nome} pediu ajuda em #${tarefaId}`, motivo)
+
+export const avisoDeBloqueio = (tarefaId: number, erro: string) =>
+  avisoDeTarefa(tarefaId, `#${tarefaId} bloqueada`, `Falhou duas vezes seguidas. Último erro: ${erro}`)

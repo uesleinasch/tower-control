@@ -27,6 +27,10 @@ import { Elenco, casaInicial, personaIdValido, personaInicial, validarEquipe } f
 import { lerElenco, migrarParaPersonas } from "./orquestra/elenco"
 import { lerNovaTarefa, podeMudar } from "./orquestra/tarefa"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
+import { blocoDaTarefa, custoDaExecucao, escolher, falhasSeguidas, podeMudarExecucao } from "./orquestra/execucao"
+import { opcoesDaPosicao } from "./orquestra/capacidades"
+import { Orquestra } from "./orquestra/runtime"
+import type { trabalhar } from "./sessions"
 import { Database } from "bun:sqlite"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, filaPorChave, idValido, lerMensagens, lerMeta } from "./store"
 import { apagarSessao, diretorioDeSessoes } from "./sessao-sdk"
@@ -377,6 +381,269 @@ describe("tarefas internas", () => {
       await rm(raiz, { recursive: true, force: true })
     }
   })
+})
+
+describe("runtime de execução", () => {
+  const casa = casaInicial(["alfred", "nati", "poe"])
+  const equipes = (id: string) => (id === "casa" ? casa : undefined)
+  const nova = (extra: Record<string, unknown> = {}) =>
+    lerNovaTarefa({ equipe: "casa", posicao: "executor", titulo: "Rodar os testes", ...extra }, equipes)
+  const agora = new Date("2026-11-04T12:00:00Z")
+
+  function comRepo(corpo: (repo: Repositorio) => void | Promise<void>) {
+    return async () => {
+      const repo = new Repositorio(":memory:")
+      try {
+        await corpo(repo)
+      } finally {
+        repo.fechar()
+      }
+    }
+  }
+
+  test("a revisão pode devolver a tarefa, e execução terminada não muda mais", () => {
+    expect(podeMudar("em_revisao", "a_fazer")).toBe(true)
+    expect(podeMudarExecucao("na_fila", "rodando")).toBe(true)
+    expect(podeMudarExecucao("rodando", "concluida")).toBe(true)
+    expect(podeMudarExecucao("concluida", "rodando")).toBe(false)
+    expect(podeMudarExecucao("na_fila", "concluida")).toBe(false)
+  })
+
+  test(
+    "acordar a mesma tarefa duas vezes deixa uma execução só na fila",
+    comRepo((repo) => {
+      repo.criar(nova(), "ueslei")
+      const primeira = repo.enfileirar(1, "atribuicao", agora)
+      const segunda = repo.enfileirar(1, "comentario", agora)
+      expect(primeira.juntada).toBe(false)
+      expect(segunda).toMatchObject({ juntada: true, execucao: { id: primeira.execucao.id, gatilho: "atribuicao" } })
+      expect(repo.comStatus("na_fila")).toHaveLength(1)
+      repo.comecar(primeira.execucao.id, "alfred", "haiku", agora)
+      expect(repo.exigir(1)).toMatchObject({ status: "em_andamento", dono: "execucao:1" })
+      expect(repo.enfileirar(1, "comentario", agora).juntada).toBe(false)
+    }),
+  )
+
+  test("o despachante respeita vaga, persona ocupada, teto, espera e status da tarefa", () => {
+    const tarefa = (id: number, status = "a_fazer") => ({ id, status }) as never
+    const exec = (id: number, tarefa: number, naoAntes: string | null = null) => ({ id, tarefa, naoAntes }) as never
+    const c = (id: number, persona: string | null, extra: Partial<{ status: string; deps: boolean; naoAntes: string }> = {}) => ({
+      execucao: exec(id, id, extra.naoAntes ?? null),
+      tarefa: tarefa(id, extra.status ?? "a_fazer"),
+      persona,
+      dependenciasConcluidas: extra.deps ?? true,
+    })
+    expect(
+      escolher(
+        [
+          c(1, "alfred"),
+          c(2, "alfred"),
+          c(3, null),
+          c(4, "nati", { status: "concluida" }),
+          c(5, "poe", { deps: false }),
+          c(6, "pami", { naoAntes: "2026-11-04T12:01:00Z" }),
+          c(7, "lucas"),
+          c(8, "zeca"),
+        ],
+        [],
+        2,
+        agora,
+      ),
+    ).toEqual([
+      { acao: "comecar", execucao: 1, persona: "alfred" },
+      { acao: "descartar", execucao: 4, motivo: "nada a fazer: a tarefa está concluída" },
+      { acao: "descartar", execucao: 5, motivo: "nada a fazer: depende de tarefa não concluída" },
+      { acao: "comecar", execucao: 7, persona: "lucas" },
+    ])
+    expect(escolher([c(1, "alfred", { status: "em_andamento" })], [{ tarefa: 1, persona: "nati" }], 2, agora)).toEqual([])
+  })
+
+  test("falhas seguidas contam só até a última execução que deu certo ou foi parada", () => {
+    const e = (id: number, status: string, falha: boolean) => ({ id, status, falha, inicio: "x" }) as never
+    expect(falhasSeguidas([e(1, "falhou", true), e(2, "concluida", false), e(3, "falhou", true), e(4, "interrompida", true)])).toBe(2)
+    expect(falhasSeguidas([e(1, "falhou", true), e(2, "interrompida", false)])).toBe(0)
+    expect(falhasSeguidas([])).toBe(0)
+  })
+
+  test("o custo da execução é a diferença do acumulado da sessão", () => {
+    expect(custoDaExecucao(0.5, 0.2, true)).toBeCloseTo(0.3)
+    expect(custoDaExecucao(0.5, null, false)).toBe(0.5)
+    expect(custoDaExecucao(0.5, null, true)).toBeNull()
+    expect(custoDaExecucao(undefined, 0.2, true)).toBeNull()
+  })
+
+  test("nenhuma posição põe Bash entre as auto-aprovadas, e comandos ligam o hook", () => {
+    const todas = ["arquivos", "comandos", "ticktask", "memoria", "board"] as const
+    for (let mascara = 0; mascara < 1 << todas.length; mascara++) {
+      const capacidades = todas.filter((_, i) => mascara & (1 << i))
+      for (const aprovacao of ["sempre", "sensiveis", "auto"] as const) {
+        const o = opcoesDaPosicao({ id: "p", titulo: "p", persona: null, respondeA: null, capacidades: [...capacidades], aprovacao })
+        expect(o.autoAprovadas).not.toContain("Bash")
+        expect(o.nativas.includes("Bash")).toBe(capacidades.includes("comandos"))
+        expect(o.comandos).toBe(capacidades.includes("comandos"))
+        expect(o.permissionMode).toBe(capacidades.includes("comandos") ? "default" : "acceptEdits")
+        expect(o.liberaComandoComum).toBe(aprovacao !== "sempre")
+        expect(o.autoAprovadas).toContain("mcp__orquestra__pedir_ajuda")
+      }
+    }
+  })
+
+  test(
+    "o bloco da tarefa traz a cadeia de pais e só o que mudou desde a última execução",
+    comRepo((repo) => {
+      repo.criar(nova({ titulo: "Lançar a versão", porque: "o celular precisa" }), "ueslei")
+      repo.criar(nova({ pai: 1, descricao: "rodar bun test", porque: "não quebrar" }), "ueslei")
+      repo.comentar(2, "ueslei", "antes", new Date("2026-11-04T10:00:00Z"))
+      repo.comentar(2, "alfred", "metade pronta", new Date("2026-11-04T11:30:00Z"))
+      repo.comentar(2, "ueslei", "faltou o flutter", new Date("2026-11-04T11:40:00Z"))
+      const bloco = blocoDaTarefa(repo.exigir(2), repo.cadeiaDePais(2), repo.registros(2), "alfred", "2026-11-04T11:00:00.000Z")
+      expect(bloco.startsWith("<tarefa>")).toBe(true)
+      expect(bloco).toContain("## Tarefa #2: Rodar os testes")
+      expect(bloco).toContain("rodar bun test")
+      expect(bloco).toContain("- #1 Lançar a versão: o celular precisa")
+      expect(bloco).toContain("Ueslei comentou: faltou o flutter")
+      expect(bloco).not.toContain("antes")
+      expect(bloco).not.toContain("metade pronta")
+      expect(blocoDaTarefa(repo.exigir(2), [], repo.registros(2), "alfred", null)).toContain("Ueslei comentou: antes")
+    }),
+  )
+
+  test(
+    "na subida, execução que rodava vira interrompida e a tarefa volta para a fazer",
+    comRepo((repo) => {
+      repo.criar(nova(), "ueslei")
+      const { execucao } = repo.enfileirar(1, "atribuicao", agora)
+      repo.comecar(execucao.id, "alfred", "haiku", agora)
+      const [interrompida] = repo.interrompidasNaSubida(agora)
+      expect(interrompida).toMatchObject({ status: "interrompida", falha: true })
+      expect(repo.exigir(1)).toMatchObject({ status: "a_fazer", dono: null })
+    }),
+  )
+
+  test("o banco da versão 1 ganha as tabelas de execução", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-orquestra-"))
+    try {
+      const caminho = caminhoDoBanco(raiz)
+      new Repositorio(caminho).fechar()
+      const db = new Database(caminho)
+      db.exec("DROP TABLE eventos; DROP TABLE execucoes; PRAGMA user_version = 1")
+      db.close()
+      const repo = new Repositorio(caminho)
+      repo.criar(nova(), "ueslei")
+      expect(repo.enfileirar(1, "atribuicao").juntada).toBe(false)
+      repo.fechar()
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  function montarOrquestra(repo: Repositorio, trabalho: (o: Parameters<typeof trabalhar>[0]) => Promise<{ texto: string; sessionId?: string }>) {
+    const avisos: { titulo: string }[] = []
+    const chamadas: Parameters<typeof trabalhar>[0][] = []
+    const orquestra = new Orquestra({
+      raiz: "/tmp/nao-usado",
+      repo,
+      teto: 2,
+      equipe: equipes,
+      nome: (p) => p.charAt(0).toUpperCase() + p.slice(1),
+      modelo: () => "haiku",
+      trabalhar: async (o) => {
+        chamadas.push(o)
+        return trabalho(o)
+      },
+      publicarTarefa: () => {},
+      publicarExecucao: () => {},
+      publicarEvento: () => {},
+      avisar: (a) => avisos.push(a),
+      pedirComando: async () => false,
+      cancelarPedidos: () => {},
+    })
+    return { orquestra, avisos, chamadas }
+  }
+
+  const ate = async (condicao: () => boolean) => {
+    for (let i = 0; i < 100 && !condicao(); i++) await Bun.sleep(5)
+  }
+
+  test(
+    "tarefa atribuída roda sozinha, entrega e para em revisão; comentário na revisão acorda de novo",
+    comRepo(async (repo) => {
+      const { orquestra, avisos, chamadas } = montarOrquestra(repo, async (o) => {
+        o.onSessao("sessao-1")
+        o.onEvento("texto", "rodando os testes")
+        o.acoes.comentar("metade feita")
+        return { texto: "174 testes passaram", sessionId: "sessao-1" }
+      })
+      orquestra.aoCriar(repo.criar(nova(), "ueslei"))
+      await ate(() => repo.exigir(1).status === "em_revisao")
+      expect(repo.exigir(1).status).toBe("em_revisao")
+      expect(repo.execucoesDaTarefa(1)[0]).toMatchObject({ status: "concluida", persona: "alfred", sessionId: "sessao-1", resultado: "174 testes passaram" })
+      expect(repo.eventos(1).map((e) => e.conteudo)).toEqual(["rodando os testes"])
+      expect(repo.registros(1).filter((r) => r.tipo !== "status").map((r) => [r.tipo, r.autor, r.texto])).toEqual([
+        ["comentario", "alfred", "metade feita"],
+        ["entrega", "alfred", "174 testes passaram"],
+      ])
+      expect(avisos.map((a) => a.titulo)).toEqual(["Alfred entregou #1"])
+      expect(chamadas[0]!.sessionId).toBeUndefined()
+
+      repo.comentar(1, "ueslei", "roda o flutter também")
+      orquestra.aoComentar(1)
+      await ate(() => repo.execucoesDaTarefa(1).length === 2 && repo.exigir(1).status === "em_revisao")
+      expect(chamadas[1]!.sessionId).toBe("sessao-1")
+      expect(chamadas[1]!.bloco).toContain("roda o flutter também")
+      expect(chamadas[1]!.bloco).not.toContain("metade feita")
+      orquestra.parar()
+    }),
+  )
+
+  test(
+    "pedir ajuda bloqueia, e duas falhas seguidas também",
+    comRepo(async (repo) => {
+      const { orquestra, avisos } = montarOrquestra(repo, async (o) => {
+        if (o.tarefaId === 1) {
+          o.acoes.pedirAjuda("qual branch?")
+          return { texto: "parei" }
+        }
+        throw new Error("o SDK caiu")
+      })
+      orquestra.aoCriar(repo.criar(nova(), "ueslei"))
+      await ate(() => repo.exigir(1).status === "bloqueada")
+      expect(repo.exigir(1).status).toBe("bloqueada")
+      expect(avisos.map((a) => a.titulo)).toEqual(["Alfred pediu ajuda em #1"])
+
+      orquestra.aoCriar(repo.criar(nova(), "ueslei"))
+      await ate(() => repo.execucoesDaTarefa(2).length === 2)
+      const [primeira, segunda] = repo.execucoesDaTarefa(2)
+      expect(primeira).toMatchObject({ status: "falhou", erro: "o SDK caiu" })
+      expect(segunda).toMatchObject({ status: "na_fila", gatilho: "nova_tentativa", tentativa: 2 })
+      repo.db.query("UPDATE execucoes SET nao_antes = NULL").run()
+      orquestra.despachar()
+      await ate(() => repo.exigir(2).status === "bloqueada")
+      expect(repo.exigir(2).status).toBe("bloqueada")
+      expect(repo.comStatus("na_fila")).toEqual([])
+      expect(avisos.at(-1)!.titulo).toBe("#2 bloqueada")
+      orquestra.parar()
+    }),
+  )
+
+  test(
+    "mudar o status da tarefa em andamento para a execução sem contar como falha",
+    comRepo(async (repo) => {
+      const { orquestra } = montarOrquestra(
+        repo,
+        (o) =>
+          new Promise((_, rejeitar) => o.controle.signal.addEventListener("abort", () => rejeitar(new Error("abortado")))),
+      )
+      orquestra.aoCriar(repo.criar(nova(), "ueslei"))
+      await ate(() => orquestra.rodando(1))
+      repo.mudarStatus(1, "cancelada", "ueslei")
+      orquestra.aoMudarStatus(1, "em_andamento", "cancelada")
+      await ate(() => !orquestra.rodando(1))
+      expect(repo.execucoesDaTarefa(1)).toMatchObject([{ status: "interrompida", falha: false, erro: "parada pelo Ueslei" }])
+      expect(repo.exigir(1).status).toBe("cancelada")
+      orquestra.parar()
+    }),
+  )
 })
 
 describe("conselheiro e executor", () => {

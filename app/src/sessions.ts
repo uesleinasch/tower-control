@@ -1,17 +1,21 @@
 import { ambienteDoClaude, executavelDoClaude } from "./caminhos"
-import { comUso } from "./uso"
+import { comUso, type RegistroDeUso } from "./uso"
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import { mensagemDoConselheiro, mensagemDoExecutor, montarSystemPrompt } from "./prompt"
 import { blocoDeEscrita, carregarRitmo, classificar, lembreteDeForma, normalizadorDeStream, orcamento } from "./ritmo"
 import { MODELO_PADRAO, ehConselheiro, rodaComandos, type Perfil } from "./tipos"
 import { elenco } from "./orquestra/elenco"
-import { servidorTickTask } from "./ticktask"
+import { FERRAMENTAS_TICKTASK, servidorTickTask } from "./ticktask"
 import { exigeAprovacaoSempre } from "./comandos"
 import type { Memoria } from "./memoria/tipos"
 import { montarBrief } from "./memoria/recuperacao"
 import { FERRAMENTAS_MEMORIA, servidorDeMemoria } from "./memoria/ferramentas"
 import { FERRAMENTA_LEMBRETE, servidorDeLembretes } from "./avisos/ferramenta"
 import type { PedidoDeLembrete } from "./avisos/lembretes"
+import type { Posicao } from "./orquestra/equipe"
+import type { TipoDeEvento } from "./orquestra/execucao"
+import { opcoesDaPosicao } from "./orquestra/capacidades"
+import { servidorDaOrquestra, type AcoesDaTarefa } from "./orquestra/ferramentas"
 
 // allowedTools é lista de AUTO-APROVADAS, não de disponíveis. Pôr "Bash" aqui faria o
 // canUseTool ser pulado e o comando rodar sem ninguém aprovar.
@@ -21,28 +25,6 @@ const AUTO_APROVADAS = ["Read", "Write", "Edit", "Grep", "Glob"]
 // TaskCreate, Cron etc., e o Alfred no foco TickTask confunde "tasks" com o TaskList nativo.
 const NATIVAS_DO_CONSELHEIRO = AUTO_APROVADAS
 const NATIVAS_DO_EXECUTOR = [...AUTO_APROVADAS, "Bash"]
-
-// Nomeadas uma a uma porque não se sabe se allowedTools casa prefixo de MCP.
-const FERRAMENTAS_TICKTASK = [
-  "mcp__ticktask",
-  "mcp__ticktask__server_info",
-  "mcp__ticktask__list_structure",
-  "mcp__ticktask__manage_structure",
-  "mcp__ticktask__search_tasks",
-  "mcp__ticktask__get_task",
-  "mcp__ticktask__create_task",
-  "mcp__ticktask__update_task",
-  "mcp__ticktask__bulk_update_tasks",
-  "mcp__ticktask__delete_tasks",
-  "mcp__ticktask__read_notes",
-  "mcp__ticktask__write_notes",
-  "mcp__ticktask__organize_overview",
-  "mcp__ticktask__agenda",
-  "mcp__ticktask__plan_day",
-  "mcp__ticktask__timer",
-  "mcp__ticktask__time_report",
-  "mcp__ticktask__weekly_review",
-]
 
 interface OpcoesConversa {
   raiz: string
@@ -202,6 +184,104 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
     }
   }
   return { texto: saida ? saida.finalizar() : acumulado, sessionId }
+}
+
+interface OpcoesTrabalho {
+  raiz: string
+  persona: Perfil
+  posicao: Posicao
+  bloco: string
+  consulta: string
+  modelo: string
+  sessionId?: string
+  memoria?: Memoria
+  tarefaId: number
+  execucaoId: number
+  acoes: AcoesDaTarefa
+  controle: AbortController
+  onEvento: (tipo: TipoDeEvento, conteudo: string) => void
+  onComando: (comando: string, aprovar: boolean) => Promise<boolean>
+  onSessao: (sessionId: string) => void
+  onUso: (registro: RegistroDeUso) => void
+}
+
+const LIMITE_DE_TURNOS_EM_TAREFA = 60
+
+function resumirEntrada(entrada: unknown): string {
+  const texto = typeof entrada === "string" ? entrada : JSON.stringify(entrada ?? {})
+  return texto.length > 300 ? `${texto.slice(0, 299)}…` : texto
+}
+
+export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string; sessionId?: string }> {
+  const posicao = opcoesDaPosicao(opcoes.posicao)
+  const comMemoria = posicao.memoria ? opcoes.memoria : undefined
+  const brief = comMemoria ? await montarBrief(comMemoria, opcoes.persona, opcoes.consulta) : ""
+  const prompt = [opcoes.bloco, brief ? `<memória>\n${brief}\n</memória>` : ""].filter(Boolean).join("\n\n")
+  const ticktask = posicao.ticktask ? await servidorTickTask() : undefined
+  const mcp = {
+    ...ticktask,
+    ...(comMemoria ? { memoria: servidorDeMemoria(comMemoria, opcoes.persona, `tarefa:${opcoes.tarefaId}`) } : {}),
+    orquestra: servidorDaOrquestra(opcoes.acoes),
+  }
+  let sessionId = opcoes.sessionId
+  let final = ""
+  const uso = {
+    tipo: "tarefa" as const,
+    perfil: opcoes.persona,
+    tarefaId: opcoes.tarefaId,
+    execucaoId: opcoes.execucaoId,
+    modelo: opcoes.modelo,
+    retomada: Boolean(opcoes.sessionId),
+  }
+  const onComando = async (comando: string, aprovar: boolean) => {
+    if (aprovar) opcoes.onEvento("aprovacao", `aguardando aprovação: ${comando}`)
+    const liberado = await opcoes.onComando(comando, aprovar)
+    opcoes.onEvento("comando", `${liberado ? "rodou" : "negado"}: ${comando}`)
+    return liberado
+  }
+  for await (const msg of comUso(
+    opcoes.raiz,
+    uso,
+    query({
+      prompt: posicao.comandos ? comoStream(prompt) : prompt,
+      options: {
+        cwd: opcoes.posicao.diretorio ?? opcoes.raiz,
+        pathToClaudeCodeExecutable: executavelDoClaude(),
+        env: ambienteDoClaude(),
+        resume: opcoes.sessionId,
+        settingSources: [],
+        model: opcoes.modelo,
+        systemPrompt: await montarSystemPrompt(opcoes.raiz, opcoes.persona),
+        tools: posicao.nativas,
+        allowedTools: posicao.autoAprovadas,
+        mcpServers: mcp,
+        permissionMode: posicao.permissionMode,
+        hooks: posicao.comandos ? hookDeComando(posicao.liberaComandoComum, onComando) : undefined,
+        maxTurns: LIMITE_DE_TURNOS_EM_TAREFA,
+        abortController: opcoes.controle,
+      },
+    }),
+    opcoes.onUso,
+  )) {
+    const daMensagem = (msg as { session_id?: string }).session_id
+    if (daMensagem && daMensagem !== sessionId) {
+      sessionId = daMensagem
+      opcoes.onSessao(daMensagem)
+    }
+    if (msg.type === "assistant") {
+      const blocos = (msg as { message?: { content?: { type?: string; text?: string; name?: string; input?: unknown }[] } }).message
+        ?.content
+      for (const bloco of blocos ?? []) {
+        if (bloco.type === "text" && bloco.text?.trim()) opcoes.onEvento("texto", bloco.text.trim())
+        if (bloco.type === "tool_use" && bloco.name !== "Bash") opcoes.onEvento("ferramenta", `${bloco.name} ${resumirEntrada(bloco.input)}`)
+      }
+    } else if (msg.type === "result") {
+      const resultado = msg as { subtype?: string; result?: string }
+      if (resultado.subtype !== "success") throw new Error(`a execução terminou com "${resultado.subtype}"`)
+      final = typeof resultado.result === "string" ? resultado.result.trim() : ""
+    }
+  }
+  return { texto: final, sessionId }
 }
 
 export async function perguntarUmaVez(opcoes: {
