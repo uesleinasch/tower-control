@@ -77,6 +77,20 @@ class EstadoEquipes extends ChangeNotifier {
     notifyListeners();
   }
 
+  void novaSubordinada(String chefe, String titulo) {
+    final base = atual;
+    if (base == null) return;
+    try {
+      final r = adicionarSubordinada(base, chefe, titulo);
+      rascunho = r.equipe;
+      selecionada = r.id;
+      erro = null;
+    } on ErroDeOrganograma catch (e) {
+      erro = e.mensagem;
+    }
+    notifyListeners();
+  }
+
   void novaEquipe(String nome) {
     final limpo = nome.trim();
     if (limpo.isEmpty) return;

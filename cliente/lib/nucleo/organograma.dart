@@ -18,11 +18,10 @@ const politicasDeAprovacao = {
 
 const larguraDoCartao = 220.0;
 const alturaDoCartao = 78.0;
-const topoDoOrganograma = 110.0;
+const topoDoOrganograma = 40.0;
 const margemDoOrganograma = 20.0;
 const distanciaX = 280.0;
-const larguraDoUeslei = 120.0;
-const alturaDoUeslei = 44.0;
+const distanciaY = 160.0;
 
 final _slug = RegExp(r'^[a-z][a-z0-9-]{0,47}$');
 final _persona = RegExp(r'^[a-z]{2,24}$');
@@ -148,40 +147,22 @@ Ponto cantoDoCartao(EquipeResumo e, String id) {
 }
 
 ({double largura, double altura}) tamanhoDoOrganograma(EquipeResumo e) {
-  var largura = larguraDoUeslei + 2 * margemDoOrganograma;
+  var largura = 2 * margemDoOrganograma;
   var altura = topoDoOrganograma + margemDoOrganograma;
   for (final p in e.posicoes) {
     final canto = cantoDoCartao(e, p.id);
     if (canto.x + larguraDoCartao + margemDoOrganograma > largura) largura = canto.x + larguraDoCartao + margemDoOrganograma;
     if (canto.y + alturaDoCartao + margemDoOrganograma > altura) altura = canto.y + alturaDoCartao + margemDoOrganograma;
   }
-  return (largura: largura + distanciaX, altura: altura + 160);
+  return (largura: largura + distanciaX, altura: altura + distanciaY);
 }
 
-Ponto cantoDoUeslei(EquipeResumo e) {
-  final raizes = e.posicoes.where((p) => p.respondeA == null || e.posicao(p.respondeA!) == null).toList();
-  if (raizes.isEmpty) return (x: margemDoOrganograma, y: 16);
-  final xs = raizes.map((p) => cantoDoCartao(e, p.id).x);
-  final meio = (xs.reduce((a, b) => a < b ? a : b) + xs.reduce((a, b) => a > b ? a : b) + larguraDoCartao) / 2;
-  return (x: meio - larguraDoUeslei / 2 < 0 ? 0 : meio - larguraDoUeslei / 2, y: 16);
-}
-
-sealed class Alvo {
-  const Alvo();
-}
-
-class NoUeslei extends Alvo {
-  const NoUeslei();
-}
-
-class NaPosicao extends Alvo {
+class NaPosicao {
   const NaPosicao(this.id);
   final String id;
 }
 
-Alvo? alvoEm(EquipeResumo e, double x, double y) {
-  final u = cantoDoUeslei(e);
-  if (x >= u.x && x <= u.x + larguraDoUeslei && y >= u.y && y <= u.y + alturaDoUeslei) return const NoUeslei();
+NaPosicao? alvoEm(EquipeResumo e, double x, double y) {
   for (final p in e.posicoes.reversed) {
     final c = cantoDoCartao(e, p.id);
     if (x >= c.x && x <= c.x + larguraDoCartao && y >= c.y && y <= c.y + alturaDoCartao) return NaPosicao(p.id);
@@ -189,24 +170,87 @@ Alvo? alvoEm(EquipeResumo e, double x, double y) {
   return null;
 }
 
-EquipeResumo ligarPelaAlca(EquipeResumo e, String origem, Alvo? destino) => switch (destino) {
-      NoUeslei() => soltar(e, origem),
-      NaPosicao(:final id) when id != origem => ligar(e, id, origem),
-      _ => e,
-    };
-
-const raioDaAlca = 11.0;
+const raioDaAlca = 13.0;
 const escalaMinima = 0.25;
 const escalaMaxima = 2.5;
 
+Ponto centroDaAlca(EquipeResumo e, String id) {
+  final c = cantoDoCartao(e, id);
+  return (x: c.x + larguraDoCartao / 2, y: c.y + alturaDoCartao + 6);
+}
+
 String? alcaEm(EquipeResumo e, double x, double y) {
   for (final p in e.posicoes.reversed) {
-    final c = cantoDoCartao(e, p.id);
-    final dx = x - (c.x + larguraDoCartao / 2);
-    final dy = y - (c.y + alturaDoCartao + 5);
-    if (dx * dx + dy * dy <= raioDaAlca * raioDaAlca) return p.id;
+    final centro = centroDaAlca(e, p.id);
+    final dx = x - centro.x;
+    final dy = y - centro.y;
+    if (dx * dx + dy * dy <= (raioDaAlca + 4) * (raioDaAlca + 4)) return p.id;
   }
   return null;
+}
+
+bool _sobrepoe(EquipeResumo e, String ignorar, double x, double y) => e.posicoes.any((p) {
+      if (p.id == ignorar || !e.layout.containsKey(p.id)) return false;
+      final o = e.ponto(p.id);
+      return (o.x - x).abs() < larguraDoCartao + 20 && (o.y - y).abs() < alturaDoCartao + 20;
+    });
+
+EquipeResumo posicionarAbaixo(EquipeResumo e, String filho, String chefe) {
+  final base = e.ponto(chefe);
+  final y = base.y + distanciaY;
+  final irmaos = e.posicoes.where((p) => p.respondeA == chefe && p.id != filho).length;
+  var x = base.x + irmaos * distanciaX;
+  while (_sobrepoe(e, filho, x, y)) {
+    x += distanciaX;
+  }
+  return mover(e, filho, x, y);
+}
+
+EquipeResumo ligarAbaixo(EquipeResumo e, String filho, String chefe) {
+  final ligada = ligar(e, filho, chefe);
+  return ligada.ponto(filho).y > ligada.ponto(chefe).y ? ligada : posicionarAbaixo(ligada, filho, chefe);
+}
+
+EquipeResumo ligarPelaAlca(EquipeResumo e, String origem, NaPosicao? destino) =>
+    destino == null || destino.id == origem ? e : ligarAbaixo(e, destino.id, origem);
+
+({EquipeResumo equipe, String id}) adicionarSubordinada(EquipeResumo e, String chefe, String titulo) {
+  if (e.posicao(chefe) == null) throw ErroDeOrganograma('a posição $chefe não existe');
+  final r = adicionarPosicao(e, titulo);
+  return (equipe: ligarAbaixo(r.equipe, r.id, chefe), id: r.id);
+}
+
+List<PosicaoResumo> chefesPossiveis(EquipeResumo e, String id) =>
+    [for (final p in e.posicoes) if (p.id != id && !formaCiclo(e, id, p.id)) p];
+
+EquipeResumo organizar(EquipeResumo e) {
+  final ids = {for (final p in e.posicoes) p.id};
+  String? chefeDe(PosicaoResumo p) => p.respondeA != null && ids.contains(p.respondeA) ? p.respondeA : null;
+  List<PosicaoResumo> filhos(String? chefe) => [for (final p in e.posicoes) if (chefeDe(p) == chefe) p];
+  final largura = <String, int>{};
+  int medir(PosicaoResumo p) {
+    final f = filhos(p.id);
+    return largura[p.id] = f.isEmpty ? 1 : f.map(medir).reduce((a, b) => a + b);
+  }
+
+  final layout = <String, Ponto>{};
+  void colocar(PosicaoResumo p, int inicio, int nivel) {
+    final colunas = largura[p.id]!;
+    layout[p.id] = (x: (inicio + (colunas - 1) / 2) * distanciaX, y: nivel * distanciaY);
+    var proximo = inicio;
+    for (final f in filhos(p.id)) {
+      colocar(f, proximo, nivel + 1);
+      proximo += largura[f.id]!;
+    }
+  }
+
+  var coluna = 0;
+  for (final raiz in filhos(null)) {
+    medir(raiz);
+    colocar(raiz, coluna, 0);
+    coluna += largura[raiz.id]!;
+  }
+  return e.copiar(layout: layout);
 }
 
 typedef Vista = ({double dx, double dy, double escala});
@@ -223,16 +267,16 @@ Vista zoomEm(Vista v, double focoX, double focoY, double escala) {
 
 Vista ajustarVista(EquipeResumo e, double largura, double altura) {
   if (e.posicoes.isEmpty || largura <= 0 || altura <= 0) return (dx: 0, dy: 0, escala: 1);
-  var minX = cantoDoUeslei(e).x;
-  var minY = cantoDoUeslei(e).y;
-  var maxX = minX + larguraDoUeslei;
-  var maxY = minY + alturaDoUeslei;
+  var minX = double.infinity;
+  var minY = double.infinity;
+  var maxX = double.negativeInfinity;
+  var maxY = double.negativeInfinity;
   for (final p in e.posicoes) {
     final c = cantoDoCartao(e, p.id);
     if (c.x < minX) minX = c.x;
     if (c.y < minY) minY = c.y;
     if (c.x + larguraDoCartao > maxX) maxX = c.x + larguraDoCartao;
-    if (c.y + alturaDoCartao + 16 > maxY) maxY = c.y + alturaDoCartao + 16;
+    if (c.y + alturaDoCartao + 20 > maxY) maxY = c.y + alturaDoCartao + 20;
   }
   const folga = 32.0;
   final escala = [

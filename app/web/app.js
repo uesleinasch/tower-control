@@ -788,7 +788,7 @@ function renderPersonas() {
 
 const LARGURA_NO = 220
 const ALTURA_NO = 78
-const TOPO_DO_ORGANOGRAMA = 110
+const TOPO_DO_ORGANOGRAMA = 30
 const NOMES_CAPACIDADE = { arquivos: "arquivos", comandos: "comandos", ticktask: "TickTask", memoria: "memória", board: "board" }
 
 function abrirEquipes() {
@@ -816,14 +816,14 @@ function svgDoOrganograma(equipe) {
   const maxY = Math.max(...ys) + ALTURA_NO
   const desloca = 20 - minX
   const no = (p) => ({ x: ponto(p).x + desloca, y: ponto(p).y + TOPO_DO_ORGANOGRAMA })
-  const ueslei = { x: (minX + maxX) / 2 + desloca - 60, y: 16, w: 120, h: 44 }
   const largura = maxX - minX + 40
   const altura = maxY + TOPO_DO_ORGANOGRAMA + 20
   const linhas = equipe.posicoes.map((p) => {
     const chefe = equipe.posicoes.find((c) => c.id === p.respondeA)
+    if (!chefe) return ""
     const de = no(p)
     const x1 = de.x + LARGURA_NO / 2
-    const [x2, y2] = chefe ? [no(chefe).x + LARGURA_NO / 2, no(chefe).y + ALTURA_NO] : [ueslei.x + ueslei.w / 2, ueslei.y + ueslei.h]
+    const [x2, y2] = [no(chefe).x + LARGURA_NO / 2, no(chefe).y + ALTURA_NO]
     const meio = (de.y + y2) / 2
     return `<path class="ligacao" d="M${x1} ${de.y} V${meio} H${x2} V${y2}" />`
   })
@@ -845,8 +845,6 @@ function svgDoOrganograma(equipe) {
   return (
     `<svg class="organograma" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}" role="img" aria-label="organograma da equipe ${escapar(equipe.nome)}">` +
     linhas.join("") +
-    `<g class="no-ueslei"><rect x="${ueslei.x}" y="${ueslei.y}" width="${ueslei.w}" height="${ueslei.h}" rx="22" />` +
-    `<text x="${ueslei.x + ueslei.w / 2}" y="${ueslei.y + 27}">Ueslei</text></g>` +
     nos.join("") +
     `</svg>`
   )
@@ -862,7 +860,7 @@ function detalheDaPosicao(equipe, p) {
   const linhas = [
     `<strong>${escapar(p.titulo)}</strong> <small>(${escapar(p.id)})</small>`,
     `Persona: ${escapar(p.personaNome ?? "vaga")}`,
-    `Responde a: ${escapar(chefe ? chefe.titulo : "Ueslei")}`,
+    `Responde a: ${escapar(chefe ? chefe.titulo : "ninguém (solta, responde a você)")}`,
     `Capacidades: ${escapar(p.capacidades.map((c) => NOMES_CAPACIDADE[c] ?? c).join(", ") || "nenhuma")}`,
     p.capacidades.includes("comandos") ? `Aprovação de comando: ${escapar(p.aprovacao)}` : "",
     p.diretorio ? `Diretório: <code>${escapar(p.diretorio)}</code>` : "",

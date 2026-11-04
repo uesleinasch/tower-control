@@ -460,11 +460,35 @@ void main() {
       final e = codigo();
       final revisora = cantoDoCartao(e, 'revisora');
       expect((alvoEm(e, revisora.x + 5, revisora.y + 5) as NaPosicao).id, 'revisora');
-      final ueslei = cantoDoUeslei(e);
-      expect(alvoEm(e, ueslei.x + 5, ueslei.y + 5), isA<NoUeslei>());
       expect(alvoEm(e, -50, -50), isNull);
-      expect(ligarPelaAlca(e, 'tech-lead', NaPosicao('revisora')).posicao('revisora')!.respondeA, 'tech-lead');
-      expect(ligarPelaAlca(e, 'executor', const NoUeslei()).posicao('executor')!.respondeA, isNull);
+      expect(ligarPelaAlca(e, 'tech-lead', const NaPosicao('revisora')).posicao('revisora')!.respondeA, 'tech-lead');
+      expect(ligarPelaAlca(e, 'executor', null), same(e));
+      expect(ligarPelaAlca(e, 'executor', const NaPosicao('executor')), same(e));
+    });
+
+    test('caixa solta ligada desce para baixo do chefe sem cair em cima de outro cartão', () {
+      final solta = adicionarPosicao(codigo(), 'Analista');
+      expect(solta.equipe.posicao(solta.id)!.respondeA, isNull);
+      final ligada = ligarAbaixo(solta.equipe, solta.id, 'tech-lead');
+      expect(ligada.posicao(solta.id)!.respondeA, 'tech-lead');
+      expect(ligada.ponto(solta.id).y, 160);
+      expect(ligada.ponto(solta.id).x, isNot(ligada.ponto('executor').x));
+      final sub = adicionarSubordinada(codigo(), 'revisora', 'Estagiária');
+      expect([sub.id, sub.equipe.posicao(sub.id)!.respondeA, sub.equipe.ponto(sub.id).y], ['estagiaria', 'revisora', 480.0]);
+    });
+
+    test('chefes possíveis excluem a própria posição e quem formaria ciclo', () {
+      expect(chefesPossiveis(codigo(), 'executor').map((p) => p.id), ['tech-lead']);
+      expect(chefesPossiveis(codigo(), 'tech-lead').map((p) => p.id), isEmpty);
+    });
+
+    test('organizar põe cada nível numa linha e os filhos sob o pai, sem sobrepor', () {
+      final e = organizar(ligar(soltar(codigo(), 'revisora'), 'revisora', 'tech-lead'));
+      expect(e.ponto('tech-lead'), (x: 140.0, y: 0.0));
+      expect(e.ponto('executor'), (x: 0.0, y: 160.0));
+      expect(e.ponto('revisora'), (x: 280.0, y: 160.0));
+      final soltas = organizar(adicionarPosicao(e, 'Outra').equipe);
+      expect(soltas.ponto('outra'), (x: 560.0, y: 0.0));
     });
 
     test('valida com as mesmas regras do servidor e vai e volta em JSON', () {

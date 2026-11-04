@@ -198,6 +198,7 @@ class _Topo extends StatelessWidget {
                 children: [
               acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
               acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
+              acao(Icons.account_tree_outlined, 'Organizar', equipe == null || equipe.posicoes.isEmpty ? null : () => estado.aplicar(organizar)),
               acao(Icons.people_alt_outlined, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
               acao(Icons.save_outlined, estado.alterada ? 'Salvar' : 'Salvo', estado.alterada && !estado.salvando ? estado.salvar : null,
                   principal: true),
@@ -236,6 +237,7 @@ class _CanvasState extends State<_Canvas> {
   Ponto? _cartaoEm;
   Ponto? _ponteiro;
   double _escalaNoInicio = 1;
+  Offset? _pressionado;
   MouseCursor _cursor = SystemMouseCursors.grab;
 
   Vista get _v => _vista ?? (dx: 0, dy: 0, escala: 1);
@@ -285,7 +287,8 @@ class _CanvasState extends State<_Canvas> {
   }
 
   void _inicio(ScaleStartDetails d) {
-    final mundo = paraMundo(_v, d.localFocalPoint.dx, d.localFocalPoint.dy);
+    final ponto = d.pointerCount == 1 && _pressionado != null ? _pressionado! : d.localFocalPoint;
+    final mundo = paraMundo(_v, ponto.dx, ponto.dy);
     _escalaNoInicio = _v.escala;
     final gesto = d.pointerCount > 1 || d.kind == PointerDeviceKind.trackpad ? _Gesto.fundo : _gestoEm(mundo);
     setState(() {
@@ -381,6 +384,7 @@ class _CanvasState extends State<_Canvas> {
       final tamanho = tamanhoDoOrganograma(equipe);
       return Listener(
         onPointerSignal: _roda,
+        onPointerDown: (e) => _pressionado = e.localPosition,
         child: MouseRegion(
           cursor: _cursor,
           onHover: _aoPassar,
@@ -418,6 +422,16 @@ class _CanvasState extends State<_Canvas> {
                     ),
                   ),
                 ),
+                if (widget.editar)
+                  Positioned(
+                    left: 12,
+                    bottom: 12,
+                    right: 260,
+                    child: Text(
+                      'Arraste o + de um cartão até outro para ele responder ao primeiro · arraste o fundo para mover · Ctrl + roda para zoom',
+                      style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
+                    ),
+                  ),
                 Positioned(
                   right: 12,
                   bottom: 12,
@@ -450,7 +464,6 @@ class _Area extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
-    final ueslei = cantoDoUeslei(equipe);
     return Stack(clipBehavior: Clip.none, children: [
       Positioned.fill(
         child: CustomPaint(
@@ -463,17 +476,6 @@ class _Area extends StatelessWidget {
           ),
         ),
       ),
-      Positioned(
-        left: ueslei.x,
-        top: ueslei.y,
-        width: larguraDoUeslei,
-        height: alturaDoUeslei,
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: cores.primary, borderRadius: BorderRadius.circular(22)),
-          child: Text('Ueslei', style: TextStyle(color: cores.onPrimary, fontWeight: FontWeight.w600)),
-        ),
-      ),
       for (final p in equipe.posicoes) ...[
         Positioned(
           left: cantoDoCartao(equipe, p.id).x,
@@ -484,16 +486,18 @@ class _Area extends StatelessWidget {
         ),
         if (editar)
           Positioned(
-            left: cantoDoCartao(equipe, p.id).x + larguraDoCartao / 2 - 9,
-            top: cantoDoCartao(equipe, p.id).y + alturaDoCartao - 4,
+            left: centroDaAlca(equipe, p.id).x - raioDaAlca,
+            top: centroDaAlca(equipe, p.id).y - raioDaAlca,
             child: Container(
-              width: 18,
-              height: 18,
+              width: raioDaAlca * 2,
+              height: raioDaAlca * 2,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: cores.primary,
                 shape: BoxShape.circle,
                 border: Border.all(color: cores.surface, width: 2),
               ),
+              child: Icon(Icons.add, size: 16, color: cores.onPrimary),
             ),
           ),
       ],
@@ -586,15 +590,14 @@ class _Ligacoes extends CustomPainter {
       ..color = cor
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
-    final ueslei = cantoDoUeslei(equipe);
     for (final p in equipe.posicoes) {
-      final de = cantoDoCartao(equipe, p.id);
       final chefe = p.respondeA == null ? null : equipe.posicao(p.respondeA!);
+      if (chefe == null) continue;
+      final de = cantoDoCartao(equipe, p.id);
       final x1 = de.x + larguraDoCartao / 2;
       final y1 = de.y;
-      final (x2, y2) = chefe == null
-          ? (ueslei.x + larguraDoUeslei / 2, ueslei.y + alturaDoUeslei)
-          : (cantoDoCartao(equipe, chefe.id).x + larguraDoCartao / 2, cantoDoCartao(equipe, chefe.id).y + alturaDoCartao);
+      final x2 = cantoDoCartao(equipe, chefe.id).x + larguraDoCartao / 2;
+      final y2 = cantoDoCartao(equipe, chefe.id).y + alturaDoCartao;
       final meio = (y1 + y2) / 2;
       canvas.drawPath(
         Path()
@@ -607,9 +610,9 @@ class _Ligacoes extends CustomPainter {
     }
     final origem = ligandoDe;
     if (origem != null && ponteiro != null && equipe.posicao(origem) != null) {
-      final c = cantoDoCartao(equipe, origem);
+      final c = centroDaAlca(equipe, origem);
       canvas.drawLine(
-        Offset(c.x + larguraDoCartao / 2, c.y + alturaDoCartao),
+        Offset(c.x, c.y),
         ponteiro!,
         Paint()
           ..color = destaque
@@ -676,15 +679,29 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         onChanged: (v) => _editar((x) => x.copiar(persona: () => v == null || v.isEmpty ? null : v)),
       ),
       const SizedBox(height: 12),
-      Text('Responde a: ${chefe?.titulo ?? 'Ueslei'}', style: TextStyle(color: cores.onSurfaceVariant)),
-      if (chefe != null)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            onPressed: () => widget.estado.aplicar((e) => soltar(e, p.id)),
-            child: const Text('Responder ao Ueslei'),
-          ),
+      DropdownButtonFormField<String>(
+        key: ValueKey('chefe-${p.id}-${chefe?.id}'),
+        initialValue: chefe?.id ?? '',
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: 'Responde a'),
+        items: [
+          const DropdownMenuItem(value: '', child: Text('ninguém (solta, responde a você)')),
+          for (final c in chefesPossiveis(equipe, p.id)) DropdownMenuItem(value: c.id, child: Text(c.titulo)),
+        ],
+        onChanged: (v) => widget.estado.aplicar((e) => v == null || v.isEmpty ? soltar(e, p.id) : ligarAbaixo(e, p.id, v)),
+      ),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: () async {
+            final titulo = await pedirTexto(context, titulo: 'Subordinada de ${p.titulo}', rotulo: 'Título (ex.: executor)');
+            if (titulo != null) widget.estado.novaSubordinada(p.id, titulo);
+          },
+          icon: const Icon(Icons.subdirectory_arrow_right),
+          label: const Text('Adicionar subordinada'),
         ),
+      ),
       const SizedBox(height: 8),
       Text('Capacidades', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
       for (final c in capacidadesDePosicao)
@@ -890,7 +907,7 @@ class _DetalheDaPosicao extends StatelessWidget {
               IconButton(icon: const Icon(Icons.close), onPressed: () => sala.equipes.selecionar(null)),
             ]),
             Text('Persona: ${posicao.persona == null ? 'vaga' : Perfil.porChave(posicao.persona!).nome}'),
-            Text('Responde a: ${chefe?.titulo ?? 'Ueslei'}'),
+            Text('Responde a: ${chefe?.titulo ?? 'ninguém (solta, responde a você)'}'),
             Text('Capacidades: ${posicao.capacidades.map((c) => nomesDeCapacidade[c] ?? c).join(', ')}'),
             if (posicao.capacidades.contains('comandos')) Text('Aprovação: ${politicasDeAprovacao[posicao.aprovacao] ?? posicao.aprovacao}'),
             if (abertas.isNotEmpty) ...[

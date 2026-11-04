@@ -164,14 +164,17 @@ fase 10 reaproveita.
 
 - Topo: seletor de equipe, "Nova equipe", "Salvar" e "Descartar". Mudança não salva fica
   marcada, e trocar de equipe com mudança pendente pede confirmação.
-- Canvas (`CustomPaint` dentro de `InteractiveViewer`, com zoom e arraste do fundo): um nó
-  fixo "Ueslei" no topo, que não é posição; cada posição é um cartão com título, avatar e
-  nome da persona (ou "vaga") e as capacidades em ícones. As linhas ligam cada cartão ao
-  chefe, ou ao nó do Ueslei.
-- Arrastar o cartão o move. Arrastar a partir da alça de baixo de um cartão até outro
-  cartão faz o primeiro chefe do segundo; soltar a alça no nó do Ueslei solta o cartão.
+- Canvas com pan e zoom próprios, como no Excalidraw: arrastar o fundo move a vista, Ctrl + roda
+  ou pinça dá zoom em volta do cursor, e há botões de zoom e "ajustar à tela". Cada posição é
+  um cartão com título, avatar e nome da persona (ou "vaga") e as capacidades. Posição sem
+  chefe é uma caixa solta, sem linha (responde ao Ueslei implicitamente); as linhas ligam cada
+  cartão ao chefe.
+- Arrastar o cartão o move. Arrastar o "+" de baixo de um cartão até outro faz o segundo
+  responder ao primeiro, e ele desce para baixo do chefe se estiver na mesma altura ou acima.
+  "Organizar" redesenha a árvore por níveis.
 - Clicar num cartão abre o painel lateral: título, persona (lista das personas, mais
-  "vaga"), capacidades (caixas de marcar), política de aprovação (só com `comandos`),
+  "vaga"), "Responde a" (posições que não formam ciclo, ou "ninguém"), "Adicionar
+  subordinada", capacidades (caixas de marcar), política de aprovação (só com `comandos`),
   diretório (só com `comandos`) e "Remover posição".
 - Painel "Personas", na mesma tela: lista com cor e nome, "Nova persona" (nome, descrição
   base, modelo, cor) e "Excluir" com o campo de confirmação do nome. Persona com
