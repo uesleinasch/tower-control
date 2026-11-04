@@ -4,7 +4,7 @@ import { garantirIgnorado, origemDaImportacao, prepararDados, registrarNoGit } f
 import { migrarPendentes } from "./memoria/migracao"
 import { apagarEquipe, carregarElenco, elenco, gravarEquipe, gravarPersona, migrarParaPersonas } from "./orquestra/elenco"
 import { corDaPersona, exigirMudancaDeEquipe, resumoDaMudanca, slugValido, validarEquipe, validarPersona } from "./orquestra/equipe"
-import { Contas, TUDO, mesDe, motivoDeBloqueio, nivelDoOrcamento } from "./orquestra/governanca"
+import { Contas, TUDO, formatarTokens, mesDe, motivoDeBloqueio, niveisDoOrcamento, type Limites } from "./orquestra/governanca"
 import { aoGravarUso, lerUso } from "./uso"
 import { criarPersona, excluirPersona, gerarPerfil, lerPedidoDePersona } from "./orquestra/personas"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
@@ -148,18 +148,31 @@ function equipesParaCliente() {
 
 const GERANDO_PERFIL = new Set<string>()
 
+function limitesDe(persona: string): Limites {
+  const p = elenco().persona(persona)
+  return { usd: p?.orcamentoMensalUSD, tokens: p?.orcamentoMensalTokens }
+}
+
 function bloqueioDe(persona: string) {
   const pausas = new Set(TAREFAS.pausas().keys())
-  return motivoDeBloqueio(persona, pausas, CONTAS.gasto(persona).tarefas, elenco().persona(persona)?.orcamentoMensalUSD)
+  return motivoDeBloqueio(persona, pausas, CONTAS.gasto(persona), limitesDe(persona))
 }
 
 function conferirOrcamento(persona: string): void {
-  const limite = elenco().persona(persona)?.orcamentoMensalUSD
-  const gasto = CONTAS.gasto(persona).tarefas
-  const nivel = nivelDoOrcamento(gasto, limite)
-  if (nivel && limite !== undefined && TAREFAS.marcarAvisoDeOrcamento(persona, mesDe(new Date()), nivel)) {
-    TAREFAS.auditar("orquestra", nivel === "alerta" ? "orçamento em 80%" : "orçamento estourado", `persona:${persona}`, `US$ ${gasto.toFixed(2)} de US$ ${limite.toFixed(2)}`)
-    avisar(AVISOS.criar(avisoDeOrcamento(elenco().nome(persona), nivel, gasto, limite)))
+  const limites = limitesDe(persona)
+  const gasto = CONTAS.gasto(persona)
+  const niveis = niveisDoOrcamento(gasto, limites)
+  for (const dimensao of ["usd", "tokens"] as const) {
+    const nivel = niveis[dimensao]
+    const limite = limites[dimensao]
+    if (!nivel || limite === undefined) continue
+    if (!TAREFAS.marcarAvisoDeOrcamento(persona, mesDe(new Date()), `${nivel}:${dimensao}`)) continue
+    const valor = dimensao === "usd" ? gasto.tarefas : gasto.tokensTarefas
+    const texto =
+      dimensao === "usd" ? `US$ ${valor.toFixed(2)} de US$ ${limite.toFixed(2)}` : `${formatarTokens(valor)} de ${formatarTokens(limite)}`
+    const qual = dimensao === "usd" ? "orçamento" : "orçamento de tokens"
+    TAREFAS.auditar("orquestra", nivel === "alerta" ? `${qual} em 80%` : `${qual} estourado`, `persona:${persona}`, texto)
+    avisar(AVISOS.criar(avisoDeOrcamento(elenco().nome(persona), nivel, dimensao, valor, limite)))
   }
   mandarATodos({ tipo: "personas", lista: personasParaCliente() })
 }
@@ -178,7 +191,14 @@ async function salvarPersona(bruto: unknown): Promise<void> {
   if ("orcamentoMensalUSD" in pedido) {
     if (pedido.orcamentoMensalUSD === null || pedido.orcamentoMensalUSD === "") delete nova.orcamentoMensalUSD
     else nova.orcamentoMensalUSD = Number(pedido.orcamentoMensalUSD)
-    mudancas.push(nova.orcamentoMensalUSD === undefined ? "sem limite de orçamento" : `orçamento US$ ${Number(nova.orcamentoMensalUSD).toFixed(2)}`)
+    mudancas.push(nova.orcamentoMensalUSD === undefined ? "sem limite em US$" : `orçamento US$ ${Number(nova.orcamentoMensalUSD).toFixed(2)}`)
+  }
+  if ("orcamentoMensalTokens" in pedido) {
+    if (pedido.orcamentoMensalTokens === null || pedido.orcamentoMensalTokens === "") delete nova.orcamentoMensalTokens
+    else nova.orcamentoMensalTokens = Number(pedido.orcamentoMensalTokens)
+    mudancas.push(
+      nova.orcamentoMensalTokens === undefined ? "sem limite de tokens" : `orçamento ${formatarTokens(Number(nova.orcamentoMensalTokens))}`,
+    )
   }
   if ("modelo" in pedido) {
     if (pedido.modelo) nova.modelo = String(pedido.modelo)
@@ -226,8 +246,11 @@ function personasParaCliente() {
         modelo: p.modelo ?? null,
         gerandoPerfil: GERANDO_PERFIL.has(p.id),
         orcamentoMensalUSD: p.orcamentoMensalUSD ?? null,
+        orcamentoMensalTokens: p.orcamentoMensalTokens ?? null,
         gastoMesUSD: CONTAS.gasto(p.id).tarefas,
         gastoTotalMesUSD: CONTAS.gasto(p.id).total,
+        tokensMes: CONTAS.gasto(p.id).tokensTarefas,
+        tokensTotalMes: CONTAS.gasto(p.id).tokensTotal,
         pausa: (() => {
           const motivo = bloqueioDe(p.id)
           return motivo ? { motivo } : null

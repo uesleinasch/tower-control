@@ -799,6 +799,7 @@ body {
 .barra-orcamento span { display: block; height: 100%; background: #4fae7c; }
 .barra-orcamento.alerta span { background: #e0a458; }
 .barra-orcamento.estourado span { background: var(--perigo); }
+.orcamento-persona.tokens { width: 120px; }
 .orcamento-persona { width: 96px; background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 4px 6px; }
 .perfil-msg.plano { border-left: 3px solid #9a6ee8; }
 .link-atividade { margin-left: 8px; background: none; border: none; color: var(--acento); cursor: pointer; font-size: 12px; text-transform: none; }

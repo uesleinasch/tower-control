@@ -582,6 +582,12 @@ function barraDePausa() {
   return barra
 }
 
+function formatarTokens(n) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(".", ",")} mi tokens`
+  if (n >= 1_000) return `${Math.round(n / 1_000)} mil tokens`
+  return `${Math.round(n)} tokens`
+}
+
 const planoPendente = (registros) => {
   const plano = registros.findLastIndex((r) => r.tipo === "plano")
   return plano >= 0 && registros.findLastIndex((r) => r.tipo === "plano-aprovado") < plano
@@ -960,13 +966,16 @@ function secaoDePersonas() {
     li.className = "persona-item"
     const MOTIVOS = { ueslei: "pausada", tudo: "tudo pausado", orcamento: "orçamento estourado" }
     const limite = p.orcamentoMensalUSD
-    const proporcao = limite ? Math.min(1, (p.gastoMesUSD ?? 0) / limite) : 0
+    const limiteTokens = p.orcamentoMensalTokens
+    const fracao = (gasto, teto) => (teto == null ? 0 : teto <= 0 ? 1 : Math.min(1, gasto / teto))
+    const proporcao = Math.max(fracao(p.gastoMesUSD ?? 0, limite), fracao(p.tokensMes ?? 0, limiteTokens))
     li.innerHTML =
       `<span class="avatar avatar-balao ${p.id}">${escapar(p.inicial)}</span>` +
       `<span class="persona-dados">${escapar(p.nome)}` +
       `<small>${escapar([p.titulo, p.modelo, p.gerandoPerfil ? "gerando perfil…" : "", p.pausa ? MOTIVOS[p.pausa.motivo] : ""].filter(Boolean).join(" · "))}</small>` +
       `<small>tarefas no mês: US$ ${(p.gastoMesUSD ?? 0).toFixed(2)}${limite != null ? ` de US$ ${limite.toFixed(2)}` : " · sem limite"} · total US$ ${(p.gastoTotalMesUSD ?? 0).toFixed(2)}</small>` +
-      (limite != null ? `<span class="barra-orcamento${proporcao >= 1 ? " estourado" : proporcao >= 0.8 ? " alerta" : ""}"><span style="width:${Math.round(proporcao * 100)}%"></span></span>` : "") +
+      `<small>tokens no mês: ${formatarTokens(p.tokensMes ?? 0)}${limiteTokens != null ? ` de ${formatarTokens(limiteTokens)}` : " · sem limite"} · total ${formatarTokens(p.tokensTotalMes ?? 0)}</small>` +
+      (limite != null || limiteTokens != null ? `<span class="barra-orcamento${proporcao >= 1 ? " estourado" : proporcao >= 0.8 ? " alerta" : ""}"><span style="width:${Math.round(proporcao * 100)}%"></span></span>` : "") +
       `</span>`
     const orcamento = document.createElement("input")
     orcamento.type = "number"
@@ -979,6 +988,20 @@ function secaoDePersonas() {
     orcamento.onchange = () =>
       enviar({ tipo: "persona-salvar", persona: { id: p.id, orcamentoMensalUSD: orcamento.value === "" ? null : Number(orcamento.value) } })
     li.appendChild(orcamento)
+    const tokens = document.createElement("input")
+    tokens.type = "number"
+    tokens.min = "0"
+    tokens.step = "100000"
+    tokens.placeholder = "limite tokens"
+    tokens.className = "orcamento-persona tokens"
+    tokens.value = limiteTokens != null ? String(limiteTokens) : ""
+    tokens.title = "limite mensal de tokens das tarefas (vazio = sem limite)"
+    tokens.onchange = () =>
+      enviar({
+        tipo: "persona-salvar",
+        persona: { id: p.id, orcamentoMensalTokens: tokens.value === "" ? null : Math.round(Number(tokens.value)) },
+      })
+    li.appendChild(tokens)
     const pausa = document.createElement("button")
     pausa.className = "pausar-persona"
     const pausadaPeloUeslei = p.pausa?.motivo === "ueslei"
