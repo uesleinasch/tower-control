@@ -14,13 +14,87 @@ const transicoesDeTarefa = {
   'backlog': ['a_fazer', 'cancelada'],
   'a_fazer': ['em_andamento', 'backlog', 'bloqueada', 'cancelada'],
   'em_andamento': ['em_revisao', 'concluida', 'bloqueada', 'a_fazer', 'cancelada'],
-  'em_revisao': ['concluida', 'em_andamento', 'a_fazer', 'cancelada'],
+  'em_revisao': ['concluida', 'em_andamento', 'a_fazer', 'bloqueada', 'cancelada'],
   'bloqueada': ['a_fazer', 'cancelada'],
   'concluida': ['a_fazer'],
   'cancelada': ['backlog'],
 };
 
 const ordemDeStatus = ['em_andamento', 'em_revisao', 'a_fazer', 'bloqueada', 'backlog', 'concluida', 'cancelada'];
+
+class EtapaDePolitica {
+  const EtapaDePolitica({required this.tipo, this.posicao, this.board = false, this.ueslei = false});
+
+  const EtapaDePolitica.revisaoPor(String this.posicao)
+      : tipo = 'revisao',
+        board = false,
+        ueslei = false;
+  const EtapaDePolitica.revisaoDoBoard()
+      : tipo = 'revisao',
+        posicao = null,
+        board = true,
+        ueslei = false;
+  const EtapaDePolitica.aprovacaoPor(String this.posicao)
+      : tipo = 'aprovacao',
+        board = false,
+        ueslei = false;
+  const EtapaDePolitica.aprovacaoDoUeslei()
+      : tipo = 'aprovacao',
+        posicao = null,
+        board = false,
+        ueslei = true;
+
+  final String tipo;
+  final String? posicao;
+  final bool board;
+  final bool ueslei;
+
+  bool get revisao => tipo == 'revisao';
+  bool get aprovacao => tipo == 'aprovacao';
+
+  bool get valida =>
+      (posicao != null && (revisao || aprovacao)) || (revisao && board) || (aprovacao && ueslei);
+
+  bool get doBoard => valida && posicao == null && board;
+  bool get doUeslei => valida && posicao == null && ueslei;
+
+  Map<String, Object?> paraJson() => {
+        'tipo': tipo,
+        'por': {
+          if (posicao != null)
+            'posicao': posicao
+          else if (board)
+            'board': true
+          else if (ueslei)
+            'ueslei': true,
+        },
+      };
+
+  factory EtapaDePolitica.deJson(Map<String, dynamic> j) {
+    final por = j['por'] is Map ? j['por'] as Map : const {};
+    return EtapaDePolitica(
+      tipo: j['tipo'] as String? ?? '',
+      posicao: por['posicao'] is String ? por['posicao'] as String : null,
+      board: por['board'] == true,
+      ueslei: por['ueslei'] == true,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is EtapaDePolitica &&
+      other.tipo == tipo &&
+      other.posicao == posicao &&
+      other.board == board &&
+      other.ueslei == ueslei;
+
+  @override
+  int get hashCode => Object.hash(tipo, posicao, board, ueslei);
+}
+
+List<EtapaDePolitica> politicaDeJson(Object? bruto) => [
+      for (final e in (bruto is List ? bruto : const []).whereType<Map<String, dynamic>>()) EtapaDePolitica.deJson(e),
+    ];
 
 class PosicaoResumo {
   const PosicaoResumo({
@@ -34,6 +108,7 @@ class PosicaoResumo {
     this.diretorio,
     this.aprovarPlano = false,
     this.delegaDireto = false,
+    this.politica = const [],
   });
 
   final String id;
@@ -46,6 +121,7 @@ class PosicaoResumo {
   final String? diretorio;
   final bool aprovarPlano;
   final bool delegaDireto;
+  final List<EtapaDePolitica> politica;
 
   String get rotulo => personaNome != null ? '$personaNome · $titulo' : '$titulo (vaga)';
 
@@ -58,6 +134,7 @@ class PosicaoResumo {
     String? Function()? diretorio,
     bool? aprovarPlano,
     bool? delegaDireto,
+    List<EtapaDePolitica>? politica,
   }) =>
       PosicaoResumo(
         id: id,
@@ -70,6 +147,7 @@ class PosicaoResumo {
         diretorio: diretorio != null ? diretorio() : this.diretorio,
         aprovarPlano: aprovarPlano ?? this.aprovarPlano,
         delegaDireto: delegaDireto ?? this.delegaDireto,
+        politica: politica ?? this.politica,
       );
 
   Map<String, Object?> paraJson() => {
@@ -82,6 +160,7 @@ class PosicaoResumo {
         if (diretorio != null && diretorio!.trim().isNotEmpty) 'diretorio': diretorio!.trim(),
         if (aprovarPlano) 'aprovarPlano': true,
         if (delegaDireto) 'delegaDireto': true,
+        if (politica.isNotEmpty) 'politica': [for (final e in politica) e.paraJson()],
       };
 
   factory PosicaoResumo.deJson(Map<String, dynamic> j) => PosicaoResumo(
@@ -95,6 +174,7 @@ class PosicaoResumo {
         diretorio: j['diretorio'] as String?,
         aprovarPlano: j['aprovarPlano'] == true,
         delegaDireto: j['delegaDireto'] == true,
+        politica: politicaDeJson(j['politica']),
       );
 }
 
@@ -157,6 +237,11 @@ class Tarefa {
     required this.atualizadaEm,
     this.dependeDe = const [],
     this.rodando = false,
+    this.politica = const [],
+    this.etapa,
+    this.retorno,
+    this.voltas = 0,
+    this.comQuem,
   });
 
   final int id;
@@ -171,8 +256,21 @@ class Tarefa {
   final DateTime atualizadaEm;
   final List<int> dependeDe;
   final bool rodando;
+  final List<EtapaDePolitica> politica;
+  final int? etapa;
+  final int? retorno;
+  final int voltas;
+  final String? comQuem;
 
   List<String> get proximosStatus => transicoesDeTarefa[status] ?? const [];
+
+  EtapaDePolitica? get etapaAtual {
+    final i = etapa;
+    if (status != 'em_revisao' || i == null || i < 0 || i >= politica.length) return null;
+    return politica[i];
+  }
+
+  bool get esperaDecisaoDoUeslei => etapaAtual?.doUeslei == true;
 
   factory Tarefa.deJson(Map<String, dynamic> j) => Tarefa(
         id: (j['id'] as num?)?.toInt() ?? 0,
@@ -187,7 +285,61 @@ class Tarefa {
         atualizadaEm: DateTime.tryParse(j['atualizadaEm'] as String? ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
         dependeDe: [for (final d in (j['dependeDe'] as List? ?? const [])) (d as num).toInt()],
         rodando: j['rodando'] == true,
+        politica: politicaDeJson(j['politica']),
+        etapa: (j['etapa'] as num?)?.toInt(),
+        retorno: (j['retorno'] as num?)?.toInt(),
+        voltas: (j['voltas'] as num?)?.toInt() ?? 0,
+        comQuem: j['comQuem'] as String?,
       );
+}
+
+typedef PassoDaTrilha = ({String rotulo, String estado});
+
+String quemDecide(EtapaDePolitica etapa, EquipeResumo? equipe, String Function(String persona) nomeDaPersona) {
+  if (etapa.doBoard) return 'board';
+  if (etapa.doUeslei) return 'Ueslei';
+  final id = etapa.posicao;
+  if (id == null) return '?';
+  final p = equipe?.posicao(id);
+  if (p == null) return id;
+  return nomeDaPosicao(p, nomeDaPersona);
+}
+
+String nomeDaPosicao(PosicaoResumo p, String Function(String persona) nomeDaPersona) =>
+    p.persona == null ? p.titulo : p.personaNome ?? nomeDaPersona(p.persona!);
+
+String rotuloDaEtapa(EtapaDePolitica etapa, EquipeResumo? equipe, String Function(String persona) nomeDaPersona) {
+  if (!etapa.valida) return 'etapa inválida';
+  final tipo = etapa.revisao ? 'revisão' : 'aprovação';
+  if (etapa.doBoard) return '$tipo do board';
+  if (etapa.doUeslei) return '$tipo do Ueslei';
+  return '$tipo de ${quemDecide(etapa, equipe, nomeDaPersona)}';
+}
+
+List<PassoDaTrilha> trilhaDaTarefa(Tarefa t, EquipeResumo? equipe, String Function(String persona) nomeDaPersona) {
+  if (t.politica.isEmpty) return const [];
+  final dona = equipe?.posicao(t.posicao);
+  final concluida = t.status == 'concluida';
+  final atual = t.etapaAtual != null ? t.etapa! : null;
+  final comExecutora = t.status == 'a_fazer' || t.status == 'em_andamento';
+  final passadasAte = concluida ? t.politica.length : atual ?? (comExecutora ? t.retorno ?? 0 : 0);
+  String estado(int indice) {
+    if (concluida || indice < passadasAte) return 'passada';
+    if (indice == atual) return 'atual';
+    return 'futura';
+  }
+
+  return [
+    (
+      rotulo: '${dona == null ? t.posicao : nomeDaPosicao(dona, nomeDaPersona)} executa',
+      estado: concluida || atual != null ? 'passada' : comExecutora ? 'atual' : 'futura',
+    ),
+    for (final (i, etapa) in t.politica.indexed)
+      (
+        rotulo: '${quemDecide(etapa, equipe, nomeDaPersona)} ${etapa.revisao ? 'revisa' : 'aprova'}',
+        estado: estado(i),
+      ),
+  ];
 }
 
 class RegistroDeTarefa {
@@ -199,7 +351,7 @@ class RegistroDeTarefa {
   final DateTime em;
 
   bool get comentario => tipo == 'comentario';
-  bool get destacado => tipo == 'entrega' || tipo == 'ajuda' || tipo == 'plano';
+  bool get destacado => const {'entrega', 'ajuda', 'plano', 'aprovado', 'mudanca'}.contains(tipo);
 
   factory RegistroDeTarefa.deJson(Map<String, dynamic> j) => RegistroDeTarefa(
         tipo: j['tipo'] as String? ?? 'status',
@@ -236,6 +388,8 @@ const nomesDeGatilho = {
   'retomada': 'retomada',
   'nova_tentativa': 'nova tentativa',
   'plano_aprovado': 'plano aprovado',
+  'revisao': 'revisão',
+  'mudanca': 'pedido de mudança',
 };
 
 const nomesDePausa = {'ueslei': 'pausada', 'tudo': 'tudo pausado', 'orcamento': 'orçamento estourado'};

@@ -74,6 +74,14 @@ class EstadoTarefas extends ChangeNotifier {
 
   void aprovarPlano(int id) => _enviar(AprovarPlano(id));
 
+  void aprovarEtapa(int id, [String texto = '']) =>
+      _enviar(DecidirTarefa.aprovar(id, texto: texto.trim().isEmpty ? null : texto.trim()));
+
+  void pedirMudanca(int id, String texto) {
+    if (texto.trim().isEmpty) return;
+    _enviar(DecidirTarefa.mudanca(id, texto.trim()));
+  }
+
   void comentar(int id, String texto) {
     if (texto.trim().isEmpty) return;
     _enviar(ComentarTarefa(id, texto.trim()));

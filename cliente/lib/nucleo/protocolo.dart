@@ -539,3 +539,16 @@ class PedirAuditoria extends Saida {
   @override
   Map<String, Object?> get campos => const {};
 }
+
+class DecidirTarefa extends Saida {
+  const DecidirTarefa.aprovar(this.id, {this.texto}) : decisao = 'aprovar';
+  const DecidirTarefa.mudanca(this.id, String this.texto) : decisao = 'mudanca';
+  final int id;
+  final String decisao;
+  final String? texto;
+
+  @override
+  String get tipo => 'tarefa-decidir';
+  @override
+  Map<String, Object?> get campos => {'id': id, 'decisao': decisao, 'texto': texto};
+}

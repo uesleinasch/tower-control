@@ -128,7 +128,22 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
     'pedida': true,
   },
   'tarefas': {
-    'lista': [_tarefa],
+    'lista': [
+      _tarefa,
+      {
+        ..._tarefa,
+        'id': 4,
+        'status': 'em_revisao',
+        'politica': [
+          {'tipo': 'revisao', 'por': {'posicao': 'revisora'}},
+          {'tipo': 'aprovacao', 'por': {'ueslei': true}},
+        ],
+        'etapa': 1,
+        'retorno': null,
+        'voltas': 2,
+        'comQuem': 'com você',
+      },
+    ],
   },
 };
 
@@ -160,6 +175,7 @@ final _saidas = <Saida>[
   const Retomar('alfred'),
   const AprovarPlano(3),
   const PedirAuditoria(),
+  const DecidirTarefa.aprovar(3),
 ];
 
 void main() {
@@ -216,6 +232,71 @@ void main() {
       final json = jsonDecode(const CriarTarefa(equipe: 'casa', posicao: 'executor', titulo: 't').codificar()) as Map;
       expect(json['tipo'], 'tarefa-criar');
       expect(json['tarefa'], {'equipe': 'casa', 'posicao': 'executor', 'titulo': 't', 'porque': ''});
+    });
+
+    test('política, etapa e com quem chegam na tarefa, com padrão seguro para servidor antigo', () {
+      final e = Entrada.decodificar(jsonEncode({'tipo': 'tarefas', ..._fixturasEntrada['tarefas']!})) as TarefasRecebidas;
+      final [antiga, nova] = e.lista;
+      expect([antiga.politica, antiga.etapa, antiga.retorno, antiga.voltas, antiga.comQuem], [isEmpty, null, null, 0, null]);
+      expect(antiga.esperaDecisaoDoUeslei, isFalse);
+      expect(nova.politica, [const EtapaDePolitica.revisaoPor('revisora'), const EtapaDePolitica.aprovacaoDoUeslei()]);
+      expect([nova.etapa, nova.voltas, nova.comQuem], [1, 2, 'com você']);
+      expect(nova.esperaDecisaoDoUeslei, isTrue);
+      expect(nova.proximosStatus, contains('bloqueada'));
+      final bruta = (_fixturasEntrada['tarefas']!['lista'] as List)[1] as Map<String, dynamic>;
+      expect(Tarefa.deJson({...bruta, 'etapa': 0}).esperaDecisaoDoUeslei, isFalse);
+      expect(Tarefa.deJson({...bruta, 'status': 'em_andamento'}).esperaDecisaoDoUeslei, isFalse);
+      expect(Tarefa.deJson({...bruta, 'etapa': 7}).etapaAtual, isNull);
+    });
+
+    test('registros de aprovação e de mudança ficam destacados', () {
+      RegistroDeTarefa r(String tipo) => RegistroDeTarefa(tipo: tipo, autor: 'nati', texto: 't', em: DateTime(2026));
+      expect(['aprovado', 'mudanca', 'status', 'comentario'].map((t) => r(t).destacado), [true, true, false, false]);
+    });
+
+    test('tarefa-decidir leva a decisão, e o texto só quando há', () {
+      expect(jsonDecode(const DecidirTarefa.aprovar(3).codificar()), {'tipo': 'tarefa-decidir', 'id': 3, 'decisao': 'aprovar'});
+      expect(jsonDecode(const DecidirTarefa.aprovar(3, texto: 'ok').codificar()),
+          {'tipo': 'tarefa-decidir', 'id': 3, 'decisao': 'aprovar', 'texto': 'ok'});
+      expect(jsonDecode(const DecidirTarefa.mudanca(3, 'refaz').codificar()),
+          {'tipo': 'tarefa-decidir', 'id': 3, 'decisao': 'mudanca', 'texto': 'refaz'});
+    });
+
+    test('trilha marca a etapa atual e as passadas, e resolve os nomes', () {
+      const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [
+        PosicaoResumo(id: 'executor', titulo: 'executor', persona: 'alfred', personaNome: 'Alfred'),
+        PosicaoResumo(id: 'revisora', titulo: 'revisora', persona: 'nati'),
+        PosicaoResumo(id: 'vaga', titulo: 'auditora'),
+      ]);
+      String nome(String id) => id == 'nati' ? 'Nati' : id;
+      Tarefa t(String status, {int? etapa, int? retorno}) => Tarefa(
+            id: 1,
+            equipe: 'casa',
+            posicao: 'executor',
+            titulo: 't',
+            status: status,
+            atualizadaEm: DateTime(2026),
+            etapa: etapa,
+            retorno: retorno,
+            politica: const [
+              EtapaDePolitica.revisaoPor('revisora'),
+              EtapaDePolitica.revisaoDoBoard(),
+              EtapaDePolitica.revisaoPor('vaga'),
+              EtapaDePolitica.aprovacaoDoUeslei(),
+            ],
+          );
+      List<String> estados(Tarefa x) => trilhaDaTarefa(x, casa, nome).map((p) => p.estado).toList();
+      expect(trilhaDaTarefa(t('em_revisao', etapa: 1), casa, nome).map((p) => p.rotulo),
+          ['Alfred executa', 'Nati revisa', 'board revisa', 'auditora revisa', 'Ueslei aprova']);
+      expect(estados(t('em_revisao', etapa: 1)), ['passada', 'passada', 'atual', 'futura', 'futura']);
+      expect(estados(t('em_andamento')), ['atual', 'futura', 'futura', 'futura', 'futura']);
+      expect(estados(t('em_andamento', retorno: 2)), ['atual', 'passada', 'passada', 'futura', 'futura']);
+      expect(estados(t('concluida')), everyElement('passada'));
+      expect(trilhaDaTarefa(Tarefa(id: 2, equipe: 'casa', posicao: 'executor', titulo: 't', status: 'a_fazer', atualizadaEm: DateTime(2026)), casa, nome),
+          isEmpty);
+      expect(rotuloDaEtapa(const EtapaDePolitica.aprovacaoDoUeslei(), casa, nome), 'aprovação do Ueslei');
+      expect(rotuloDaEtapa(const EtapaDePolitica.revisaoPor('revisora'), casa, nome), 'revisão de Nati');
+      expect(rotuloDaEtapa(const EtapaDePolitica(tipo: 'aprovacao', board: true), casa, nome), 'etapa inválida');
     });
 
     test('transições espelham as do servidor', () {
@@ -520,6 +601,92 @@ void main() {
       final json = jsonDecode(jsonEncode(e.paraJson())) as Map<String, dynamic>;
       expect(EquipeResumo.deJson(json).paraJson(), e.paraJson());
       expect((json['posicoes'] as List).first, isNot(contains('personaNome')));
+    });
+
+    test('política vai e volta em JSON e some quando vazia', () {
+      final e = adicionarEtapa(
+        adicionarEtapa(codigo(), 'executor', const EtapaDePolitica.aprovacaoDoUeslei()),
+        'executor',
+        const EtapaDePolitica.revisaoPor('tech-lead'),
+      );
+      final json = jsonDecode(jsonEncode(e.paraJson())) as Map<String, dynamic>;
+      expect((json['posicoes'] as List)[1]['politica'], [
+        {'tipo': 'revisao', 'por': {'posicao': 'tech-lead'}},
+        {'tipo': 'aprovacao', 'por': {'ueslei': true}},
+      ]);
+      expect(EquipeResumo.deJson(json).paraJson(), e.paraJson());
+      expect((json['posicoes'] as List)[0], isNot(contains('politica')));
+      final board = adicionarEtapa(e, 'executor', const EtapaDePolitica.revisaoDoBoard());
+      expect(board.posicao('executor')!.politica.map((x) => x.paraJson()['por']), [
+        {'posicao': 'tech-lead'},
+        {'board': true},
+        {'ueslei': true},
+      ]);
+      final movida = moverEtapa(board, 'executor', 0, 1);
+      expect(movida.posicao('executor')!.politica.first, const EtapaDePolitica.revisaoDoBoard());
+      expect(moverEtapa(board, 'executor', 0, -1).posicao('executor')!.politica, board.posicao('executor')!.politica);
+      expect(removerEtapa(movida, 'executor', 2).posicao('executor')!.politica, hasLength(2));
+    });
+
+    group('validação da política', () {
+      EquipeResumo comPolitica(List<EtapaDePolitica> politica, {EquipeResumo? base}) =>
+          editarPosicao(base ?? codigo(), 'executor', (p) => p.copiar(politica: politica));
+      List<String> erros(EquipeResumo e) => validarOrganograma(e, {'nati', 'alfred'});
+
+      test('política válida não tem erro', () {
+        final e = comPolitica(const [EtapaDePolitica.revisaoPor('tech-lead'), EtapaDePolitica.aprovacaoDoUeslei()]);
+        expect(erros(e), isEmpty);
+      });
+
+      test('quem decide inválido', () {
+        for (final etapa in const [
+          EtapaDePolitica(tipo: 'consulta', posicao: 'tech-lead'),
+          EtapaDePolitica(tipo: 'aprovacao', board: true),
+          EtapaDePolitica(tipo: 'revisao', ueslei: true),
+          EtapaDePolitica(tipo: 'revisao'),
+        ]) {
+          expect(erros(comPolitica([const EtapaDePolitica.revisaoPor('tech-lead'), etapa])),
+              ['posição executor: etapa 2: quem decide é inválido'],
+              reason: etapa.paraJson().toString());
+        }
+        final bruta = EtapaDePolitica.deJson({'tipo': 'revisao', 'por': 'ninguém'});
+        expect(bruta.valida, isFalse);
+      });
+
+      test('só uma aprovação, e sempre no fim', () {
+        expect(
+          erros(comPolitica(const [EtapaDePolitica.aprovacaoPor('tech-lead'), EtapaDePolitica.aprovacaoDoUeslei()])),
+          contains('posição executor: só pode haver uma aprovação'),
+        );
+        expect(
+          erros(comPolitica(const [EtapaDePolitica.aprovacaoDoUeslei(), EtapaDePolitica.revisaoPor('tech-lead')])),
+          contains('posição executor: a aprovação precisa ser a última etapa'),
+        );
+      });
+
+      test('posição inexistente, a própria posição e a mesma persona', () {
+        expect(erros(comPolitica(const [EtapaDePolitica.revisaoPor('fantasma')])),
+            ['posição executor: etapa 1: posição inexistente (fantasma)']);
+        expect(erros(comPolitica(const [EtapaDePolitica.revisaoPor('executor')])),
+            ['posição executor: etapa 1: não pode revisar a própria posição']);
+        final mesma = EquipeResumo(id: 'x', nome: 'X', posicoes: [
+          const PosicaoResumo(id: 'executor', titulo: 'e', persona: 'alfred', politica: [EtapaDePolitica.aprovacaoPor('outra')]),
+          const PosicaoResumo(id: 'outra', titulo: 'o', persona: 'alfred'),
+        ]);
+        expect(errosDaPolitica(mesma, mesma.posicao('executor')!), ['posição executor: etapa 1: alfred revisaria o próprio trabalho']);
+        expect(erros(comPolitica(const [EtapaDePolitica.revisaoPor('revisora')])), isEmpty);
+      });
+
+      test('board precisa de membro com persona que não seja a executora', () {
+        const etapa = [EtapaDePolitica.revisaoDoBoard()];
+        expect(erros(comPolitica(etapa)), ['posição executor: etapa 1: o board da equipe não tem membros']);
+        final soAExecutora = editarPosicao(comPolitica(etapa), 'executor', (p) => p.copiar(capacidades: [...p.capacidades, 'board']));
+        expect(erros(soAExecutora), ['posição executor: etapa 1: o board da equipe não tem membros']);
+        final vaga = editarPosicao(comPolitica(etapa), 'revisora', (p) => p.copiar(capacidades: ['board']));
+        expect(erros(vaga), ['posição executor: etapa 1: o board da equipe não tem membros']);
+        final comMembro = editarPosicao(comPolitica(etapa), 'tech-lead', (p) => p.copiar(capacidades: ['board']));
+        expect(erros(comMembro), isEmpty);
+      });
     });
 
     test('zoom mantém fixo o ponto sob o cursor, e ajustar cabe tudo na tela', () {

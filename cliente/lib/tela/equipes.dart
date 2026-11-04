@@ -825,6 +825,7 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         subtitle: const Text('a subtarefa que esta posição delega já entra na fila'),
         onChanged: (v) => _editar((x) => x.copiar(delegaDireto: v)),
       ),
+      _DepoisDaEntrega(estado: widget.estado, equipe: equipe, posicao: p),
       if (comandos) ...[
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
@@ -851,6 +852,97 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         icon: const Icon(Icons.delete_outline),
         label: const Text('Remover posição'),
       ),
+    ]);
+  }
+}
+
+String _nomeDaPersona(String id) => Perfil.porChave(id).nome;
+
+String _rotuloDaOpcao(PosicaoResumo p) =>
+    p.persona == null ? '${p.titulo} (vaga)' : '${_nomeDaPersona(p.persona!)} · ${p.titulo}';
+
+class _DepoisDaEntrega extends StatelessWidget {
+  const _DepoisDaEntrega({required this.estado, required this.equipe, required this.posicao});
+
+  final EstadoEquipes estado;
+  final EquipeResumo equipe;
+  final PosicaoResumo posicao;
+
+  void _aplicar(EquipeResumo Function(EquipeResumo) operacao) => estado.aplicar(operacao);
+
+  Widget _menu(String rotulo, IconData icone, List<(String, EtapaDePolitica)> opcoes) => MenuAnchor(
+        menuChildren: [
+          for (final (texto, etapa) in opcoes)
+            MenuItemButton(
+              onPressed: () => _aplicar((e) => adicionarEtapa(e, posicao.id, etapa)),
+              child: Text(texto),
+            ),
+        ],
+        builder: (context, controle, _) => OutlinedButton.icon(
+          onPressed: () => controle.isOpen ? controle.close() : controle.open(),
+          icon: Icon(icone),
+          label: Text(rotulo),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = Theme.of(context).colorScheme;
+    final politica = posicao.politica;
+    final outras = [for (final x in equipe.posicoes) if (x.id != posicao.id) x];
+    final erros = errosDaPolitica(equipe, posicao);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 12),
+      Text('Depois da entrega', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+      if (politica.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text('a entrega vai direto para você', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+        ),
+      for (final (i, etapa) in politica.indexed)
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: Text('${i + 1}.'),
+          minLeadingWidth: 16,
+          title: Text(rotuloDaEtapa(etapa, equipe, _nomeDaPersona)),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              tooltip: 'Subir',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.arrow_upward, size: 18),
+              onPressed: i == 0 ? null : () => _aplicar((e) => moverEtapa(e, posicao.id, i, i - 1)),
+            ),
+            IconButton(
+              tooltip: 'Descer',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.arrow_downward, size: 18),
+              onPressed: i == politica.length - 1 ? null : () => _aplicar((e) => moverEtapa(e, posicao.id, i, i + 1)),
+            ),
+            IconButton(
+              tooltip: 'Remover etapa',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: () => _aplicar((e) => removerEtapa(e, posicao.id, i)),
+            ),
+          ]),
+        ),
+      for (final erro in erros)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(erro, style: TextStyle(color: cores.error, fontSize: 12)),
+        ),
+      const SizedBox(height: 4),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        _menu('Adicionar revisão', Icons.rate_review_outlined, [
+          for (final x in outras) (_rotuloDaOpcao(x), EtapaDePolitica.revisaoPor(x.id)),
+          ('Board da equipe', const EtapaDePolitica.revisaoDoBoard()),
+        ]),
+        _menu('Adicionar aprovação', Icons.verified_outlined, [
+          for (final x in outras) (_rotuloDaOpcao(x), EtapaDePolitica.aprovacaoPor(x.id)),
+          ('Ueslei', const EtapaDePolitica.aprovacaoDoUeslei()),
+        ]),
+      ]),
     ]);
   }
 }
@@ -1066,6 +1158,11 @@ class _DetalheDaPosicao extends StatelessWidget {
             Text('Responde a: ${chefe?.titulo ?? 'ninguém (solta, responde a você)'}'),
             Text('Capacidades: ${posicao.capacidades.map((c) => nomesDeCapacidade[c] ?? c).join(', ')}'),
             if (posicao.capacidades.contains('comandos')) Text('Aprovação: ${politicasDeAprovacao[posicao.aprovacao] ?? posicao.aprovacao}'),
+            if (posicao.politica.isNotEmpty) ...[
+              const Text('Depois da entrega:'),
+              for (final (i, etapa) in posicao.politica.indexed)
+                Text('${i + 1}. ${rotuloDaEtapa(etapa, equipe, _nomeDaPersona)}'),
+            ],
             if (abertas.isNotEmpty) ...[
               const SizedBox(height: 8),
               for (final t in abertas.take(5))
@@ -1096,20 +1193,36 @@ Future<String?> pedirTexto(
   String? explicacao,
   String acao = 'Ok',
   bool vazioVale = false,
+  bool multilinha = false,
 }) =>
     showDialog<String>(
       context: context,
-      builder: (_) => _DialogoDeTexto(titulo: titulo, rotulo: rotulo, explicacao: explicacao, acao: acao, vazioVale: vazioVale),
+      builder: (_) => _DialogoDeTexto(
+        titulo: titulo,
+        rotulo: rotulo,
+        explicacao: explicacao,
+        acao: acao,
+        vazioVale: vazioVale,
+        multilinha: multilinha,
+      ),
     );
 
 class _DialogoDeTexto extends StatefulWidget {
-  const _DialogoDeTexto({required this.titulo, required this.rotulo, this.explicacao, required this.acao, this.vazioVale = false});
+  const _DialogoDeTexto({
+    required this.titulo,
+    required this.rotulo,
+    this.explicacao,
+    required this.acao,
+    this.vazioVale = false,
+    this.multilinha = false,
+  });
 
   final String titulo;
   final String rotulo;
   final String? explicacao;
   final String acao;
   final bool vazioVale;
+  final bool multilinha;
 
   @override
   State<_DialogoDeTexto> createState() => _DialogoDeTextoState();
@@ -1134,6 +1247,8 @@ class _DialogoDeTextoState extends State<_DialogoDeTexto> {
           TextField(
             controller: _controle,
             autofocus: true,
+            minLines: widget.multilinha ? 3 : 1,
+            maxLines: widget.multilinha ? 8 : 1,
             decoration: InputDecoration(labelText: widget.rotulo),
             onSubmitted: (_) => _confirmar(),
           ),

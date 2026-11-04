@@ -102,6 +102,20 @@ void main() {
         ..tratar(const PermissaoResolvida('p2', 'expirado'));
       expect(estado.pedidos, isEmpty);
     });
+
+    test('decidir a etapa do Ueslei manda tarefa-decidir, e mudança sem texto não sai', () {
+      final estado = EstadoTarefas(enviar)
+        ..aprovarEtapa(3)
+        ..aprovarEtapa(3, ' bom ')
+        ..pedirMudanca(3, '  ')
+        ..pedirMudanca(3, ' faltou o teste ');
+      expect(enviados, [
+        {'tipo': 'tarefa-decidir', 'id': 3, 'decisao': 'aprovar'},
+        {'tipo': 'tarefa-decidir', 'id': 3, 'decisao': 'aprovar', 'texto': 'bom'},
+        {'tipo': 'tarefa-decidir', 'id': 3, 'decisao': 'mudanca', 'texto': 'faltou o teste'},
+      ]);
+      expect(estado.lista, isEmpty);
+    });
   });
 
   group('EstadoChat', () {

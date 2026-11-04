@@ -138,8 +138,68 @@ List<String> validarOrganograma(EquipeResumo e, Set<String> personas) {
   }
   final ciclo = e.posicoes.where((p) => p.respondeA != null && formaCiclo(e, p.id, p.respondeA!)).firstOrNull;
   if (ciclo != null) erros.add('posição ${ciclo.id}: a cadeia de "responde a" forma um ciclo');
+  for (final p in e.posicoes) {
+    erros.addAll(errosDaPolitica(e, p));
+  }
   return erros;
 }
+
+List<String> errosDaPolitica(EquipeResumo e, PosicaoResumo posicao) {
+  final politica = posicao.politica;
+  final onde = 'posição ${posicao.id}';
+  final invalida = politica.indexWhere((etapa) => !etapa.valida);
+  if (invalida >= 0) return ['$onde: etapa ${invalida + 1}: quem decide é inválido'];
+  final erros = <String>[];
+  final aprovacoes = politica.where((etapa) => etapa.aprovacao).length;
+  if (aprovacoes > 1) {
+    erros.add('$onde: só pode haver uma aprovação');
+  } else if (aprovacoes == 1 && !politica.last.aprovacao) {
+    erros.add('$onde: a aprovação precisa ser a última etapa');
+  }
+  for (final (i, etapa) in politica.indexed) {
+    final aqui = '$onde: etapa ${i + 1}';
+    if (etapa.doBoard) {
+      final membros = e.posicoes.where(
+          (p) => p.capacidades.contains('board') && p.persona != null && p.persona != posicao.persona);
+      if (membros.isEmpty) erros.add('$aqui: o board da equipe não tem membros');
+      continue;
+    }
+    final ref = etapa.posicao;
+    if (ref == null) continue;
+    final alvo = e.posicao(ref);
+    if (alvo == null) {
+      erros.add('$aqui: posição inexistente ($ref)');
+    } else if (alvo.id == posicao.id) {
+      erros.add('$aqui: não pode revisar a própria posição');
+    } else if (alvo.persona != null && alvo.persona == posicao.persona) {
+      erros.add('$aqui: ${alvo.persona} revisaria o próprio trabalho');
+    }
+  }
+  return erros;
+}
+
+EquipeResumo adicionarEtapa(EquipeResumo e, String id, EtapaDePolitica etapa) => _trocar(e, id, (p) {
+      final politica = [...p.politica];
+      final aprovacaoNoFim = politica.isNotEmpty && politica.last.aprovacao;
+      if (etapa.revisao && aprovacaoNoFim) {
+        politica.insert(politica.length - 1, etapa);
+      } else {
+        politica.add(etapa);
+      }
+      return p.copiar(politica: politica);
+    });
+
+EquipeResumo moverEtapa(EquipeResumo e, String id, int indice, int destino) => _trocar(e, id, (p) {
+      if (indice < 0 || indice >= p.politica.length || destino < 0 || destino >= p.politica.length) return p;
+      final politica = [...p.politica];
+      politica.insert(destino, politica.removeAt(indice));
+      return p.copiar(politica: politica);
+    });
+
+EquipeResumo removerEtapa(EquipeResumo e, String id, int indice) => _trocar(e, id, (p) {
+      if (indice < 0 || indice >= p.politica.length) return p;
+      return p.copiar(politica: [...p.politica]..removeAt(indice));
+    });
 
 Ponto cantoDoCartao(EquipeResumo e, String id) {
   final p = e.ponto(id);

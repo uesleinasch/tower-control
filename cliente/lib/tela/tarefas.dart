@@ -112,7 +112,12 @@ class _Lista extends StatelessWidget {
                       ListTile(
                         title: Text('#${t.id} ${t.titulo}'),
                         subtitle: Text(
-                          '${estado.rotuloDaPosicao(t.posicao)} · ${quando(t.atualizadaEm)}${t.rodando ? ' · ● rodando' : ''}',
+                          [
+                            estado.rotuloDaPosicao(t.posicao),
+                            if (t.status == 'em_revisao' && t.comQuem != null) t.comQuem!,
+                            quando(t.atualizadaEm),
+                            if (t.rodando) '● rodando',
+                          ].join(' · '),
                           style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
                         ),
                         trailing: _Status(t.status),
@@ -223,6 +228,17 @@ class _DetalheState extends State<_Detalhe> {
     _comentario.clear();
   }
 
+  Future<void> _pedirMudanca() async {
+    final texto = await pedirTexto(
+      context,
+      titulo: 'Pedir mudança em #${widget.tarefa.id}',
+      rotulo: 'O que mudar e por quê',
+      acao: 'Pedir mudança',
+      multilinha: true,
+    );
+    if (texto != null) widget.sala.tarefas.pedirMudanca(widget.tarefa.id, texto);
+  }
+
   @override
   Widget build(BuildContext context) {
     final estado = widget.sala.tarefas;
@@ -259,8 +275,30 @@ class _DetalheState extends State<_Detalhe> {
             padding: const EdgeInsets.all(16),
             children: [
               SelectionArea(child: TextoMarkdown(ficha)),
+              if (t.politica.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _Trilha(
+                  trilha: trilhaDaTarefa(
+                    t,
+                    estado.equipes.where((e) => e.id == t.equipe).firstOrNull,
+                    (id) => Perfil.porChave(id).nome,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
+                if (t.esperaDecisaoDoUeslei) ...[
+                  FilledButton.icon(
+                    onPressed: () => estado.aprovarEtapa(t.id),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Aprovar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _pedirMudanca,
+                    icon: const Icon(Icons.undo),
+                    label: const Text('Pedir mudança'),
+                  ),
+                ],
                 if (t.status == 'em_revisao' && planoPendente(widget.registros))
                   FilledButton.icon(
                     onPressed: () => estado.aprovarPlano(t.id),
@@ -287,6 +325,8 @@ class _DetalheState extends State<_Detalhe> {
                                     color: switch (r.tipo) {
                                       'entrega' => corDoStatus('concluida'),
                                       'plano' => corDoStatus('em_revisao'),
+                                      'aprovado' => corDoStatus('concluida'),
+                                      'mudanca' => corDoStatus('em_andamento'),
                                       _ => corDoStatus('bloqueada'),
                                     },
                                   ),
@@ -300,6 +340,8 @@ class _DetalheState extends State<_Detalhe> {
                                     'entrega' => ' entregou',
                                     'ajuda' => ' pediu ajuda',
                                     'plano' => ' propôs um plano',
+                                    'aprovado' => ' aprovou',
+                                    'mudanca' => ' pediu mudança',
                                     _ => '',
                                   }} · ${quando(r.em)}',
                                   style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
@@ -408,4 +450,32 @@ class _PedidoDeComando extends StatelessWidget {
           ]),
         ),
       );
+}
+
+class _Trilha extends StatelessWidget {
+  const _Trilha({required this.trilha});
+
+  final List<PassoDaTrilha> trilha;
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = Theme.of(context).colorScheme;
+    final destaque = corDoStatus('em_revisao');
+    return Text.rich(
+      TextSpan(children: [
+        for (final (i, passo) in trilha.indexed) ...[
+          if (i > 0) TextSpan(text: '  →  ', style: TextStyle(color: cores.onSurfaceVariant)),
+          TextSpan(
+            text: passo.estado == 'passada' ? '✓ ${passo.rotulo}' : passo.rotulo,
+            style: switch (passo.estado) {
+              'atual' => TextStyle(color: destaque, fontWeight: FontWeight.w600),
+              'passada' => TextStyle(color: cores.onSurfaceVariant),
+              _ => TextStyle(color: cores.onSurface),
+            },
+          ),
+        ],
+      ]),
+      style: const TextStyle(fontSize: 13),
+    );
+  }
 }
