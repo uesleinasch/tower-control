@@ -17,6 +17,7 @@ sealed class Entrada {
     final json = decodificado;
     final tipo = json['tipo'] as String? ?? '';
     String texto(String campo) => json[campo] as String? ?? '';
+    int? inteiro(String campo) => (json[campo] as num?)?.toInt();
     return switch (tipo) {
       'atalhos' => AtalhosRecebidos(listaDeJson(json['lista'], Atalho.deJson)),
       'aviso' => Aviso(texto('texto')),
@@ -36,11 +37,22 @@ sealed class Entrada {
       'erro' => Erro(texto('mensagem')),
       'excluida' => Excluida(texto('id')),
       'fim' => Fim(texto('conversaId')),
-      'permissao' => PedidoDePermissao(texto('id'), texto('comando')),
+      'execucao' => ExecucaoRecebida(
+          Execucao.deJson(json['execucao'] as Map<String, dynamic>),
+          json['eventos'] == null ? null : listaDeJson(json['eventos'], EventoDeExecucao.deJson),
+        ),
+      'execucao-evento' => EventoRecebido(
+          inteiro('execucaoId') ?? 0,
+          inteiro('tarefaId') ?? 0,
+          EventoDeExecucao.deJson(json['evento'] as Map<String, dynamic>),
+        ),
+      'permissao' => PedidoDePermissao(texto('id'), texto('comando'), tarefaId: inteiro('tarefaId')),
       'permissao-resolvida' => PermissaoResolvida(texto('id'), texto('como')),
       'tarefa' => TarefaRecebida(
           Tarefa.deJson(json['tarefa'] as Map<String, dynamic>),
           listaDeJson(json['registros'], RegistroDeTarefa.deJson),
+          execucoes: listaDeJson(json['execucoes'], Execucao.deJson),
+          custoUSD: (json['custoUSD'] as num?)?.toDouble() ?? 0,
           pedida: json['pedida'] == true,
         ),
       'tarefas' => TarefasRecebidas(listaDeJson(json['lista'], Tarefa.deJson)),
@@ -120,10 +132,25 @@ class TarefasRecebidas extends Entrada {
 }
 
 class TarefaRecebida extends Entrada {
-  const TarefaRecebida(this.tarefa, this.registros, {this.pedida = false});
+  const TarefaRecebida(this.tarefa, this.registros, {this.execucoes = const [], this.custoUSD = 0, this.pedida = false});
   final Tarefa tarefa;
   final List<RegistroDeTarefa> registros;
+  final List<Execucao> execucoes;
+  final double custoUSD;
   final bool pedida;
+}
+
+class ExecucaoRecebida extends Entrada {
+  const ExecucaoRecebida(this.execucao, this.eventos);
+  final Execucao execucao;
+  final List<EventoDeExecucao>? eventos;
+}
+
+class EventoRecebido extends Entrada {
+  const EventoRecebido(this.execucaoId, this.tarefaId, this.evento);
+  final int execucaoId;
+  final int tarefaId;
+  final EventoDeExecucao evento;
 }
 
 class Erro extends Entrada {
@@ -142,9 +169,10 @@ class Fim extends Entrada {
 }
 
 class PedidoDePermissao extends Entrada {
-  const PedidoDePermissao(this.id, this.comando);
+  const PedidoDePermissao(this.id, this.comando, {this.tarefaId});
   final String id;
   final String comando;
+  final int? tarefaId;
 }
 
 class PermissaoResolvida extends Entrada {
@@ -351,6 +379,16 @@ class CriarTarefa extends Saida {
   Map<String, Object?> get campos => {
         'tarefa': {'equipe': equipe, 'posicao': posicao, 'titulo': titulo, 'porque': porque},
       };
+}
+
+class PedirExecucao extends Saida {
+  const PedirExecucao(this.id);
+  final int id;
+
+  @override
+  String get tipo => 'execucao';
+  @override
+  Map<String, Object?> get campos => {'id': id};
 }
 
 class MudarStatusTarefa extends Saida {

@@ -9,6 +9,19 @@ import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const _execucao = {
+  'id': 5,
+  'tarefa': 3,
+  'posicao': 'executor',
+  'persona': 'alfred',
+  'gatilho': 'atribuicao',
+  'status': 'concluida',
+  'modelo': 'haiku',
+  'inicio': '2026-11-04T10:00:00Z',
+  'fim': '2026-11-04T10:01:05Z',
+  'custoUSD': 0.03,
+};
+
 const _tarefa = {
   'id': 3,
   'equipe': 'casa',
@@ -75,6 +88,17 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
     ],
   },
   'erro': {'mensagem': 'falhou'},
+  'execucao': {
+    'execucao': _execucao,
+    'eventos': [
+      {'id': 1, 'execucao': 5, 'tipo': 'texto', 'conteudo': 'rodando', 'em': '2026-11-04T10:00:05Z'},
+    ],
+  },
+  'execucao-evento': {
+    'execucaoId': 5,
+    'tarefaId': 3,
+    'evento': {'id': 2, 'execucao': 5, 'tipo': 'comando', 'conteudo': 'rodou: ls', 'em': '2026-11-04T10:00:06Z'},
+  },
   'excluida': {'id': 'c'},
   'fim': {'conversaId': 'c'},
   'permissao': {'id': 'p1', 'comando': 'git status'},
@@ -84,7 +108,10 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
     'registros': [
       {'id': 1, 'tarefa': 3, 'tipo': 'status', 'autor': 'ueslei', 'texto': 'criou em a fazer', 'em': '2026-10-07T10:00:00Z'},
       {'id': 2, 'tarefa': 3, 'tipo': 'comentario', 'autor': 'ueslei', 'texto': 'à noite', 'em': '2026-10-07T10:01:00Z'},
+      {'id': 3, 'tarefa': 3, 'tipo': 'entrega', 'autor': 'alfred', 'texto': 'feito', 'em': '2026-10-07T10:02:00Z'},
     ],
+    'execucoes': [_execucao],
+    'custoUSD': 0.03,
     'pedida': true,
   },
   'tarefas': {
@@ -109,6 +136,7 @@ final _saidas = <Saida>[
   const CriarTarefa(equipe: 'casa', posicao: 'executor', titulo: 't'),
   const MudarStatusTarefa(3, 'concluida'),
   const ComentarTarefa(3, 'oi'),
+  const PedirExecucao(5),
 ];
 
 void main() {
@@ -137,7 +165,11 @@ void main() {
       expect(e.tarefa.id, 3);
       expect(e.tarefa.dependeDe, [1]);
       expect(e.tarefa.proximosStatus, contains('em_revisao'));
-      expect(e.registros.map((r) => r.comentario), [false, true]);
+      expect(e.registros.map((r) => r.comentario), [false, true, false]);
+      expect(e.registros.map((r) => r.destacado), [false, false, true]);
+      expect(e.execucoes.single.duracao(DateTime.now()), const Duration(seconds: 65));
+      expect(e.custoUSD, 0.03);
+      expect(dinheiro(0.03), r'US$ 0.030');
       expect(e.pedida, isTrue);
     });
 
@@ -360,6 +392,13 @@ void main() {
       expect((destinoDe(aviso('resposta', [], conversaId: 'c1')) as AbrirConversa).conversaId, 'c1');
       expect(destinoDe(aviso('lembrete', [])), isA<NovaComAlfredNoTickTask>());
       expect(destinoDe(aviso('resumo', [])), isA<NovaComAlfredNoTickTask>());
+      expect((destinoDe(aviso('tarefa', [])) as AbrirTarefa).tarefaId, 3);
+      expect((destinoDe(aviso('aprovacao', ['aprovar', 'negar'])) as AbrirTarefa).tarefaId, 3);
+    });
+
+    test('permissão de tarefa traz o id da tarefa', () {
+      final e = Entrada.decodificar('{"tipo":"permissao","id":"p1","comando":"ls","tarefaId":3}') as PedidoDePermissao;
+      expect(e.tarefaId, 3);
     });
   });
 }

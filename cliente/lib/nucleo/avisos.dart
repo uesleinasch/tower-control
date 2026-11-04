@@ -208,8 +208,14 @@ class NovaComAlfredNoTickTask extends Destino {
   const NovaComAlfredNoTickTask();
 }
 
+class AbrirTarefa extends Destino {
+  const AbrirTarefa(this.tarefaId);
+  final int tarefaId;
+}
+
 Destino? destinoDe(Notificacao n) => switch (n.tipo) {
       'lembrete' || 'atrasada' || 'resumo' => const NovaComAlfredNoTickTask(),
       _ when n.conversaId != null => AbrirConversa(n.conversaId!),
+      'tarefa' || 'aprovacao' when n.tarefaId != null => AbrirTarefa(n.tarefaId!),
       _ => null,
     };

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../estado/sala.dart';
+import '../estado/tarefas.dart';
 import '../nucleo/formato.dart';
 import '../nucleo/modelos.dart';
+import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
 import 'chat.dart';
 import 'comum.dart';
@@ -19,7 +21,7 @@ class TelaTarefas extends StatelessWidget {
           final aberta = sala.tarefas.aberta;
           return aberta == null
               ? _Lista(sala: sala)
-              : _Detalhe(sala: sala, tarefa: aberta.tarefa, registros: aberta.registros);
+              : _Detalhe(sala: sala, aberta: aberta);
         },
       );
 }
@@ -98,7 +100,7 @@ class _Lista extends StatelessWidget {
                       ListTile(
                         title: Text('#${t.id} ${t.titulo}'),
                         subtitle: Text(
-                          '${estado.rotuloDaPosicao(t.posicao)} · ${quando(t.atualizadaEm)}',
+                          '${estado.rotuloDaPosicao(t.posicao)} · ${quando(t.atualizadaEm)}${t.rodando ? ' · ● rodando' : ''}',
                           style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
                         ),
                         trailing: _Status(t.status),
@@ -183,11 +185,13 @@ class _NovaTarefaState extends State<_NovaTarefa> {
 }
 
 class _Detalhe extends StatefulWidget {
-  const _Detalhe({required this.sala, required this.tarefa, required this.registros});
+  const _Detalhe({required this.sala, required this.aberta});
 
   final Sala sala;
-  final Tarefa tarefa;
-  final List<RegistroDeTarefa> registros;
+  final TarefaAberta aberta;
+
+  Tarefa get tarefa => aberta.tarefa;
+  List<RegistroDeTarefa> get registros => aberta.registros;
 
   @override
   State<_Detalhe> createState() => _DetalheState();
@@ -214,7 +218,7 @@ class _DetalheState extends State<_Detalhe> {
     final cores = Theme.of(context).colorScheme;
     final ficha = [
       '**${t.titulo}**',
-      '${estado.rotuloDaPosicao(t.posicao)}${t.dono != null ? ' · com ${t.dono}' : ''}',
+      '${estado.rotuloDaPosicao(t.posicao)}${t.rodando ? ' · rodando agora' : ''} · custo ${dinheiro(widget.aberta.custoUSD)}',
       if (t.porque.isNotEmpty) 'Por quê: ${t.porque}',
       if (t.dependeDe.isNotEmpty) 'Depende de: ${t.dependeDe.map((d) => '#$d').join(', ')}',
       if (t.pai != null) 'Parte da tarefa #${t.pai}',
@@ -255,13 +259,24 @@ class _DetalheState extends State<_Detalhe> {
               for (final r in widget.registros)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: r.comentario
+                  child: r.comentario || r.destacado
                       ? Card(
                           margin: EdgeInsets.zero,
+                          shape: r.destacado
+                              ? RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: r.tipo == 'entrega' ? corDoStatus('concluida') : corDoStatus('bloqueada')),
+                                )
+                              : null,
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text('${r.autor} · ${quando(r.em)}',
+                              Text(
+                                  '${r.autor}${switch (r.tipo) {
+                                    'entrega' => ' entregou',
+                                    'ajuda' => ' pediu ajuda',
+                                    _ => '',
+                                  }} · ${quando(r.em)}',
                                   style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
                               const SizedBox(height: 4),
                               SelectableText(r.texto),
@@ -272,6 +287,53 @@ class _DetalheState extends State<_Detalhe> {
                           textAlign: TextAlign.center,
                           style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
                 ),
+              for (final pedido in estado.pedidosDaAberta) _PedidoDeComando(pedido: pedido, estado: estado),
+              if (widget.aberta.execucoes.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text('EXECUÇÕES · ${widget.aberta.execucoes.length}',
+                    style: TextStyle(color: cores.onSurfaceVariant, fontSize: 11, letterSpacing: 1)),
+                for (final e in widget.aberta.execucoes.reversed)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    selected: estado.log?.execucaoId == e.id,
+                    title: Text('${e.id} · ${nomesDeExecucao[e.status] ?? e.status}'),
+                    subtitle: Text(
+                      [
+                        e.persona,
+                        nomesDeGatilho[e.gatilho] ?? e.gatilho,
+                        if (e.duracao(DateTime.now()) case final d?) duracaoCurta(d),
+                        if (e.custoUSD != null) dinheiro(e.custoUSD),
+                        e.erro,
+                      ].whereType<String>().join(' · '),
+                      style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
+                    ),
+                    onTap: e.comecou ? () => estado.abrirLog(e.id) : null,
+                  ),
+              ],
+              if (estado.log case final log?) ...[
+                const SizedBox(height: 12),
+                Text('LOG DA EXECUÇÃO ${log.execucaoId}',
+                    style: TextStyle(color: cores.onSurfaceVariant, fontSize: 11, letterSpacing: 1)),
+                if (log.eventos.isEmpty)
+                  Text('Sem eventos ainda.', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+                for (final ev in log.eventos)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: SelectableText(
+                      '${quando(ev.em)}  ${ev.conteudo}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: ev.tipo == 'texto' ? null : 'monospace',
+                        color: switch (ev.tipo) {
+                          'texto' => cores.onSurface,
+                          'erro' => cores.error,
+                          _ => cores.onSurfaceVariant,
+                        },
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
@@ -296,4 +358,29 @@ class _DetalheState extends State<_Detalhe> {
       ]),
     );
   }
+}
+
+class _PedidoDeComando extends StatelessWidget {
+  const _PedidoDeComando({required this.pedido, required this.estado});
+
+  final PedidoDePermissao pedido;
+  final EstadoTarefas estado;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Comando pedindo aprovação'),
+            const SizedBox(height: 6),
+            SelectableText(pedido.comando, style: const TextStyle(fontFamily: 'monospace')),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, children: [
+              FilledButton(onPressed: () => estado.responder(pedido.id, permitido: true), child: const Text('Permitir')),
+              OutlinedButton(onPressed: () => estado.responder(pedido.id, permitido: false), child: const Text('Negar')),
+            ]),
+          ]),
+        ),
+      );
 }

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
 import 'package:control_tower/estado/presenca.dart';
+import 'package:control_tower/estado/tarefas.dart';
+import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +23,44 @@ void main() {
   setUp(() {
     enviados = [];
     online = true;
+  });
+
+  group('EstadoTarefas', () {
+    final tarefa = Tarefa(id: 3, equipe: 'casa', posicao: 'executor', titulo: 't', status: 'em_andamento', atualizadaEm: DateTime(2026));
+    Execucao execucao(int id, String status) =>
+        Execucao(id: id, tarefa: 3, gatilho: 'atribuicao', status: status, inicio: DateTime(2026));
+    EventoDeExecucao evento(int id) => EventoDeExecucao(id: id, tipo: 'texto', conteudo: 'e$id', em: DateTime(2026));
+
+    test('abrir a tarefa pede o log da última execução, que cresce ao vivo', () {
+      final estado = EstadoTarefas(enviar)..tratar(TarefaRecebida(tarefa, const [], execucoes: [execucao(5, 'rodando')], pedida: true));
+      expect(enviados.last, {'tipo': 'execucao', 'id': 5});
+      estado
+        ..tratar(ExecucaoRecebida(execucao(5, 'rodando'), [evento(1)]))
+        ..tratar(EventoRecebido(5, 3, evento(2)))
+        ..tratar(EventoRecebido(9, 3, evento(3)));
+      expect(estado.log!.eventos.map((e) => e.conteudo), ['e1', 'e2']);
+      estado.tratar(ExecucaoRecebida(execucao(6, 'rodando'), null));
+      expect(estado.aberta!.execucoes.map((e) => e.id), [5, 6]);
+      expect(enviados.last, {'tipo': 'execucao', 'id': 6});
+    });
+
+    test('permissão de tarefa fica na tarefa, não no chat, e responde uma vez', () {
+      final chat = EstadoChat(enviar)..tratar(const ConversaAberta(_meta, []));
+      final estado = EstadoTarefas(enviar)..tratar(TarefaRecebida(tarefa, const [], pedida: true));
+      const pedido = PedidoDePermissao('p1', 'ls', tarefaId: 3);
+      chat.tratar(pedido);
+      estado.tratar(pedido);
+      expect(chat.itens.whereType<Permissao>(), isEmpty);
+      expect(estado.pedidosDaAberta.map((p) => p.comando), ['ls']);
+      estado
+        ..responder('p1', permitido: true)
+        ..responder('p1', permitido: false);
+      expect(enviados.where((m) => m['tipo'] == 'permissao-resposta'), hasLength(1));
+      estado
+        ..tratar(const PedidoDePermissao('p2', 'df', tarefaId: 3))
+        ..tratar(const PermissaoResolvida('p2', 'expirado'));
+      expect(estado.pedidos, isEmpty);
+    });
   });
 
   group('EstadoChat', () {

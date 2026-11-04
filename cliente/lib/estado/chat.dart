@@ -243,6 +243,8 @@ class EstadoChat extends ChangeNotifier {
         if (conversaId != this.conversaId) return;
         _encerrarStreaming();
         emCurso = false;
+      case PedidoDePermissao(tarefaId: _?):
+        return;
       case PedidoDePermissao(:final id, :final comando):
         final p = Permissao(id, comando);
         itens.add(p);

@@ -84,6 +84,11 @@ class Sala extends ChangeNotifier {
     ir(Tela.chat);
   }
 
+  void abrirTarefa(int id) {
+    ir(Tela.tarefas);
+    tarefas.abrir(id);
+  }
+
   void _aoConectar() {
     conversas.listar();
     presenca.reconectou();

@@ -22,6 +22,8 @@ Future<void> responderAoAviso(
       sala.abrirConversa(conversaId);
     case NovaComAlfredNoTickTask():
       sala.novaConversaNoTickTask();
+    case AbrirTarefa(:final tarefaId):
+      sala.abrirTarefa(tarefaId);
     case null:
   }
 }
