@@ -47,6 +47,8 @@ sealed class Entrada {
           EventoDeExecucao.deJson(json['evento'] as Map<String, dynamic>),
         ),
       'personas' => PersonasRecebidas(listaDeJson(json['lista'], Perfil.deJson)),
+      'orquestra' => OrquestraRecebida(pausadoTudo: json['pausadoTudo'] == true),
+      'auditoria' => AuditoriaRecebida(listaDeJson(json['lista'], LinhaDeAuditoria.deJson)),
       'permissao' => PedidoDePermissao(texto('id'), texto('comando'), tarefaId: inteiro('tarefaId')),
       'permissao-resolvida' => PermissaoResolvida(texto('id'), texto('como')),
       'tarefa' => TarefaRecebida(
@@ -125,6 +127,16 @@ class Decisoes extends Entrada {
 class EquipesRecebidas extends Entrada {
   const EquipesRecebidas(this.lista);
   final List<EquipeResumo> lista;
+}
+
+class OrquestraRecebida extends Entrada {
+  const OrquestraRecebida({required this.pausadoTudo});
+  final bool pausadoTudo;
+}
+
+class AuditoriaRecebida extends Entrada {
+  const AuditoriaRecebida(this.lista);
+  final List<LinhaDeAuditoria> lista;
 }
 
 class PersonasRecebidas extends Entrada {
@@ -473,4 +485,56 @@ class ExcluirEquipe extends Saida {
   String get tipo => 'equipe-excluir';
   @override
   Map<String, Object?> get campos => {'id': id};
+}
+
+class SalvarOrcamento extends Saida {
+  const SalvarOrcamento(this.id, this.orcamentoMensalUSD);
+  final String id;
+  final double? orcamentoMensalUSD;
+
+  @override
+  String get tipo => 'persona-salvar';
+  @override
+  Map<String, Object?> get campos => {
+        'persona': {'id': id, 'orcamentoMensalUSD': orcamentoMensalUSD},
+      };
+}
+
+class Pausar extends Saida {
+  const Pausar(this.alvo);
+  final String alvo;
+
+  @override
+  String get tipo => 'pausar';
+  @override
+  Map<String, Object?> get campos => {'alvo': alvo};
+}
+
+class Retomar extends Saida {
+  const Retomar(this.alvo);
+  final String alvo;
+
+  @override
+  String get tipo => 'retomar';
+  @override
+  Map<String, Object?> get campos => {'alvo': alvo};
+}
+
+class AprovarPlano extends Saida {
+  const AprovarPlano(this.id);
+  final int id;
+
+  @override
+  String get tipo => 'tarefa-aprovar-plano';
+  @override
+  Map<String, Object?> get campos => {'id': id};
+}
+
+class PedirAuditoria extends Saida {
+  const PedirAuditoria();
+
+  @override
+  String get tipo => 'auditoria';
+  @override
+  Map<String, Object?> get campos => const {};
 }

@@ -104,6 +104,12 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
   'excluida': {'id': 'c'},
   'fim': {'conversaId': 'c'},
   'permissao': {'id': 'p1', 'comando': 'git status'},
+  'orquestra': {'pausadoTudo': true},
+  'auditoria': {
+    'lista': [
+      {'id': 1, 'em': '2026-11-04T12:00:00Z', 'quem': 'ueslei', 'acao': 'pausou', 'alvo': 'tudo', 'detalhe': ''},
+    ],
+  },
   'personas': {
     'lista': [
       {'id': 'vera', 'nome': 'Vera', 'inicial': 'V', 'cor': '#112233', 'titulo': 'revisora', 'conversa': true, 'executor': false, 'excluivel': true, 'modelo': null, 'gerandoPerfil': true},
@@ -149,6 +155,11 @@ final _saidas = <Saida>[
   const ExcluirPersona('vera', 'Vera'),
   const SalvarEquipe(EquipeResumo(id: 'codigo', nome: 'Código', posicoes: [])),
   const ExcluirEquipe('codigo'),
+  const SalvarOrcamento('alfred', 5),
+  const Pausar('*'),
+  const Retomar('alfred'),
+  const AprovarPlano(3),
+  const PedirAuditoria(),
 ];
 
 void main() {
@@ -538,6 +549,26 @@ void main() {
       final c = cantoDoCartao(e, 'executor');
       expect(alcaEm(e, c.x + larguraDoCartao / 2, c.y + alturaDoCartao + 5), 'executor');
       expect(alcaEm(e, c.x + 5, c.y + 5), isNull);
+    });
+
+    test('orçamento, pausa e plano chegam no modelo e voltam no JSON', () {
+      final p = Perfil.deJson({
+        'id': 'alfred', 'nome': 'Alfred', 'cor': '#a9b0bf', 'orcamentoMensalUSD': 5, 'gastoMesUSD': 4.5,
+        'gastoTotalMesUSD': 6, 'pausa': {'motivo': 'orcamento'},
+      });
+      expect([p.orcamentoMensalUSD, p.gastoMesUSD, p.pausa, p.proporcaoDoOrcamento], [5.0, 4.5, 'orcamento', 0.9]);
+      expect(Perfil.deJson({'id': 'x', 'nome': 'X'}).proporcaoDoOrcamento, isNull);
+      final posicao = codigo().posicao('executor')!.copiar(aprovarPlano: true, delegaDireto: true);
+      expect(posicao.paraJson(), containsPair('aprovarPlano', true));
+      expect(PosicaoResumo.deJson(posicao.paraJson().cast<String, dynamic>()).delegaDireto, isTrue);
+      expect(codigo().posicao('executor')!.paraJson().containsKey('aprovarPlano'), isFalse);
+      RegistroDeTarefa r(String tipo) => RegistroDeTarefa(tipo: tipo, autor: 'a', texto: 't', em: DateTime(2026));
+      expect(planoPendente([r('plano')]), isTrue);
+      expect(planoPendente([r('plano'), r('plano-aprovado')]), isFalse);
+      expect(planoPendente([r('entrega')]), isFalse);
+      expect(r('plano').destacado, isTrue);
+      final json = jsonDecode(const SalvarOrcamento('alfred', null).codificar()) as Map;
+      expect(json['persona'], {'id': 'alfred', 'orcamentoMensalUSD': null});
     });
 
     test('personas do servidor substituem o registro fixo', () {

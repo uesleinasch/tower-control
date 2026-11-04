@@ -19,6 +19,18 @@ class EstadoEquipes extends ChangeNotifier {
   String? erro;
   bool salvando = false;
   bool? mostrarPersonas;
+  bool pausadoTudo = false;
+  List<LinhaDeAuditoria>? auditoria;
+
+  void pausar(String alvo) => _enviar(Pausar(alvo));
+
+  void retomar(String alvo) => _enviar(Retomar(alvo));
+
+  void alternarPausaGeral() => pausadoTudo ? retomar('*') : pausar('*');
+
+  void salvarOrcamento(String persona, double? limite) => _enviar(SalvarOrcamento(persona, limite));
+
+  void pedirAuditoria() => _enviar(const PedirAuditoria());
 
   bool get alterada => rascunho != null;
 
@@ -156,6 +168,10 @@ class EstadoEquipes extends ChangeNotifier {
         if (selecionada != null && atual?.posicao(selecionada!) == null) selecionada = null;
       case PersonasRecebidas():
         break;
+      case OrquestraRecebida(:final pausadoTudo):
+        this.pausadoTudo = pausadoTudo;
+      case AuditoriaRecebida(:final lista):
+        auditoria = lista;
       case Erro(:final mensagem) when salvando:
         salvando = false;
         erro = mensagem;

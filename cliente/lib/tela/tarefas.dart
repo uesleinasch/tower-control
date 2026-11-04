@@ -8,6 +8,7 @@ import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
 import 'chat.dart';
 import 'comum.dart';
+import 'equipes.dart';
 
 class TelaTarefas extends StatelessWidget {
   const TelaTarefas({super.key, required this.sala});
@@ -74,7 +75,8 @@ class _Lista extends StatelessWidget {
           ),
         ),
       ),
-      const Divider(),
+      const Divider(height: 1),
+      BarraDePausa(estado: sala.equipes),
       Expanded(
         child: !estado.carregada
             ? const Center(child: CircularProgressIndicator())
@@ -259,6 +261,12 @@ class _DetalheState extends State<_Detalhe> {
               SelectionArea(child: TextoMarkdown(ficha)),
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
+                if (t.status == 'em_revisao' && planoPendente(widget.registros))
+                  FilledButton.icon(
+                    onPressed: () => estado.aprovarPlano(t.id),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Aprovar plano'),
+                  ),
                 for (final para in t.proximosStatus)
                   OutlinedButton(
                     onPressed: () => estado.mudarStatus(t.id, para),
@@ -275,7 +283,13 @@ class _DetalheState extends State<_Detalhe> {
                           shape: r.destacado
                               ? RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  side: BorderSide(color: r.tipo == 'entrega' ? corDoStatus('concluida') : corDoStatus('bloqueada')),
+                                  side: BorderSide(
+                                    color: switch (r.tipo) {
+                                      'entrega' => corDoStatus('concluida'),
+                                      'plano' => corDoStatus('em_revisao'),
+                                      _ => corDoStatus('bloqueada'),
+                                    },
+                                  ),
                                 )
                               : null,
                           child: Padding(
@@ -285,6 +299,7 @@ class _DetalheState extends State<_Detalhe> {
                                   '${r.autor}${switch (r.tipo) {
                                     'entrega' => ' entregou',
                                     'ajuda' => ' pediu ajuda',
+                                    'plano' => ' propôs um plano',
                                     _ => '',
                                   }} · ${quando(r.em)}',
                                   style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),

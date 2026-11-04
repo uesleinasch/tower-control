@@ -10,6 +10,10 @@ class Perfil {
     this.excluivel = true,
     this.gerandoPerfil = false,
     this.modelo,
+    this.orcamentoMensalUSD,
+    this.gastoMesUSD = 0,
+    this.gastoTotalMesUSD = 0,
+    this.pausa,
   });
 
   final String chave;
@@ -22,6 +26,18 @@ class Perfil {
   final bool excluivel;
   final bool gerandoPerfil;
   final String? modelo;
+  final double? orcamentoMensalUSD;
+  final double gastoMesUSD;
+  final double gastoTotalMesUSD;
+  final String? pausa;
+
+  double? get proporcaoDoOrcamento {
+    final limite = orcamentoMensalUSD;
+    if (limite == null) return null;
+    if (limite <= 0) return 1;
+    final p = gastoMesUSD / limite;
+    return p > 1 ? 1 : p;
+  }
 
   factory Perfil.deJson(Map<String, dynamic> j) {
     final chave = j['id'] as String? ?? '';
@@ -37,6 +53,10 @@ class Perfil {
       excluivel: j['excluivel'] == true,
       gerandoPerfil: j['gerandoPerfil'] == true,
       modelo: j['modelo'] as String?,
+      orcamentoMensalUSD: (j['orcamentoMensalUSD'] as num?)?.toDouble(),
+      gastoMesUSD: (j['gastoMesUSD'] as num?)?.toDouble() ?? 0,
+      gastoTotalMesUSD: (j['gastoTotalMesUSD'] as num?)?.toDouble() ?? 0,
+      pausa: (j['pausa'] as Map?)?['motivo'] as String?,
     );
   }
 

@@ -43,6 +43,7 @@ class TelaEquipes extends StatelessWidget {
                   child: _Topo(estado: estado, editar: editar, personasVisiveis: personasVisiveis),
                 ),
               ),
+              BarraDePausa(estado: estado),
               if (estado.erro != null)
                 MaterialBanner(
                   content: Text(estado.erro!),
@@ -169,6 +170,23 @@ class _Topo extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(children: [
           const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 32),
+          IconButton(tooltip: 'Atividade', icon: const Icon(Icons.history), onPressed: () => mostrarAtividade(context, estado)),
+          if (!editar)
+            IconButton(
+              tooltip: 'Personas',
+              icon: const Icon(Icons.people_alt_outlined),
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.7,
+                  child: ListenableBuilder(
+                    listenable: estado,
+                    builder: (_, _) => _PainelDePersonas(estado: estado, personasVisiveis: true, gerenciar: false),
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(width: 8),
           Flexible(
             child: DropdownButton<String>(
@@ -791,6 +809,22 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
                 ],
               )),
         ),
+      SwitchListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        value: p.aprovarPlano,
+        title: const Text('Exigir plano aprovado'),
+        subtitle: const Text('primeiro propõe um plano; executa depois que você aprovar'),
+        onChanged: (v) => _editar((x) => x.copiar(aprovarPlano: v)),
+      ),
+      SwitchListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        value: p.delegaDireto,
+        title: const Text('Delegação roda sem aprovação'),
+        subtitle: const Text('a subtarefa que esta posição delega já entra na fila'),
+        onChanged: (v) => _editar((x) => x.copiar(delegaDireto: v)),
+      ),
       if (comandos) ...[
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
@@ -822,10 +856,27 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
 }
 
 class _PainelDePersonas extends StatelessWidget {
-  const _PainelDePersonas({required this.estado, required this.personasVisiveis});
+  const _PainelDePersonas({required this.estado, required this.personasVisiveis, this.gerenciar = true});
 
   final EstadoEquipes estado;
   final bool personasVisiveis;
+  final bool gerenciar;
+
+  Future<void> _orcamento(BuildContext context, Perfil p) async {
+    final texto = await pedirTexto(
+      context,
+      titulo: 'Orçamento de ${p.nome}',
+      rotulo: 'Limite mensal das tarefas em US\$ (vazio = sem limite)',
+      explicacao: 'Neste mês: US\$ ${p.gastoMesUSD.toStringAsFixed(2)} em tarefas, US\$ ${p.gastoTotalMesUSD.toStringAsFixed(2)} no total.',
+      acao: 'Salvar',
+      vazioVale: true,
+    );
+    if (texto == null) return;
+    final limpo = texto.trim().replaceAll(',', '.');
+    final limite = limpo.isEmpty ? null : double.tryParse(limpo);
+    if (limpo.isNotEmpty && (limite == null || limite < 0)) return;
+    estado.salvarOrcamento(p.chave, limite);
+  }
 
   Future<void> _nova(BuildContext context) async {
     final dados = await showDialog<_NovaPersona>(context: context, builder: (_) => const _DialogoNovaPersona());
@@ -850,22 +901,55 @@ class _PainelDePersonas extends StatelessWidget {
     return ListView(padding: const EdgeInsets.all(16), children: [
       Row(children: [
         Expanded(child: Text('Personas', style: Theme.of(context).textTheme.titleSmall)),
-        FilledButton.icon(onPressed: () => _nova(context), icon: const Icon(Icons.person_add_alt), label: const Text('Nova')),
-        IconButton(tooltip: 'Ocultar personas', icon: const Icon(Icons.close), onPressed: () => estado.alternarPersonas(personasVisiveis)),
+        if (gerenciar) ...[
+          FilledButton.icon(onPressed: () => _nova(context), icon: const Icon(Icons.person_add_alt), label: const Text('Nova')),
+          IconButton(tooltip: 'Ocultar personas', icon: const Icon(Icons.close), onPressed: () => estado.alternarPersonas(personasVisiveis)),
+        ],
       ]),
       const SizedBox(height: 4),
-      Text('Clique num cartão para editar a posição.', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+      if (gerenciar) Text('Clique num cartão para editar a posição.', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
       const SizedBox(height: 8),
       for (final p in Perfil.todos)
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: Avatar.doPerfil(p.chave, tamanho: 28),
-          title: Text(p.nome),
-          subtitle: Text([p.papel, p.modelo, if (p.gerandoPerfil) 'gerando perfil…'].whereType<String>().where((s) => s.isNotEmpty).join(' · ')),
-          trailing: p.excluivel
-              ? IconButton(tooltip: 'Excluir ${p.nome}', icon: const Icon(Icons.person_remove_outlined), onPressed: () => _excluir(context, p))
-              : null,
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Avatar.doPerfil(p.chave, tamanho: 28),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(p.nome),
+                Text(
+                  [p.papel, p.modelo, if (p.gerandoPerfil) 'gerando perfil…', if (p.pausa != null) nomesDePausa[p.pausa] ?? p.pausa]
+                      .whereType<String>()
+                      .where((s) => s.isNotEmpty)
+                      .join(' · '),
+                  style: TextStyle(color: p.pausa != null ? cores.error : cores.onSurfaceVariant, fontSize: 12),
+                ),
+                Text(
+                  'tarefas no mês: US\$ ${p.gastoMesUSD.toStringAsFixed(2)}'
+                  '${p.orcamentoMensalUSD != null ? ' de US\$ ${p.orcamentoMensalUSD!.toStringAsFixed(2)}' : ' · sem limite'}',
+                  style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
+                ),
+                if (p.proporcaoDoOrcamento case final proporcao?)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: LinearProgressIndicator(
+                      value: proporcao,
+                      color: proporcao >= 1 ? cores.error : proporcao >= 0.8 ? const Color(0xFFE0A458) : const Color(0xFF4FAE7C),
+                    ),
+                  ),
+              ]),
+            ),
+            IconButton(
+              tooltip: p.pausa == 'ueslei' ? 'Retomar ${p.nome}' : 'Pausar ${p.nome}',
+              icon: Icon(p.pausa == 'ueslei' ? Icons.play_arrow : Icons.pause),
+              onPressed: () => p.pausa == 'ueslei' ? estado.retomar(p.chave) : estado.pausar(p.chave),
+            ),
+            if (gerenciar)
+              IconButton(tooltip: 'Orçamento', icon: const Icon(Icons.savings_outlined), onPressed: () => _orcamento(context, p)),
+            if (gerenciar && p.excluivel)
+              IconButton(tooltip: 'Excluir ${p.nome}', icon: const Icon(Icons.person_remove_outlined), onPressed: () => _excluir(context, p)),
+          ]),
         ),
     ]);
   }
@@ -1013,19 +1097,21 @@ Future<String?> pedirTexto(
   required String rotulo,
   String? explicacao,
   String acao = 'Ok',
+  bool vazioVale = false,
 }) =>
     showDialog<String>(
       context: context,
-      builder: (_) => _DialogoDeTexto(titulo: titulo, rotulo: rotulo, explicacao: explicacao, acao: acao),
+      builder: (_) => _DialogoDeTexto(titulo: titulo, rotulo: rotulo, explicacao: explicacao, acao: acao, vazioVale: vazioVale),
     );
 
 class _DialogoDeTexto extends StatefulWidget {
-  const _DialogoDeTexto({required this.titulo, required this.rotulo, this.explicacao, required this.acao});
+  const _DialogoDeTexto({required this.titulo, required this.rotulo, this.explicacao, required this.acao, this.vazioVale = false});
 
   final String titulo;
   final String rotulo;
   final String? explicacao;
   final String acao;
+  final bool vazioVale;
 
   @override
   State<_DialogoDeTexto> createState() => _DialogoDeTextoState();
@@ -1040,7 +1126,7 @@ class _DialogoDeTextoState extends State<_DialogoDeTexto> {
     super.dispose();
   }
 
-  void _confirmar() => Navigator.pop(context, _controle.text.trim().isEmpty ? null : _controle.text);
+  void _confirmar() => Navigator.pop(context, _controle.text.trim().isEmpty && !widget.vazioVale ? null : _controle.text);
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -1074,3 +1160,76 @@ Future<bool> confirmar(BuildContext context, String titulo, String texto) async 
       ),
     ) ==
     true;
+
+class BarraDePausa extends StatelessWidget {
+  const BarraDePausa({super.key, required this.estado});
+
+  final EstadoEquipes estado;
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = Theme.of(context).colorScheme;
+    return ListenableBuilder(
+      listenable: estado,
+      builder: (context, _) => Material(
+        color: estado.pausadoTudo ? cores.errorContainer : cores.surface,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(children: [
+            Icon(estado.pausadoTudo ? Icons.pause_circle : Icons.play_circle_outline, size: 18,
+                color: estado.pausadoTudo ? cores.onErrorContainer : cores.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                estado.pausadoTudo ? 'Tudo pausado: nenhuma tarefa começa.' : 'Personas trabalhando normalmente.',
+                style: TextStyle(fontSize: 12, color: estado.pausadoTudo ? cores.onErrorContainer : cores.onSurfaceVariant),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: estado.alternarPausaGeral,
+              icon: Icon(estado.pausadoTudo ? Icons.play_arrow : Icons.pause),
+              label: Text(estado.pausadoTudo ? 'Retomar tudo' : 'Pausar tudo'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> mostrarAtividade(BuildContext context, EstadoEquipes estado) {
+  estado.pedirAuditoria();
+  return showDialog<void>(
+    context: context,
+    builder: (contexto) => AlertDialog(
+      title: const Text('Atividade'),
+      content: SizedBox(
+        width: 520,
+        height: 420,
+        child: ListenableBuilder(
+          listenable: estado,
+          builder: (_, _) {
+            final lista = estado.auditoria;
+            if (lista == null) return const Center(child: CircularProgressIndicator());
+            if (lista.isEmpty) return const Center(child: Text('Nada registrado ainda.'));
+            return ListView(children: [
+              for (final a in lista)
+                ListTile(
+                  dense: true,
+                  title: Text('${a.quem} ${a.acao} · ${a.alvo}'),
+                  subtitle: Text([quandoCurto(a.em), if (a.detalhe.isNotEmpty) a.detalhe].join(' · ')),
+                ),
+            ]);
+          },
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(contexto), child: const Text('Fechar'))],
+    ),
+  );
+}
+
+String quandoCurto(DateTime em) {
+  final l = em.toLocal();
+  String d(int n) => n.toString().padLeft(2, '0');
+  return '${d(l.day)}/${d(l.month)} ${d(l.hour)}:${d(l.minute)}';
+}

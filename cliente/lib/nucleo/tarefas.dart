@@ -32,6 +32,8 @@ class PosicaoResumo {
     this.capacidades = const [],
     this.aprovacao = 'sempre',
     this.diretorio,
+    this.aprovarPlano = false,
+    this.delegaDireto = false,
   });
 
   final String id;
@@ -42,6 +44,8 @@ class PosicaoResumo {
   final List<String> capacidades;
   final String aprovacao;
   final String? diretorio;
+  final bool aprovarPlano;
+  final bool delegaDireto;
 
   String get rotulo => personaNome != null ? '$personaNome · $titulo' : '$titulo (vaga)';
 
@@ -52,6 +56,8 @@ class PosicaoResumo {
     List<String>? capacidades,
     String? aprovacao,
     String? Function()? diretorio,
+    bool? aprovarPlano,
+    bool? delegaDireto,
   }) =>
       PosicaoResumo(
         id: id,
@@ -62,6 +68,8 @@ class PosicaoResumo {
         capacidades: capacidades ?? this.capacidades,
         aprovacao: aprovacao ?? this.aprovacao,
         diretorio: diretorio != null ? diretorio() : this.diretorio,
+        aprovarPlano: aprovarPlano ?? this.aprovarPlano,
+        delegaDireto: delegaDireto ?? this.delegaDireto,
       );
 
   Map<String, Object?> paraJson() => {
@@ -72,6 +80,8 @@ class PosicaoResumo {
         'capacidades': capacidades,
         'aprovacao': aprovacao,
         if (diretorio != null && diretorio!.trim().isNotEmpty) 'diretorio': diretorio!.trim(),
+        if (aprovarPlano) 'aprovarPlano': true,
+        if (delegaDireto) 'delegaDireto': true,
       };
 
   factory PosicaoResumo.deJson(Map<String, dynamic> j) => PosicaoResumo(
@@ -83,6 +93,8 @@ class PosicaoResumo {
         capacidades: [for (final c in (j['capacidades'] as List? ?? const [])) c as String],
         aprovacao: j['aprovacao'] as String? ?? 'sempre',
         diretorio: j['diretorio'] as String?,
+        aprovarPlano: j['aprovarPlano'] == true,
+        delegaDireto: j['delegaDireto'] == true,
       );
 }
 
@@ -187,7 +199,7 @@ class RegistroDeTarefa {
   final DateTime em;
 
   bool get comentario => tipo == 'comentario';
-  bool get destacado => tipo == 'entrega' || tipo == 'ajuda';
+  bool get destacado => tipo == 'entrega' || tipo == 'ajuda' || tipo == 'plano';
 
   factory RegistroDeTarefa.deJson(Map<String, dynamic> j) => RegistroDeTarefa(
         tipo: j['tipo'] as String? ?? 'status',
@@ -223,7 +235,33 @@ const nomesDeGatilho = {
   'dependencia': 'dependência',
   'retomada': 'retomada',
   'nova_tentativa': 'nova tentativa',
+  'plano_aprovado': 'plano aprovado',
 };
+
+const nomesDePausa = {'ueslei': 'pausada', 'tudo': 'tudo pausado', 'orcamento': 'orçamento estourado'};
+
+bool planoPendente(List<RegistroDeTarefa> registros) {
+  final plano = registros.lastIndexWhere((r) => r.tipo == 'plano');
+  return plano >= 0 && registros.lastIndexWhere((r) => r.tipo == 'plano-aprovado') < plano;
+}
+
+class LinhaDeAuditoria {
+  const LinhaDeAuditoria({required this.em, required this.quem, required this.acao, required this.alvo, this.detalhe = ''});
+
+  final DateTime em;
+  final String quem;
+  final String acao;
+  final String alvo;
+  final String detalhe;
+
+  factory LinhaDeAuditoria.deJson(Map<String, dynamic> j) => LinhaDeAuditoria(
+        em: DateTime.tryParse(j['em'] as String? ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+        quem: j['quem'] as String? ?? '',
+        acao: j['acao'] as String? ?? '',
+        alvo: j['alvo'] as String? ?? '',
+        detalhe: j['detalhe'] as String? ?? '',
+      );
+}
 
 DateTime? _data(Object? bruto) => bruto is String ? DateTime.tryParse(bruto) : null;
 

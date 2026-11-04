@@ -41,6 +41,15 @@ void main() {
       expect([estado.alterada, estado.salvando], [false, false]);
     });
 
+    test('pausa geral alterna conforme o estado do servidor', () {
+      final estado = EstadoEquipes(enviar)..alternarPausaGeral();
+      expect(enviados.last, {'tipo': 'pausar', 'alvo': '*'});
+      estado
+        ..tratar(const OrquestraRecebida(pausadoTudo: true))
+        ..alternarPausaGeral();
+      expect(enviados.last, {'tipo': 'retomar', 'alvo': '*'});
+    });
+
     test('erro do servidor mantém o rascunho, e validação local nem envia', () {
       final estado = EstadoEquipes(enviar)
         ..tratar(const EquipesRecebidas([casa]))
