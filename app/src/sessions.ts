@@ -251,7 +251,7 @@ export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string
         resume: opcoes.sessionId,
         settingSources: [],
         model: opcoes.modelo,
-        systemPrompt: await montarSystemPrompt(opcoes.raiz, opcoes.persona),
+        systemPrompt: await montarSystemPrompt(opcoes.raiz, opcoes.persona, undefined, posicao.comandos),
         tools: posicao.nativas,
         allowedTools: posicao.autoAprovadas,
         mcpServers: mcp,
@@ -289,7 +289,8 @@ export async function perguntarUmaVez(opcoes: {
   system: string
   prompt: string
   permitirLeitura?: boolean
-  uso: { tipo: "board-parecer" | "board-sintese"; perfil?: string }
+  modelo?: string
+  uso: { tipo: "board-parecer" | "board-sintese" | "persona"; perfil?: string }
 }): Promise<string> {
   let resposta = ""
   // Sem "model" de propósito: o board delibera no padrão do SDK (Opus), e não no
@@ -302,6 +303,7 @@ export async function perguntarUmaVez(opcoes: {
       env: ambienteDoClaude(),
       systemPrompt: opcoes.system,
       settingSources: [],
+      model: opcoes.modelo,
       tools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
       allowedTools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
       permissionMode: "default",

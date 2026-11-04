@@ -23,8 +23,22 @@ import {
   type Perfil,
 } from "./tipos"
 import { exigeAprovacaoSempre } from "./comandos"
-import { Elenco, casaInicial, personaIdValido, personaInicial, validarEquipe } from "./orquestra/equipe"
-import { lerElenco, migrarParaPersonas } from "./orquestra/elenco"
+import {
+  Elenco,
+  casaInicial,
+  completarLayout,
+  corDaPersona,
+  elencoLegado,
+  exigirMudancaDeEquipe,
+  idDoNome,
+  personaIdValido,
+  personaInicial,
+  resumoDaMudanca,
+  validarEquipe,
+} from "./orquestra/equipe"
+import { carregarElenco, definirElenco, gravarEquipe, lerElenco, migrarParaPersonas } from "./orquestra/elenco"
+import { criarPersona, excluirPersona, lerPedidoDePersona, novaPersona } from "./orquestra/personas"
+import { montarSystemPrompt as promptDaPosicao } from "./prompt"
 import { lerNovaTarefa, podeMudar } from "./orquestra/tarefa"
 import { Repositorio, caminhoDoBanco } from "./orquestra/repositorio"
 import { blocoDaTarefa, custoDaExecucao, escolher, falhasSeguidas, podeMudarExecucao } from "./orquestra/execucao"
@@ -643,6 +657,145 @@ describe("runtime de execução", () => {
       expect(repo.exigir(1).status).toBe("cancelada")
       orquestra.parar()
     }),
+  )
+})
+
+describe("organograma de personas", () => {
+  const codigo = () =>
+    validarEquipe(
+      {
+        id: "codigo",
+        nome: "Código",
+        posicoes: [
+          { id: "tech-lead", titulo: "tech lead", persona: "nati", capacidades: ["arquivos"] },
+          { id: "executor", titulo: "executor", persona: "alfred", respondeA: "tech-lead", capacidades: ["arquivos", "comandos"] },
+          { id: "revisora", titulo: "revisora", persona: null, respondeA: "tech-lead", capacidades: ["arquivos"] },
+        ],
+      },
+      new Set(["nati", "alfred"]),
+    )
+
+  test("o id da persona sai do nome, e a cor é estável", () => {
+    expect(idDoNome("Vera Lúcia")).toBe("veralucia")
+    expect(idDoNome("Zé")).toBe("ze")
+    expect(() => idDoNome("J")).toThrow("de 2 a 24 letras")
+    expect(() => idDoNome("123")).toThrow()
+    expect(corDaPersona({ id: "vera" })).toBe(corDaPersona({ id: "vera" }))
+    expect(corDaPersona({ id: "vera", cor: "#112233" })).toBe("#112233")
+    const pedido = lerPedidoDePersona({ nome: " Vera ", base: "revisora chata" })
+    expect(pedido).toEqual({ nome: "Vera", base: "revisora chata", titulo: "conselho" })
+    expect(() => novaPersona(pedido, new Set(["vera"]), new Set())).toThrow("já existe")
+    expect(() => novaPersona(pedido, new Set(), new Set(["vera"]))).toThrow("persona excluída")
+    expect(() => novaPersona({ ...pedido, cor: "azul" }, new Set(), new Set())).toThrow("cor inválida")
+    expect(() => lerPedidoDePersona({ nome: "Vera" })).toThrow("descreva a persona")
+  })
+
+  test("o layout completa só o que falta, com subordinadas abaixo do chefe", () => {
+    const sem = completarLayout(codigo())
+    expect(sem.layout["tech-lead"]).toEqual({ x: 0, y: 0 })
+    expect(sem.layout["executor"]).toEqual({ x: 0, y: 160 })
+    expect(sem.layout["revisora"]).toEqual({ x: 280, y: 160 })
+    const com = completarLayout({ ...codigo(), layout: { "tech-lead": { x: 500, y: 40 } } })
+    expect(com.layout["tech-lead"]).toEqual({ x: 500, y: 40 })
+    expect(com.layout["executor"]).toEqual({ x: 500, y: 200 })
+  })
+
+  test("salvar equipe recusa tirar posição com tarefa aberta e trocar persona com tarefa andando", () => {
+    const antes = codigo()
+    const semExecutor = { ...antes, posicoes: antes.posicoes.filter((p) => p.id !== "executor") }
+    const tarefas = (abertas: number, emAndamento: number) => () => ({ abertas, emAndamento })
+    expect(() => exigirMudancaDeEquipe(antes, semExecutor, tarefas(1, 0))).toThrow("não pode sair")
+    expect(() => exigirMudancaDeEquipe(antes, semExecutor, tarefas(0, 0))).not.toThrow()
+    const trocada = { ...antes, posicoes: antes.posicoes.map((p) => (p.id === "executor" ? { ...p, persona: null } : p)) }
+    expect(() => exigirMudancaDeEquipe(antes, trocada, tarefas(1, 1))).toThrow("trocar de persona")
+    const casa = casaInicial(["alfred"])
+    expect(() => exigirMudancaDeEquipe(casa, { ...casa, nome: "Outra" }, tarefas(0, 0))).toThrow("não pode ser renomeada")
+    expect(resumoDaMudanca(antes, trocada)).toBe("equipe Código: executor com vaga")
+    expect(resumoDaMudanca(undefined, antes)).toBe("equipe Código criada")
+  })
+
+  test("criar persona grava o perfil provisório e a posição na Casa; excluir deixa as posições vagas e reserva o id", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-personas-"))
+    try {
+      for (const p of ["alfred", "nati"]) await Bun.write(join(raiz, "profiles", p, "profile.md"), "x")
+      await migrarParaPersonas(raiz)
+      await carregarElenco(raiz)
+      await gravarEquipe(raiz, codigo())
+      await carregarElenco(raiz)
+      const vera = await criarPersona(raiz, lerPedidoDePersona({ nome: "Vera", base: "revisa tudo", titulo: "a revisora" }))
+      expect(vera.id).toBe("vera")
+      expect(await Bun.file(join(raiz, "profiles", "vera", "profile.md")).text()).toBe("# Vera\n\nrevisa tudo\n")
+      const casa = (await lerElenco(raiz)).casa
+      expect(casa.posicoes.find((p) => p.persona === "vera")).toMatchObject({ id: "conselho-vera", titulo: "a revisora", capacidades: ["arquivos", "memoria"] })
+      expect(casa.layout["conselho-vera"]).toBeDefined()
+
+      await expect(excluirPersona(raiz, "alfred", "Alfred")).rejects.toThrow("não pode ser excluído")
+      await expect(excluirPersona(raiz, "nati", "nati")).rejects.toThrow("digite o nome exato")
+      await excluirPersona(raiz, "nati", "Nati")
+      const depois = await lerElenco(raiz)
+      expect(depois.existe("nati")).toBe(false)
+      expect(depois.equipe("codigo")!.posicoes.find((p) => p.id === "tech-lead")!.persona).toBeNull()
+      expect(depois.casa.posicoes.some((p) => p.persona === "nati")).toBe(false)
+      await expect(criarPersona(raiz, lerPedidoDePersona({ nome: "Nati", base: "de novo" }))).rejects.toThrow("persona excluída")
+    } finally {
+      definirElenco(elencoLegado())
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("o system prompt de trabalhar segue a posição da tarefa", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-personas-"))
+    try {
+      const executor = await promptDaPosicao(raiz, "nati", undefined, true)
+      const conselho = await promptDaPosicao(raiz, "alfred", undefined, false)
+      expect(executor).toContain("o executor do control-tower")
+      expect(conselho).toContain("Sua memória")
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test(
+    "delegar só aceita subordinada direta e cria a subtarefa no backlog",
+    async () => {
+      const repo = new Repositorio(":memory:")
+      const equipe = codigo()
+      const avisos: string[] = []
+      let delegou: string[] = []
+      const orquestra = new Orquestra({
+        raiz: "/tmp/nao-usado",
+        repo,
+        teto: 2,
+        equipe: (id) => (id === "codigo" ? equipe : undefined),
+        nome: (p) => p,
+        modelo: () => "haiku",
+        trabalhar: async (o) => {
+          delegou = [
+            o.acoes.delegar!({ posicao: "tech-lead", titulo: "x" }),
+            o.acoes.delegar!({ posicao: "executor", titulo: "rodar os testes", porque: "garantir" }),
+          ]
+          expect(o.bloco).toContain("- executor: executor (alfred)")
+          return { texto: "dividi" }
+        },
+        publicarTarefa: () => {},
+        publicarExecucao: () => {},
+        publicarEvento: () => {},
+        avisar: (a) => avisos.push(a.titulo),
+        pedirComando: async () => false,
+        cancelarPedidos: () => {},
+      })
+      try {
+        orquestra.aoCriar(repo.criar({ equipe: "codigo", posicao: "tech-lead", titulo: "Lançar", descricao: "", porque: "", pai: null, dependeDe: [], status: "a_fazer" }, "ueslei"))
+        for (let i = 0; i < 100 && repo.exigir(1).status !== "em_revisao"; i++) await Bun.sleep(5)
+        expect(delegou[0]).toContain("não responde a você")
+        expect(repo.exigir(2)).toMatchObject({ posicao: "executor", status: "backlog", pai: 1, porque: "garantir", criadaPor: "execucao:1" })
+        expect(avisos).toContain("nati delegou #2")
+        expect(repo.listar().length).toBe(2)
+      } finally {
+        orquestra.parar()
+        repo.fechar()
+      }
+    },
   )
 })
 

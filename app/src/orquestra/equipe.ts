@@ -12,6 +12,7 @@ export interface Persona {
   modelo?: string
   protegida?: boolean
   orcamentoMensalUSD?: number
+  cor?: string
 }
 
 export interface Posicao {
@@ -43,6 +44,26 @@ export function slugValido(id: unknown): id is string {
   return typeof id === "string" && PADRAO_SLUG.test(id)
 }
 
+const PADRAO_COR = /^#[0-9a-f]{6}$/i
+const PALETA = ["#e0a458", "#9a6ee8", "#4fae7c", "#e06a8a", "#58b7c9", "#c9a227", "#5b8def", "#d9774b", "#7fb069", "#b56cc4"]
+
+export function corDaPersona(persona: Pick<Persona, "id" | "cor">): string {
+  if (persona.cor) return persona.cor
+  let hash = 0
+  for (const c of persona.id) hash = (hash * 31 + c.charCodeAt(0)) >>> 0
+  return PALETA[hash % PALETA.length]!
+}
+
+export function idDoNome(nome: string): PersonaId {
+  const id = nome
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "")
+  if (!personaIdValido(id)) throw new Error("o nome precisa ter de 2 a 24 letras")
+  return id
+}
+
 function objeto(bruto: unknown, oQue: string): Record<string, unknown> {
   if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) throw new Error(`${oQue}: não é um objeto`)
   return bruto as Record<string, unknown>
@@ -59,6 +80,10 @@ export function validarPersona(bruto: unknown): Persona {
   const persona: Persona = { id: p.id, nome: texto(p.nome, `persona ${p.id}: nome`) }
   if (p.modelo !== undefined) persona.modelo = texto(p.modelo, `persona ${p.id}: modelo`)
   if (p.protegida === true) persona.protegida = true
+  if (p.cor !== undefined) {
+    if (typeof p.cor !== "string" || !PADRAO_COR.test(p.cor)) throw new Error(`persona ${p.id}: cor inválida (use #rrggbb)`)
+    persona.cor = p.cor.toLowerCase()
+  }
   if (p.orcamentoMensalUSD !== undefined) {
     if (typeof p.orcamentoMensalUSD !== "number" || !(p.orcamentoMensalUSD >= 0)) {
       throw new Error(`persona ${p.id}: orçamento inválido`)
@@ -198,12 +223,27 @@ export function casaInicial(ids: PersonaId[]): Equipe {
 
 export class Elenco {
   private readonly porId: Map<PersonaId, Persona>
+  private readonly todas: Map<string, Equipe>
 
   constructor(
     personas: Persona[],
     readonly casa: Equipe,
+    outras: Equipe[] = [],
   ) {
     this.porId = new Map(personas.map((p) => [p.id, p]))
+    this.todas = new Map([casa, ...outras.filter((e) => e.id !== casa.id)].map((e) => [e.id, e]))
+  }
+
+  equipes(): Equipe[] {
+    return [...this.todas.values()]
+  }
+
+  equipe(id: string): Equipe | undefined {
+    return this.todas.get(id)
+  }
+
+  personas(): Persona[] {
+    return [...this.porId.values()]
   }
 
   ids(): PersonaId[] {
@@ -242,4 +282,87 @@ export class Elenco {
 export function elencoLegado(): Elenco {
   const ids = Object.keys(LEGADO)
   return new Elenco(ids.map(personaInicial), casaInicial(ids))
+}
+
+export const DISTANCIA_X = 280
+export const DISTANCIA_Y = 160
+
+export function completarLayout(equipe: Equipe): Equipe {
+  const layout = { ...equipe.layout }
+  const ids = new Set(equipe.posicoes.map((p) => p.id))
+  const filhos = (chefe: string | null) =>
+    equipe.posicoes.filter((p) => (p.respondeA !== null && ids.has(p.respondeA) ? p.respondeA : null) === chefe)
+  const ocupado = new Set(Object.values(layout).map((xy) => `${xy.x}:${xy.y}`))
+  const livre = (x: number, y: number) => {
+    let atual = x
+    while (ocupado.has(`${atual}:${y}`)) atual += DISTANCIA_X
+    ocupado.add(`${atual}:${y}`)
+    return atual
+  }
+  const descer = (chefe: string | null, y: number, xBase: number) => {
+    filhos(chefe).forEach((p, i) => {
+      if (!layout[p.id]) layout[p.id] = { x: livre(xBase + i * DISTANCIA_X, y), y }
+      descer(p.id, layout[p.id]!.y + DISTANCIA_Y, layout[p.id]!.x)
+    })
+  }
+  descer(null, 0, 0)
+  return { ...equipe, layout }
+}
+
+export function subordinadas(equipe: Equipe, posicao: string): Posicao[] {
+  return equipe.posicoes.filter((p) => p.respondeA === posicao)
+}
+
+export interface TarefasDaPosicao {
+  abertas: number
+  emAndamento: number
+}
+
+export function exigirMudancaDeEquipe(
+  antes: Equipe | undefined,
+  depois: Equipe,
+  tarefas: (posicao: string) => TarefasDaPosicao,
+): void {
+  if (!antes) return
+  const erros: string[] = []
+  if (antes.id === CASA && depois.nome !== antes.nome) erros.push("a Casa não pode ser renomeada")
+  for (const velha of antes.posicoes) {
+    const nova = depois.posicoes.find((p) => p.id === velha.id)
+    const { abertas, emAndamento } = tarefas(velha.id)
+    if (!nova && abertas > 0) erros.push(`posição ${velha.id}: tem ${abertas} tarefa(s) aberta(s) e não pode sair`)
+    else if (nova && nova.persona !== velha.persona && emAndamento > 0) {
+      erros.push(`posição ${velha.id}: tem tarefa em andamento e não pode trocar de persona agora`)
+    }
+  }
+  if (erros.length) throw new Error(`equipe ${depois.id}: ${erros.join("; ")}`)
+}
+
+export function resumoDaMudanca(antes: Equipe | undefined, depois: Equipe): string {
+  if (!antes) return `equipe ${depois.nome} criada`
+  const partes: string[] = []
+  for (const p of depois.posicoes) {
+    const velha = antes.posicoes.find((v) => v.id === p.id)
+    if (!velha) {
+      partes.push(`+${p.id}`)
+      continue
+    }
+    if (velha.persona !== p.persona) partes.push(`${p.id} com ${p.persona ?? "vaga"}`)
+    if (velha.respondeA !== p.respondeA) partes.push(`${p.id} responde a ${p.respondeA ?? "Ueslei"}`)
+    if (velha.capacidades.join() !== p.capacidades.join() || velha.aprovacao !== p.aprovacao) partes.push(`${p.id}: capacidades`)
+    if (velha.titulo !== p.titulo || velha.diretorio !== p.diretorio) partes.push(`${p.id}: dados`)
+  }
+  for (const v of antes.posicoes) if (!depois.posicoes.some((p) => p.id === v.id)) partes.push(`-${v.id}`)
+  if (antes.nome !== depois.nome) partes.push(`renomeada para ${depois.nome}`)
+  return `equipe ${depois.nome}: ${partes.length ? partes.join(", ") : "layout"}`
+}
+
+export function comPersonaNaCasa(casa: Equipe, persona: PersonaId, titulo: string): Equipe {
+  const id = `conselho-${persona}`
+  if (casa.posicoes.some((p) => p.id === id || p.persona === persona)) return casa
+  const posicao: Posicao = { id, titulo, persona, respondeA: null, capacidades: ["arquivos", "memoria"], aprovacao: "sempre" }
+  return completarLayout({ ...casa, posicoes: [...casa.posicoes, posicao] })
+}
+
+export function semPersona(equipe: Equipe, persona: PersonaId): Equipe {
+  return { ...equipe, posicoes: equipe.posicoes.map((p) => (p.persona === persona ? { ...p, persona: null } : p)) }
 }

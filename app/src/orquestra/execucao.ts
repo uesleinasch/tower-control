@@ -150,12 +150,19 @@ function rotuloDoRegistro(r: Registro): string {
   }
 }
 
+export interface Subordinada {
+  id: string
+  titulo: string
+  persona: string | null
+}
+
 export function blocoDaTarefa(
   tarefa: Tarefa,
   pais: Tarefa[],
   registros: Registro[],
   persona: PersonaId,
   desde: string | null,
+  subordinadas: Subordinada[] = [],
 ): string {
   const novos = registros.filter(
     (r) => (desde === null || r.em > desde) && r.autor !== persona && !r.autor.startsWith("execucao:") && r.autor !== "orquestra",
@@ -170,6 +177,9 @@ export function blocoDaTarefa(
       : "",
     novos.length
       ? `### ${desde === null ? "Histórico" : "Desde a sua última execução"}\n\n${novos.map(rotuloDoRegistro).join("\n")}`
+      : "",
+    subordinadas.length
+      ? `### Quem responde a você\n\n${subordinadas.map((s) => `- ${s.id}: ${s.titulo} (${s.persona ?? "vaga"})`).join("\n")}\n\nPara dividir o trabalho, use a ferramenta delegar; a subtarefa só roda quando o Ueslei liberar.`
       : "",
   ]
   return `<tarefa>\n${partes.filter(Boolean).join("\n\n")}\n</tarefa>`

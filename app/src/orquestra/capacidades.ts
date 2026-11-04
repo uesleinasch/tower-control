@@ -4,7 +4,7 @@ import { FERRAMENTAS_TICKTASK } from "../ticktask"
 
 export const NATIVAS_DE_ARQUIVO = ["Read", "Write", "Edit", "Grep", "Glob"]
 
-export const FERRAMENTAS_ORQUESTRA = ["mcp__orquestra__comentar", "mcp__orquestra__pedir_ajuda"]
+export const FERRAMENTAS_ORQUESTRA = ["mcp__orquestra__comentar", "mcp__orquestra__pedir_ajuda", "mcp__orquestra__delegar"]
 
 export interface OpcoesDaPosicao {
   nativas: string[]

@@ -108,9 +108,10 @@ export async function montarSystemPrompt(
   raiz: string,
   perfil: Perfil,
   escrita = blocoDeEscrita(orcamento("padrao", RITMO_NEUTRO), RITMO_NEUTRO),
+  comandos = rodaComandos(perfil),
 ): Promise<string> {
   const perfilMd = await lerPerfil(raiz, perfil)
-  if (rodaComandos(perfil)) {
+  if (comandos) {
     return [perfilMd, instrucoesDoExecutor(perfil)].filter(Boolean).join("\n\n---\n\n")
   }
   const legado = await memoriaLegada(raiz, perfil)

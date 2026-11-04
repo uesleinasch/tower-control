@@ -1,7 +1,7 @@
 import { join } from "node:path"
 import { appendFile, mkdir } from "node:fs/promises"
 
-export type TipoDeUso = "chat" | "board-parecer" | "board-sintese" | "consolidacao" | "sonho" | "migracao" | "tarefa"
+export type TipoDeUso = "chat" | "board-parecer" | "board-sintese" | "consolidacao" | "sonho" | "migracao" | "tarefa" | "persona"
 
 export interface RegistroDeUso {
   ts: string

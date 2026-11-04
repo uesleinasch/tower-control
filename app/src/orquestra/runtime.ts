@@ -15,10 +15,11 @@ import {
   type TipoDeEvento,
 } from "./execucao"
 import type { StatusTarefa, Tarefa } from "./tarefa"
-import type { Equipe, Posicao } from "./equipe"
+import { subordinadas, type Equipe, type Posicao } from "./equipe"
+import type { Delegacao } from "./ferramentas"
 import type { Memoria } from "../memoria/tipos"
 import type { NovoAviso } from "../avisos/central"
-import { avisoDeBloqueio, avisoDeEntrega, avisoDePedidoDeAjuda } from "../avisos/fontes"
+import { avisoDeBloqueio, avisoDeDelegacao, avisoDeEntrega, avisoDePedidoDeAjuda } from "../avisos/fontes"
 import type { trabalhar } from "../sessions"
 import type { RegistroDeUso } from "../uso"
 
@@ -180,6 +181,8 @@ export class Orquestra {
     const posicao = this.posicaoDe(tarefa)!
     const sessao = this.repo.sessaoDoPar(tarefa.id, persona, execucao.id)
     const anterior = this.repo.anteriorDoPar(tarefa.id, persona, execucao.id)
+    const equipe = this.amb.equipe(tarefa.equipe)!
+    const abaixo = subordinadas(equipe, posicao.id)
     let pedidoDeAjuda: string | undefined
     let uso: RegistroDeUso | undefined
     try {
@@ -187,7 +190,14 @@ export class Orquestra {
         raiz: this.amb.raiz,
         persona,
         posicao,
-        bloco: blocoDaTarefa(tarefa, this.repo.cadeiaDePais(tarefa.id), this.repo.registros(tarefa.id), persona, anterior?.inicio ?? null),
+        bloco: blocoDaTarefa(
+          tarefa,
+          this.repo.cadeiaDePais(tarefa.id),
+          this.repo.registros(tarefa.id),
+          persona,
+          anterior?.inicio ?? null,
+          abaixo.map((p) => ({ id: p.id, titulo: p.titulo, persona: p.persona ? this.amb.nome(p.persona) : null })),
+        ),
         consulta: [tarefa.titulo, tarefa.descricao].filter(Boolean).join("\n"),
         modelo: execucao.modelo ?? this.amb.modelo(persona),
         sessionId: sessao?.sessionId,
@@ -207,6 +217,7 @@ export class Orquestra {
             this.amb.publicarTarefa(tarefa.id)
             return "Pedido registrado. A tarefa fica bloqueada até o Ueslei responder: pare agora."
           },
+          delegar: abaixo.length ? (pedido) => this.delegar(tarefa, execucao, persona, abaixo, pedido) : undefined,
         },
         onEvento: (tipo, conteudo) => this.evento(execucao, tipo, conteudo),
         onComando: (comando, aprovar) => this.amb.pedirComando(tarefa.id, persona, comando, aprovar),
@@ -238,6 +249,40 @@ export class Orquestra {
       const falhou = this.terminar(execucao, { status: "falhou", falha: true, erro: mensagem, ...custo })
       this.repo.devolver(execucao.id, "a_fazer", "orquestra")
       this.depoisDeFalhar(falhou, "nova_tentativa")
+    }
+  }
+
+  private delegar(tarefa: Tarefa, execucao: Execucao, persona: string, abaixo: Posicao[], pedido: Delegacao): string {
+    const alvo = abaixo.find((p) => p.id === pedido.posicao)
+    if (!alvo) return `A posição ${pedido.posicao} não responde a você. Pode delegar a: ${abaixo.map((p) => p.id).join(", ")}.`
+    const titulo = pedido.titulo.trim().slice(0, 200)
+    if (!titulo) return "A subtarefa precisa de um título."
+    const sub = this.repo.criar(
+      {
+        equipe: tarefa.equipe,
+        posicao: alvo.id,
+        titulo,
+        descricao: (pedido.descricao ?? "").trim().slice(0, 20_000),
+        porque: (pedido.porque ?? "").trim().slice(0, 4_000),
+        pai: tarefa.id,
+        dependeDe: [],
+        status: "backlog",
+      },
+      donoDaExecucao(execucao.id),
+    )
+    this.repo.comentar(tarefa.id, persona, `delegou #${sub.id} a ${alvo.id}: ${titulo}`, new Date(), "status")
+    this.amb.publicarTarefa(sub.id)
+    this.amb.publicarTarefa(tarefa.id)
+    this.amb.avisar(avisoDeDelegacao(sub.id, this.amb.nome(persona), titulo))
+    return `Subtarefa #${sub.id} criada para ${alvo.id}, no backlog. Ela só roda quando o Ueslei liberar.`
+  }
+
+  interromperPersona(persona: string): void {
+    for (const viva of this.vivas.values()) {
+      if (viva.persona !== persona) continue
+      viva.parada = true
+      viva.controle.abort()
+      this.amb.cancelarPedidos(viva.tarefa)
     }
   }
 

@@ -60,3 +60,6 @@ export const avisoDePedidoDeAjuda = (tarefaId: number, nome: string, motivo: str
 
 export const avisoDeBloqueio = (tarefaId: number, erro: string) =>
   avisoDeTarefa(tarefaId, `#${tarefaId} bloqueada`, `Falhou duas vezes seguidas. Último erro: ${erro}`)
+
+export const avisoDeDelegacao = (tarefaId: number, nome: string, titulo: string) =>
+  avisoDeTarefa(tarefaId, `${nome} delegou #${tarefaId}`, `${titulo}. Está no backlog: libere quando quiser que rode.`)
