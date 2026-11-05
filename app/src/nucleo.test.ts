@@ -4852,3 +4852,98 @@ describe("modelos de equipe e de workflow", () => {
     }
   })
 })
+
+import { casar, lerPedido as lerPedidoDoModelo, respostaJson, sseDaResposta, type Regra } from "../interface/falsos/roteiro"
+import { servirModeloFalso } from "../interface/falsos/modelo"
+
+function corpoDeChat(sistema: string, mensagem: string) {
+  return { model: "m", system: sistema, messages: [{ role: "user", content: mensagem }] }
+}
+
+describe("modelo falso", () => {
+  test("casa pela persona e pela mensagem e consome a regra", () => {
+    const regras: Regra[] = [
+      { nome: "nati", quando: { sistema: "Você é Nati" }, responde: [{ texto: "oi" }] },
+      { nome: "relatorio", quando: { mensagem: "relatório" }, responde: [{ texto: "ok" }] },
+    ]
+    const usadas = new Map<string, number>()
+    const pedido = lerPedidoDoModelo(corpoDeChat("Você é Nati, conselheira", "mande o relatório"))
+    expect(casar(regras, usadas, pedido)?.nome).toBe("nati")
+    expect(casar(regras, usadas, pedido)?.nome).toBe("relatorio")
+    expect(casar(regras, usadas, pedido)).toBeNull()
+  })
+
+  test("resultadoDe casa o tool_result da ferramenta", () => {
+    const corpo = {
+      model: "m",
+      system: [{ type: "text", text: "sis" }],
+      messages: [
+        { role: "user", content: [{ type: "text", text: "rode" }] },
+        { role: "assistant", content: [{ type: "tool_use", id: "toolu_1", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "a" }] },
+      ],
+    }
+    const pedido = lerPedidoDoModelo(corpo)
+    expect(pedido.resultadoDe).toBe("Bash")
+    const regra: Regra = { nome: "r", quando: { resultadoDe: "Bash" }, responde: [{ texto: "feito" }] }
+    expect(casar([regra], new Map(), pedido)?.nome).toBe("r")
+  })
+
+  test("regra de fundo não se esgota", () => {
+    const regra: Regra = { nome: "f", quando: {}, responde: [{ texto: "x" }], fundo: true }
+    const usadas = new Map<string, number>()
+    const pedido = lerPedidoDoModelo(corpoDeChat("s", "m"))
+    for (let i = 0; i < 3; i++) expect(casar([regra], usadas, pedido)?.nome).toBe("f")
+  })
+
+  test("sse de ferramenta tem tool_use com input_json_delta e stop_reason tool_use", () => {
+    const sse = sseDaResposta([{ ferramenta: "Bash", entrada: { command: "echo a" } }], "m")
+    expect(sse).toContain('"type":"tool_use"')
+    expect(sse).toContain('"name":"Bash"')
+    expect(sse).toContain('"partial_json":"{\\"command\\":\\"echo a\\"}"')
+    expect(sse).toContain('"stop_reason":"tool_use"')
+  })
+
+  test("sse de texto termina em end_turn", () => {
+    const sse = sseDaResposta([{ texto: "olá" }], "m")
+    expect(sse).toContain('"text_delta"')
+    expect(sse).toContain('"text":"olá"')
+    expect(sse).toContain('"stop_reason":"end_turn"')
+    expect(respostaJson([{ texto: "olá" }], "m").stop_reason).toBe("end_turn")
+  })
+
+  test("servidor responde 500 e registra pedido sem regra", async () => {
+    const servidor = servirModeloFalso(0)
+    try {
+      const base = `http://127.0.0.1:${servidor.porta}`
+      const r = await fetch(`${base}/v1/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(corpoDeChat("s", "oi")),
+      })
+      expect(r.status).toBe(500)
+      const semRegra = (await (await fetch(`${base}/_controle/sem-regra`)).json()) as unknown[]
+      expect(semRegra.length).toBe(1)
+    } finally {
+      servidor.fechar()
+    }
+  })
+
+  test("encontro libera quando os dois lados chegam", async () => {
+    const servidor = servirModeloFalso(0)
+    try {
+      const url = `http://127.0.0.1:${servidor.porta}/_controle/encontro`
+      const chamar = (lado: string) =>
+        fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ nome: "e", lado, lados: ["web", "desktop"] }),
+        })
+      const [a, b] = await Promise.all([chamar("web"), chamar("desktop")])
+      expect(a.status).toBe(200)
+      expect(b.status).toBe(200)
+    } finally {
+      servidor.fechar()
+    }
+  })
+})
