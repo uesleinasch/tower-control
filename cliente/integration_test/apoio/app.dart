@@ -186,7 +186,12 @@ Future<void> digitarNoTeclado(WidgetTester t, Finder campo, String texto, {Futur
   final metade = String.fromCharCodes(texto.runes.take(letras ~/ 2));
   final resto = String.fromCharCodes(texto.runes.skip(letras ~/ 2));
   final inicio = _editavel(t, campo).controller.text.runes.length;
+  final nome = campo.toString(describeSelf: true);
   for (final (i, (parte, esperadas)) in [(metade, inicio + letras ~/ 2), (resto, inicio + letras)].indexed) {
+    if (i == 1) {
+      await aparecer(t, campo, descricao: '$nome continuar na tela depois do ruído', prazo: const Duration(seconds: 5));
+    }
+    final antes = _editavel(t, campo).controller.text;
     for (final linha in parte.split('\n').indexed) {
       if (linha.$1 > 0) await _xdotool(['key', '--delay', '15', 'Return']);
       if (linha.$2.isNotEmpty) await _xdotool(['type', '--delay', '15', '--', linha.$2]);
@@ -194,7 +199,7 @@ Future<void> digitarNoTeclado(WidgetTester t, Finder campo, String texto, {Futur
     await esperarAte(
       t,
       () => _editavel(t, campo).controller.text.runes.length >= esperadas,
-      descricao: 'as teclas chegarem ao campo (${_editavel(t, campo).controller.text})',
+      descricao: '$esperadas letras em $nome (antes de digitar "$parte", o campo tinha "$antes")',
       prazo: const Duration(seconds: 15),
     );
     if (i == 0) await noMeio?.call();
