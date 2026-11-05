@@ -223,7 +223,11 @@ void main() {
       isTrue,
       reason: 'a auditoria foi arrastada para baixo da execução: $layout',
     );
-    expect(await gitDosDados(['log', '-1', '--format=%s']), contains('Teste'));
+    await esperarAteAssincrono(t, () async {
+      final ultimo = await gitDosDados(['log', '-1', '--format=%s']);
+      if (!ultimo.contains('equipe Teste')) throw StateError('o último commit é "${ultimo.trim()}"');
+      return true;
+    }, descricao: 'o commit da equipe Teste no git dos dados');
 
     await esperarAte(t, () => !salaDe(t).equipes.alterada, descricao: 'a equipe salva');
     Finder painelDePersonas() => find.text('Clique num cartão para editar a posição.');

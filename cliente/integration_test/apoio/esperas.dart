@@ -30,6 +30,30 @@ Future<void> esperarAte(
   }
 }
 
+Future<void> esperarAteAssincrono(
+  WidgetTester t,
+  Future<bool> Function() condicao, {
+  Duration prazo = prazoPadrao,
+  String descricao = 'a condição',
+}) async {
+  final limite = DateTime.now().add(prazo);
+  Object? ultimoErro;
+  while (true) {
+    await t.pump();
+    try {
+      if (await condicao()) return;
+      ultimoErro = null;
+    } catch (erro) {
+      ultimoErro = erro;
+    }
+    if (DateTime.now().isAfter(limite)) {
+      final motivo = ultimoErro == null ? '' : ' (último erro: $ultimoErro)';
+      fail('prazo de ${prazo.inMilliseconds} ms estourado esperando $descricao$motivo');
+    }
+    await Future<void>.delayed(_passo);
+  }
+}
+
 String textosNaTela(WidgetTester t) {
   final textos = [
     for (final e in find.byType(Text).evaluate())
