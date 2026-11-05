@@ -50,16 +50,21 @@ export function servirModeloFalso(porta = 0): { porta: number; fechar(): void } 
     }
     e.chegaram.add(lado)
     if (lados.every((l) => e.chegaram.has(l))) {
+      encontros.delete(nome)
       e.esperando.forEach((liberar) => liberar())
-      e.esperando = []
       return json({ ok: true })
     }
     return new Promise<Response>((resolve) => {
-      const prazo = setTimeout(() => resolve(json({ erro: "encontro estourou o prazo" }, 408)), PRAZO_DO_ENCONTRO_MS)
-      e.esperando.push(() => {
+      const liberar = () => {
         clearTimeout(prazo)
         resolve(json({ ok: true }))
-      })
+      }
+      const prazo = setTimeout(() => {
+        e.chegaram.delete(lado)
+        e.esperando = e.esperando.filter((f) => f !== liberar)
+        resolve(json({ erro: "encontro estourou o prazo" }, 408))
+      }, PRAZO_DO_ENCONTRO_MS)
+      e.esperando.push(liberar)
     })
   }
 
@@ -79,6 +84,8 @@ export function servirModeloFalso(porta = 0): { porta: number; fechar(): void } 
         regras = corpo.regras
         usadas = new Map()
         pedidosPorCena.set(cena, [])
+        semRegra.length = 0
+        encontros.clear()
         return json({ ok: true })
       }
       if (req.method === "GET" && pathname === "/_controle/pedidos") {

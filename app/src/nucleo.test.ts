@@ -4946,4 +4946,39 @@ describe("modelo falso", () => {
       servidor.fechar()
     }
   })
+
+  test("roteiro novo zera o sem-regra", async () => {
+    const servidor = servirModeloFalso(0)
+    try {
+      const base = `http://127.0.0.1:${servidor.porta}`
+      await fetch(`${base}/v1/messages`, { method: "POST", body: JSON.stringify(corpoDeChat("s", "oi")) })
+      const lista = async () => (await (await fetch(`${base}/_controle/sem-regra`)).json()) as unknown[]
+      expect((await lista()).length).toBe(1)
+      await fetch(`${base}/_controle/roteiro`, { method: "POST", body: JSON.stringify({ cena: "nova", regras: [] }) })
+      expect((await lista()).length).toBe(0)
+    } finally {
+      servidor.fechar()
+    }
+  })
+
+  test("encontro com o mesmo nome espera de novo depois de liberado", async () => {
+    const servidor = servirModeloFalso(0)
+    try {
+      const url = `http://127.0.0.1:${servidor.porta}/_controle/encontro`
+      const chamar = (lado: string) =>
+        fetch(url, { method: "POST", body: JSON.stringify({ nome: "e", lado, lados: ["web", "desktop"] }) })
+      await Promise.all([chamar("web"), chamar("desktop")])
+      let resolveu = false
+      const primeiro = chamar("web").then((r) => {
+        resolveu = true
+        return r
+      })
+      await Promise.race([primeiro, new Promise((r) => setTimeout(r, 300))])
+      expect(resolveu).toBe(false)
+      expect((await chamar("desktop")).status).toBe(200)
+      expect((await primeiro).status).toBe(200)
+    } finally {
+      servidor.fechar()
+    }
+  })
 })
