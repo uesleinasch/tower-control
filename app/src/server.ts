@@ -2,7 +2,9 @@ import { join } from "node:path"
 import { dirModelos, dirWeb, raizDoCodigo, raizDosDados } from "./caminhos"
 import { garantirIgnorado, origemDaImportacao, prepararDados, registrarNoGit } from "./dados"
 import { migrarPendentes } from "./memoria/migracao"
-import { apagarEquipe, carregarElenco, elenco, gravarEquipe, gravarPersona, migrarParaPersonas } from "./orquestra/elenco"
+import { apagarEquipe, apagarRotina, carregarElenco, elenco, gravarEquipe, gravarPersona, gravarRotina, lerRotinas, migrarParaPersonas } from "./orquestra/elenco"
+import { Agendador } from "./orquestra/agendador"
+import { LIMITE_DO_CORPO, validarRotina } from "./orquestra/rotinas"
 import { corDaPersona, exigirMudancaDeEquipe, resumoDaMudanca, slugValido, validarEquipe, validarPersona } from "./orquestra/equipe"
 import { Contas, TUDO, formatarTokens, mesDe, motivoDeBloqueio, niveisDoOrcamento, type Limites } from "./orquestra/governanca"
 import { aoGravarUso, lerUso } from "./uso"
@@ -26,7 +28,7 @@ import { apagarSessao } from "./sessao-sdk"
 import { memoriaHttp } from "./memoria/cliente"
 import { espelharColetivo } from "./memoria/coletivo"
 import { MemoriaIndisponivel } from "./memoria/tipos"
-import { iniciarAgenda } from "./memoria/agenda"
+import { Espera, rodarUmaVez } from "./memoria/agenda"
 import {
   consolidarConversa,
   consolidarGuardadas,
@@ -276,6 +278,7 @@ function contarTarefas(equipe: string) {
       abertas: abertas.filter((t) => t.posicao === posicao).length,
       emAndamento: tarefas.filter((t) => t.posicao === posicao && t.status === "em_andamento").length,
       citadas: abertas.filter((t) => t.politica.some((e) => "posicao" in e.por && e.por.posicao === posicao)).length,
+      rotinas: AGENDADOR.daEquipe(equipe).filter((r) => r.posicao === posicao).length,
     }
   }
 }
@@ -296,9 +299,67 @@ async function removerEquipe(id: string): Promise<void> {
   const abertas = TAREFAS.listar(id).filter((t) => t.status !== "concluida" && t.status !== "cancelada").length
   if (abertas) throw new Error(`a equipe ${equipe.nome} tem ${abertas} tarefa(s) aberta(s) e não pode ser excluída`)
   await apagarEquipe(RAIZ, id)
+  AGENDADOR.removerDaEquipe(id)
   await carregarElenco(RAIZ)
   await registrarNoGit(RAIZ, `equipe ${equipe.nome} excluída`)
   publicarElenco()
+  publicarRotinas()
+}
+
+function equipeDaRotina(bruto: unknown) {
+  const id = String(bruto ?? "")
+  const equipe = elenco().equipe(id)
+  if (!equipe) throw new Error(`a equipe ${id} não existe`)
+  return equipe
+}
+
+function rotinaExistente(equipe: string, bruto: unknown) {
+  const id = String(bruto ?? "")
+  const rotina = AGENDADOR.rotina(equipe, id)
+  if (!rotina) throw new Error(`a rotina ${id} não existe na equipe ${equipe}`)
+  return rotina
+}
+
+function publicarRotinas(): void {
+  mandarATodos({ tipo: "rotinas", lista: AGENDADOR.paraCliente() })
+}
+
+async function salvarRotina(equipeId: unknown, bruto: unknown): Promise<void> {
+  const equipe = equipeDaRotina(equipeId)
+  const rotina = validarRotina(bruto, equipe)
+  const antes = AGENDADOR.rotina(equipe.id, rotina.id)
+  await gravarRotina(RAIZ, equipe.id, rotina)
+  AGENDADOR.definir(equipe.id, rotina)
+  const gatilho = [rotina.cron ? `cron ${rotina.cron}` : "", rotina.webhook ? "webhook" : ""].filter(Boolean).join(" e ") || "só manual"
+  await registrarNoGit(RAIZ, `rotina ${rotina.nome} ${antes ? "editada" : "criada"}: ${gatilho}`)
+  publicarRotinas()
+}
+
+async function excluirRotina(equipeId: unknown, idBruto: unknown): Promise<void> {
+  const equipe = equipeDaRotina(equipeId)
+  const rotina = rotinaExistente(equipe.id, idBruto)
+  await apagarRotina(RAIZ, equipe.id, rotina.id)
+  AGENDADOR.remover(equipe.id, rotina.id)
+  await registrarNoGit(RAIZ, `rotina ${rotina.nome} excluída`)
+  publicarRotinas()
+}
+
+async function ativarRotina(equipeId: unknown, idBruto: unknown, ativa: boolean): Promise<void> {
+  const equipe = equipeDaRotina(equipeId)
+  const rotina = { ...rotinaExistente(equipe.id, idBruto), ativa }
+  await gravarRotina(RAIZ, equipe.id, rotina)
+  AGENDADOR.definir(equipe.id, rotina)
+  TAREFAS.auditar("ueslei", ativa ? "ativou a rotina" : "desativou a rotina", `rotina:${equipe.id}/${rotina.id}`)
+  await registrarNoGit(RAIZ, `rotina ${rotina.nome} ${ativa ? "ativada" : "desativada"}`)
+  publicarRotinas()
+}
+
+async function receberWebhook(req: Request, equipe: string, id: string): Promise<Response> {
+  const tamanho = Number(req.headers.get("content-length") ?? 0)
+  const token = req.headers.get("x-token") ?? new URL(req.url).searchParams.get("token") ?? ""
+  const corpo = tamanho > LIMITE_DO_CORPO ? "x".repeat(LIMITE_DO_CORPO + 1) : await req.text()
+  const { status, resposta } = AGENDADOR.webhook(equipe, id, token, corpo)
+  return Response.json(resposta, { status })
 }
 
 async function novaPersonaPeloCliente(bruto: unknown): Promise<void> {
@@ -491,6 +552,32 @@ const ORQUESTRA = new Orquestra({
   bloqueio: bloqueioDe,
   aposExecucao: conferirOrcamento,
 })
+
+const TRABALHOS_DA_MEMORIA = {
+  migrar: () => migrarPendentes(RAIZ, MEMORIA),
+  pendentes: (agora: Date) => conversasPendentes(RAIZ, agora),
+  consolidar: (meta: Parameters<typeof consolidarConversa>[2]) => consolidarConversa(RAIZ, MEMORIA, meta),
+  guardadas: () => consolidarGuardadas(RAIZ, MEMORIA),
+  sonhar: (persona: Parameters<typeof sonhar>[2]) => sonhar(RAIZ, MEMORIA, persona),
+}
+const ESPERA_DA_MEMORIA = new Espera()
+
+const AGENDADOR = new Agendador({
+  repo: TAREFAS,
+  equipe: equipePorId,
+  aoCriar: (tarefa) => ORQUESTRA.aoCriar(tarefa),
+  aoMudarStatus: (id, de, para) => ORQUESTRA.aoMudarStatus(id, de, para),
+  publicarTarefa,
+  publicarRotinas: () => publicarRotinas(),
+  avisar: (aviso) => avisar(AVISOS.criar(aviso)),
+  sistema: () => rodarUmaVez(RAIZ, TRABALHOS_DA_MEMORIA, ESPERA_DA_MEMORIA),
+})
+try {
+  AGENDADOR.carregar(await lerRotinas(RAIZ, elenco().equipes()))
+} catch (erro) {
+  console.error(`rotina inválida: ${(erro as Error).message}`)
+  process.exit(1)
+}
 
 const executarAviso = executorDeAvisos({
   soltarPermissao,
@@ -725,6 +812,37 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       publicarTarefa(id)
       return
     }
+    case "rotinas": {
+      mandar(ws, { tipo: "rotinas", lista: AGENDADOR.paraCliente() })
+      return
+    }
+    case "rotina-salvar": {
+      await salvarRotina(msg.equipe, msg.rotina)
+      return
+    }
+    case "rotina-excluir": {
+      await excluirRotina(msg.equipe, msg.id)
+      return
+    }
+    case "rotina-ativar": {
+      await ativarRotina(msg.equipe, msg.id, msg.ativa === true)
+      return
+    }
+    case "rotina-disparar": {
+      const equipe = equipeDaRotina(msg.equipe)
+      const rotina = rotinaExistente(equipe.id, msg.id)
+      TAREFAS.auditar("ueslei", "disparou a rotina", `rotina:${equipe.id}/${rotina.id}`)
+      AGENDADOR.disparar(equipe.id, rotina.id, "manual")
+      return
+    }
+    case "rotina-token": {
+      const equipe = equipeDaRotina(msg.equipe)
+      const rotina = rotinaExistente(equipe.id, msg.id)
+      AGENDADOR.trocarToken(equipe.id, rotina.id)
+      TAREFAS.auditar("ueslei", "trocou o token da rotina", `rotina:${equipe.id}/${rotina.id}`)
+      publicarRotinas()
+      return
+    }
     case "auditoria": {
       mandar(ws, { tipo: "auditoria", lista: TAREFAS.auditoria() })
       return
@@ -850,6 +968,10 @@ const servidor = Bun.serve({
       const corpo: unknown = await req.json().catch(() => null)
       return tratarAcao(AVISOS, decodeURIComponent(rotaDeAcao[1]!), corpo, executarAviso)
     }
+    const rotaDeRotina = url.pathname.match(/^\/rotinas\/([^/]+)\/([^/]+)$/)
+    if (rotaDeRotina && req.method === "POST") {
+      return receberWebhook(req, decodeURIComponent(rotaDeRotina[1]!), decodeURIComponent(rotaDeRotina[2]!))
+    }
     if (url.pathname === "/anexo" && req.method === "POST") return receberAnexo(req)
     if (url.pathname.startsWith("/anexo/")) {
       return entregarAnexo(decodeURIComponent(url.pathname.slice("/anexo/".length)))
@@ -897,13 +1019,7 @@ const servidor = Bun.serve({
 void espelharNaSubida()
 LEMBRETES.iniciar()
 ORQUESTRA.iniciar()
-iniciarAgenda(RAIZ, {
-  migrar: () => migrarPendentes(RAIZ, MEMORIA),
-  pendentes: (agora) => conversasPendentes(RAIZ, agora),
-  consolidar: (meta) => consolidarConversa(RAIZ, MEMORIA, meta),
-  guardadas: () => consolidarGuardadas(RAIZ, MEMORIA),
-  sonhar: (persona) => sonhar(RAIZ, MEMORIA, persona),
-})
+AGENDADOR.iniciar()
 
 const rede = enderecos()
 console.log(`control-tower de pé (dados: ${RAIZ}, código: ${CODIGO})`)

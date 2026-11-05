@@ -27,7 +27,13 @@
     "retomar",
     "tarefa-aprovar-plano",
     "auditoria",
-    "tarefa-decidir"
+    "tarefa-decidir",
+    "rotinas",
+    "rotina-disparar",
+    "rotina-ativar",
+    "rotina-salvar",
+    "rotina-excluir",
+    "rotina-token"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -53,10 +59,14 @@
     "execucao-evento",
     "personas",
     "orquestra",
-    "auditoria"
+    "auditoria",
+    "rotinas"
   ],
   "cliente→servidor só no desktop": [
     "equipe-salvar",
-    "equipe-excluir"
+    "equipe-excluir",
+    "rotina-salvar",
+    "rotina-excluir",
+    "rotina-token"
   ]
 }

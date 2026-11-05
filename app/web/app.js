@@ -25,6 +25,7 @@ const estado = {
   personas: [],
   pausadoTudo: false,
   auditoria: null,
+  rotinas: [],
   equipes: [],
   equipeVista: "casa",
   equipeDasTarefas: "casa",
@@ -566,6 +567,7 @@ function abrirTarefas() {
   informarVisivel()
   enviar({ tipo: "equipes" })
   enviar({ tipo: "tarefas" })
+  enviar({ tipo: "rotinas" })
 }
 
 function tituloDasTarefas() {
@@ -754,6 +756,11 @@ function pedirLogSePreciso() {
   if (ultima && estado.log?.execucaoId !== ultima.id) enviar({ tipo: "execucao", id: ultima.id })
 }
 
+function nomeDaRotina(criadaPor) {
+  const [equipe, id] = criadaPor.slice("rotina:".length).split("/")
+  return estado.rotinas.find((r) => r.equipe === equipe && r.id === id)?.nome ?? id
+}
+
 function renderTarefa() {
   const { tarefa, registros, execucoes = [], custoUSD = 0 } = estado.detalhe
   estado.tarefaId = tarefa.id
@@ -770,6 +777,7 @@ function renderTarefa() {
     tarefa.porque ? `Por quê: ${tarefa.porque}` : "",
     tarefa.dependeDe.length ? `Depende de: ${tarefa.dependeDe.map((d) => `#${d}`).join(", ")}` : "",
     tarefa.pai ? `Parte da tarefa #${tarefa.pai}` : "",
+    tarefa.criadaPor?.startsWith("rotina:") ? `Criada pela rotina ${nomeDaRotina(tarefa.criadaPor)}` : "",
     tarefa.descricao,
   ]
   adicionarMensagem("perfil-msg documento", formatar(linhas.filter(Boolean).join("\n\n")))
@@ -890,6 +898,7 @@ function abrirEquipes() {
   enviar({ tipo: "equipes" })
   enviar({ tipo: "personas" })
   enviar({ tipo: "tarefas" })
+  enviar({ tipo: "rotinas" })
   renderEquipes()
 }
 
@@ -1110,6 +1119,52 @@ function secaoDeAtividade() {
   return secao
 }
 
+const NOMES_RESULTADO = { criada: "criou a tarefa", pulada: "pulou", falhou: "falhou" }
+
+function linhaDoDisparo(d) {
+  if (!d) return "nunca disparou"
+  const tarefa = d.tarefa ? ` #${d.tarefa}` : ""
+  return `${quando(d.em)} · ${NOMES_RESULTADO[d.resultado] ?? d.resultado}${tarefa}${d.motivo ? ` (${d.motivo})` : ""}`
+}
+
+function secaoDeRotinas(equipe) {
+  const secao = document.createElement("section")
+  const titulo = document.createElement("h3")
+  titulo.className = "grupo-tarefas"
+  titulo.textContent = "Rotinas"
+  secao.appendChild(titulo)
+  const lista = estado.rotinas.filter((r) => r.equipe === equipe.id || r.sistema)
+  if (!lista.length) {
+    secao.appendChild(Object.assign(document.createElement("small"), { textContent: "Nenhuma rotina. Crie pelo app desktop." }))
+    return secao
+  }
+  const ul = document.createElement("ul")
+  ul.className = "lista-decisoes lista-rotinas"
+  for (const r of lista) {
+    const li = document.createElement("li")
+    const gatilhos = [r.cron ? `cron ${r.cron}` : "", r.webhook ? "webhook" : ""].filter(Boolean).join(" · ") || "só manual"
+    const proximo = r.ativa && r.proximo ? ` · próximo ${quando(r.proximo)}` : ""
+    li.innerHTML =
+      `<span class="status ${r.ativa ? "a_fazer" : "cancelada"}">${r.ativa ? "ativa" : "parada"}</span>${escapar(r.nome)}` +
+      `<small>${escapar(gatilhos)}${proximo}<br>último: ${escapar(linhaDoDisparo(r.ultimoDisparo))}</small>`
+    if (!r.sistema) {
+      const acoes = document.createElement("div")
+      acoes.className = "acoes-tarefa"
+      const disparar = document.createElement("button")
+      disparar.textContent = "Disparar agora"
+      disparar.onclick = () => enviar({ tipo: "rotina-disparar", equipe: r.equipe, id: r.id })
+      const ativar = document.createElement("button")
+      ativar.textContent = r.ativa ? "Desativar" : "Ativar"
+      ativar.onclick = () => enviar({ tipo: "rotina-ativar", equipe: r.equipe, id: r.id, ativa: !r.ativa })
+      acoes.append(disparar, ativar)
+      li.appendChild(acoes)
+    }
+    ul.appendChild(li)
+  }
+  secao.appendChild(ul)
+  return secao
+}
+
 function renderEquipes() {
   if (estado.modo !== "equipes") return
   limparTela()
@@ -1139,6 +1194,7 @@ function renderEquipes() {
     el.mensagens.appendChild(rolagem)
     const vista = equipe.posicoes.find((p) => p.id === estado.posicaoVista)
     if (vista) el.mensagens.appendChild(detalheDaPosicao(equipe, vista))
+    el.mensagens.appendChild(secaoDeRotinas(equipe))
   }
   el.mensagens.appendChild(secaoDePersonas())
   el.mensagens.appendChild(secaoDeAtividade())
@@ -1387,6 +1443,12 @@ function tratar(msg) {
     case "auditoria": {
       estado.auditoria = msg.lista
       renderEquipes()
+      break
+    }
+    case "rotinas": {
+      estado.rotinas = msg.lista
+      renderEquipes()
+      if (estado.modo === "tarefas" && estado.detalhe) renderTarefa()
       break
     }
     case "tarefas": {
