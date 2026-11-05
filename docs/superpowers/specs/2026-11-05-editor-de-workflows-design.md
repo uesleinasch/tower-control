@@ -244,3 +244,20 @@ unificar os dois canvas, o formato exato do arquivo de casos e a ordem dos commi
 sugerida é: arquivo de casos e ajustes do servidor (chaves desconhecidas, `@arquivo`, versão como
 trava); modelo e operações do núcleo; validação espelhada; referências; canvas editável com
 paleta e pontos de saída; painel da caixa e do workflow; topo, gravação e sobreposição de fluxo.
+
+## Como ficou na implementação
+
+Diferenças em relação ao texto acima, decididas na implementação:
+
+- **Canvas.** O do workflow virou um componente só, para ver e editar (parâmetro `edicao`). O
+  organograma divide com ele só o pan, o zoom e os controles (`tela/canvas.dart`), porque a
+  geometria dos cartões e das linhas de hierarquia é outra. Na vista de execução do desktop, as
+  linhas agora saem do ponto de saída na borda direita, e as ligações de volta (o `repetir`)
+  passam por baixo das caixas.
+- **Rascunho ao trocar de tela.** Não pergunta: o rascunho fica em memória e volta ao abrir
+  Equipes de novo. Só "Fechar" pergunta antes de descartar.
+- **Desfazer.** Mover caixa e digitar não mostram o aviso com "Desfazer" (sairia a cada gesto),
+  mas entram no Ctrl+Z; digitar num campo conta como um passo só.
+- **Renomear caixa com texto em arquivo.** O servidor casa os `@arquivo.md` pelo id da caixa,
+  então depois de renomear o texto passa a ficar no próprio JSON e o arquivo antigo sobra na
+  pasta. Raro o bastante para não pedir mais protocolo agora.
