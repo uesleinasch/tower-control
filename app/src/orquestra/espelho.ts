@@ -118,6 +118,11 @@ const O_QUE_FINALIZAR_FAZ: Record<AcaoDoEspelho["tipo"], string> = {
   nenhuma: "Finalizar aqui só tira o aviso da sua lista.",
 }
 
+export function nomeNoTickTask(item: ItemDeAtencao): string {
+  const nome = item.tipo === "decisao" ? `${item.titulo}: ${item.detalhe}` : item.titulo
+  return `[CT] ${nome.length > 160 ? `${nome.slice(0, 159)}…` : nome}`
+}
+
 export function descricaoNoTickTask(item: ItemDeAtencao, endereco: string | null): string {
   const acao = acaoDo(item)
   return [item.detalhe, O_QUE_FINALIZAR_FAZ[acao.tipo], endereco ? `control-tower: ${endereco}` : ""].filter(Boolean).join("\n\n")
@@ -248,7 +253,7 @@ export async function conectarTickTask(endereco: { url: string; token: string })
         tags: [t.tag],
         ...(t.pai ? { parent_task_id: t.pai } : {}),
       })
-      const id = (r.task as { id?: unknown } | undefined)?.id ?? r.id
+      const id = (r.task as { id?: unknown } | undefined)?.id ?? r.id ?? r.created
       if (typeof id !== "number") throw new Error("o TickTask não devolveu o id da tarefa criada")
       return id
     },
@@ -370,7 +375,7 @@ export class Espelho {
       const id =
         linha.ticktask ??
         (await tt.criar({
-          nome: `[CT] ${item.titulo}`,
+          nome: nomeNoTickTask(item),
           descricao: descricaoNoTickTask(item, this.amb.endereco()),
           projeto: config.projeto,
           tag: config.tag,

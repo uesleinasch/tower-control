@@ -17,7 +17,7 @@ export interface EnderecoTickTask {
 // config dele. Sem app aberto não há porta, então isto devolve nada e quem chama segue sem
 // o TickTask em vez de quebrar.
 export async function enderecoTickTask(): Promise<EnderecoTickTask | undefined> {
-  const arquivo = Bun.file(join(homedir(), ".config", "ticktask", "mcp-config.json"))
+  const arquivo = Bun.file(process.env.CT_TICKTASK_CONFIG ?? join(homedir(), ".config", "ticktask", "mcp-config.json"))
   if (!(await arquivo.exists())) return undefined
   try {
     const config: ConfigTickTask = await arquivo.json()

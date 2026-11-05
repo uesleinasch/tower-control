@@ -9,6 +9,7 @@ import {
   decidirPuxada,
   descricaoNoTickTask,
   desejados,
+  nomeNoTickTask,
   validarConfigDoEspelho,
   type AcaoDoEspelho,
   type EstadoDaLinha,
@@ -2815,6 +2816,7 @@ describe("espelho do TickTask", () => {
     expect(acaoDo(item("sinal", { fluxo: 1, ficha: 2 }))).toEqual({ tipo: "sinalizar", fluxo: 1, ficha: 2 })
     expect(acaoDo(item("bloqueada", { tarefaId: 3 }))).toEqual({ tipo: "nenhuma" })
     expect(descricaoNoTickTask(item("aprovacao", { tarefaId: 3 }), "http://x:7878")).toContain("Finalizar aqui aprova a entrega")
+    expect(nomeNoTickTask(item("decisao", { fluxo: 1, ficha: 2, titulo: "Mudança pergunta", detalhe: "Seguir?" }))).toBe("[CT] Mudança pergunta: Seguir?")
   })
 
   test("configuração", () => {
@@ -2920,7 +2922,7 @@ describe("espelho do TickTask", () => {
         mudou: () => {},
       })
       await espelho.volta()
-      expect([...tarefas.values()].map((t) => t.nome)).toEqual(["[CT] #1 espera sua aprovação", "[CT] t decisao", "[CT] seguir", "[CT] parar"])
+      expect([...tarefas.values()].map((t) => t.nome)).toEqual(["[CT] #1 espera sua aprovação", "[CT] t decisao: d", "[CT] seguir", "[CT] parar"])
       expect(espelho.resumo()).toMatchObject({ conectado: true, abertos: 2, pendentes: 0 })
       await espelho.volta()
       expect(tarefas.size).toBe(4)
