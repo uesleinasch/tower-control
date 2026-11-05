@@ -8,37 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
 
+import 'apoio/acoes.dart';
 import 'apoio/ambiente.dart';
 import 'apoio/app.dart';
 import 'apoio/esperas.dart';
 import 'apoio/falsos.dart';
-
-String dados(String relativo) => '${ambiente.dados}/$relativo';
-
-bool aberta(Map t) => t['status'] != 'concluida' && t['status'] != 'cancelada';
-
-Future<void> cancelarAbertas(Conexao c) async {
-  final lista = ((await c.pedir({'tipo': 'tarefas'}, 'tarefas'))['lista'] as List).cast<Map>();
-  for (final t in lista.where(aberta)) {
-    await c.pedir(
-      {'tipo': 'tarefa-status', 'id': t['id'], 'status': 'cancelada'},
-      'tarefa',
-      filtro: (m) => m['tarefa']['id'] == t['id'] && m['tarefa']['status'] == 'cancelada',
-    );
-  }
-}
-
-Future<void> pausarAlfred(Conexao c) => c.pedir(
-  {'tipo': 'pausar', 'alvo': 'alfred'},
-  'personas',
-  filtro: (m) => (m['lista'] as List).any((p) => p['id'] == 'alfred' && p['pausa'] != null),
-);
-
-Future<void> retomarAlfred(Conexao c) => c.pedir(
-  {'tipo': 'retomar', 'alvo': 'alfred'},
-  'personas',
-  filtro: (m) => (m['lista'] as List).any((p) => p['id'] == 'alfred' && p['pausa'] == null),
-);
+import 'cenas/espelho_e_modelos.dart';
+import 'cenas/workflows.dart';
 
 Future<void> excluirRotinaSeExiste(Conexao c, String id) async {
   if (!File(dados('equipes/casa/rotinas/$id.json')).existsSync()) return;
@@ -474,4 +450,8 @@ void main() {
     expect(jsonEncode(blocos.firstWhere((b) => b['type'] == 'tool_result')), contains('ct-casa:checklist'));
     expect(jsonEncode(blocos), contains('- conferir o diff antes de entregar'));
   });
+
+  cenasDeWorkflows();
+  cenaDoEspelho();
+  cenaDosModelos();
 }

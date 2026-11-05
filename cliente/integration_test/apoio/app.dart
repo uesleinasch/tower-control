@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/main.dart' as app;
+import 'package:control_tower/tela/painel.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -223,6 +224,24 @@ Future<void> digitarNoTeclado(WidgetTester t, Finder campo, String texto, {Futur
     );
     if (i == 0) await noMeio?.call();
   }
+}
+
+Future<void> aparecerNoPainel(WidgetTester t, Finder alvo, {required String descricao, Duration prazo = prazoPadrao}) {
+  final lista = find.descendant(of: find.byType(TelaPainel), matching: find.byType(Scrollable)).first;
+  return esperarAte(t, () {
+    if (alvo.evaluate().isNotEmpty) return true;
+    final posicao = t.state<ScrollableState>(lista).position;
+    final fim = posicao.maxScrollExtent;
+    posicao.jumpTo(posicao.pixels >= fim ? 0 : (posicao.pixels + 300).clamp(0, fim).toDouble());
+    return false;
+  }, descricao: descricao, prazo: prazo);
+}
+
+Future<void> aprovarNoPainel(WidgetTester t, int tarefa, {Duration prazo = prazoPadrao}) async {
+  final titulo = find.text('#$tarefa espera sua aprovação');
+  await aparecerNoPainel(t, titulo, descricao: 'o pedido de aprovação de #$tarefa no painel', prazo: prazo);
+  final cartao = find.ancestor(of: titulo, matching: find.byType(Card)).first;
+  await tocar(t, find.descendant(of: cartao, matching: botao('Aprovar')));
 }
 
 Finder cartaoDaPosicao(String id) => find.byWidgetPredicate(
