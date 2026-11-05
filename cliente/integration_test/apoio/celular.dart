@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ambiente.dart';
 import 'app.dart' show salaDe;
 import 'esperas.dart';
+import 'pacote.dart';
 
 app.ControlTower? _montado;
 
@@ -22,6 +23,7 @@ Future<void> subirCelular(WidgetTester t, AmbienteDeTeste a) async {
   if (montado != null) {
     await t.pumpWidget(montado);
   } else {
+    exigirPacoteDeTeste(pacoteEmExecucao());
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     await prefs.setStringList('enderecos', ['127.0.0.1:${a.porta}']);

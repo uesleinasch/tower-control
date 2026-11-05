@@ -6,7 +6,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../integration_test/apoio/pacote.dart';
+
 void main() {
+  group('pacote do teste no celular', () {
+    test('aceita só o pacote de teste', () {
+      expect(() => exigirPacoteDeTeste('dev.ueslei.controltower.teste'), returnsNormally);
+    });
+
+    test('recusa o app de verdade e qualquer outro pacote', () {
+      for (final pacote in ['dev.ueslei.controltower', 'dev.ueslei.controltower.teste:servico', '']) {
+        expect(() => exigirPacoteDeTeste(pacote), throwsA(isA<StateError>()), reason: pacote);
+      }
+    });
+  });
+
   group('ações', () {
     test('serviço mapeia verbo para systemctl --user na unidade fixa', () {
       final c = servico(VerboServico.reiniciar);
