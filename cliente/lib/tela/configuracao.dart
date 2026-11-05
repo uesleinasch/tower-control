@@ -124,7 +124,7 @@ class _BlocoAvisosState extends State<_BlocoAvisos> {
   }
 
   @override
-  Widget build(BuildContext context) => _Bloco(
+  Widget build(BuildContext context) => BlocoDeConfiguracao(
         titulo: 'Avisos',
         icone: Icons.notifications_outlined,
         acao: _Etiqueta(_rodando ? 'escutando' : 'parado', _rodando ? _verde : _ambar),
@@ -144,8 +144,8 @@ class _BlocoAvisosState extends State<_BlocoAvisos> {
       );
 }
 
-class _Bloco extends StatelessWidget {
-  const _Bloco({required this.titulo, required this.icone, required this.filhos, this.acao});
+class BlocoDeConfiguracao extends StatelessWidget {
+  const BlocoDeConfiguracao({super.key, required this.titulo, required this.icone, required this.filhos, this.acao});
 
   final String titulo;
   final IconData icone;
@@ -155,23 +155,25 @@ class _Bloco extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cores.surface,
+    return Material(
+      color: cores.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Theme.of(context).dividerColor),
+        side: BorderSide(color: Theme.of(context).dividerColor),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Icon(icone, size: 20, color: cores.primary),
-          const SizedBox(width: 10),
-          Expanded(child: Text(titulo, style: Theme.of(context).textTheme.titleSmall)),
-          ?acao,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(icone, size: 20, color: cores.primary),
+            const SizedBox(width: 10),
+            Expanded(child: Text(titulo, style: Theme.of(context).textTheme.titleSmall)),
+            ?acao,
+          ]),
+          const SizedBox(height: 12),
+          ...filhos,
         ]),
-        const SizedBox(height: 12),
-        ...filhos,
-      ]),
+      ),
     );
   }
 }
@@ -295,7 +297,7 @@ class _BlocoServidorState extends State<_BlocoServidor> {
   @override
   Widget build(BuildContext context) {
     final ativo = _ativo == 'active';
-    return _Bloco(
+    return BlocoDeConfiguracao(
       titulo: 'Servidor',
       icone: Icons.dns_outlined,
       acao: IconButton(tooltip: 'Atualizar', icon: const Icon(Icons.refresh), onPressed: _consultar),
@@ -372,7 +374,7 @@ class _BlocoInicializacaoState extends State<_BlocoInicializacao> {
   }
 
   @override
-  Widget build(BuildContext context) => _Bloco(
+  Widget build(BuildContext context) => BlocoDeConfiguracao(
         titulo: 'Inicialização',
         icone: Icons.power_settings_new,
         filhos: [
@@ -443,7 +445,7 @@ class _BlocoEspelhoState extends State<_BlocoEspelho> {
           final estado = _e.estado;
           final editavel = _e.carregado && !_e.salvando;
           final ligadoSalvo = _e.config?.ativo ?? false;
-          return _Bloco(
+          return BlocoDeConfiguracao(
             titulo: 'Espelho no TickTask',
             icone: Icons.sync_alt,
             acao: _Etiqueta(_e.resumo, _corDoResumo()),
@@ -584,7 +586,7 @@ class _BlocoRedeState extends State<_BlocoRede> {
                   onPressed: () => copiar(context, 'http://$host:$porta'),
                 ),
         );
-    return _Bloco(
+    return BlocoDeConfiguracao(
       titulo: 'Rede',
       icone: Icons.lan_outlined,
       acao: IconButton(tooltip: 'Atualizar', icon: const Icon(Icons.refresh), onPressed: _carregar),
@@ -706,7 +708,7 @@ class _BlocoCelularState extends State<_BlocoCelular> {
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
-    return _Bloco(
+    return BlocoDeConfiguracao(
       titulo: 'Celular',
       icone: Icons.phone_android,
       filhos: [
@@ -808,7 +810,7 @@ class _BlocoLogsState extends State<_BlocoLogs> {
   Widget build(BuildContext context) {
     final f = _filtro.toLowerCase();
     final visiveis = f.isEmpty ? _linhas : _linhas.where((l) => l.toLowerCase().contains(f)).toList();
-    return _Bloco(
+    return BlocoDeConfiguracao(
       titulo: 'Logs do servidor',
       icone: Icons.receipt_long_outlined,
       acao: IconButton(
