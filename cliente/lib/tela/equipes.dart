@@ -9,6 +9,7 @@ import '../nucleo/modelos.dart';
 import '../nucleo/organograma.dart';
 import '../nucleo/tarefas.dart';
 import 'comum.dart';
+import 'rotinas.dart';
 
 bool get edicaoDisponivel =>
     defaultTargetPlatform == TargetPlatform.linux ||
@@ -69,6 +70,7 @@ class TelaEquipes extends StatelessWidget {
     required bool largo,
     required bool personasVisiveis,
   }) {
+    if (estado.vendoRotinas) return PainelDeRotinas(sala: sala, equipe: equipe, editar: editar, largo: largo);
     final selecionada = estado.selecionada == null ? null : equipe.posicao(estado.selecionada!);
     final canvas = CanvasDoOrganograma(estado: estado, equipe: equipe, editar: editar);
     if (!editar) {
@@ -173,6 +175,13 @@ class _Topo extends StatelessWidget {
           IconButton(tooltip: 'Atividade', icon: const Icon(Icons.history), onPressed: () => mostrarAtividade(context, estado)),
           if (!editar)
             IconButton(
+              tooltip: estado.vendoRotinas ? 'Organograma' : 'Rotinas',
+              isSelected: estado.vendoRotinas,
+              icon: const Icon(Icons.schedule),
+              onPressed: () => estado.verRotinas(!estado.vendoRotinas),
+            ),
+          if (!editar && !estado.vendoRotinas)
+            IconButton(
               tooltip: 'Personas',
               icon: const Icon(Icons.people_alt_outlined),
               onPressed: () => showModalBottomSheet<void>(
@@ -214,10 +223,14 @@ class _Topo extends StatelessWidget {
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+              acao(Icons.schedule, 'Rotinas', () => estado.verRotinas(!estado.vendoRotinas), marcado: estado.vendoRotinas),
               acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
-              acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
-              acao(Icons.account_tree_outlined, 'Organizar', equipe == null || equipe.posicoes.isEmpty ? null : () => estado.aplicar(organizar)),
-              acao(Icons.people_alt_outlined, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
+              if (!estado.vendoRotinas) ...[
+                acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
+                acao(Icons.account_tree_outlined, 'Organizar',
+                    equipe == null || equipe.posicoes.isEmpty ? null : () => estado.aplicar(organizar)),
+                acao(Icons.people_alt_outlined, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
+              ],
               acao(Icons.save_outlined, estado.alterada ? 'Salvar' : 'Salvo', estado.alterada && !estado.salvando ? estado.salvar : null,
                   principal: true),
               if (estado.alterada) acao(Icons.undo, 'Descartar', estado.descartar),

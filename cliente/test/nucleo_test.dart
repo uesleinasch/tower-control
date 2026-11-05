@@ -8,6 +8,7 @@ import 'package:control_tower/nucleo/formato.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/organograma.dart';
+import 'package:control_tower/nucleo/rotinas.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -38,6 +39,18 @@ const _tarefa = {
   'criadaEm': '2026-10-07T10:00:00Z',
   'atualizadaEm': '2026-10-07T10:05:00Z',
   'dependeDe': [1],
+};
+
+const _disparo = {
+  'id': 7,
+  'equipe': 'casa',
+  'rotina': 'plano-do-dia',
+  'origem': 'cron',
+  'horario': '2026-11-06T11:30:00.000Z',
+  'em': '2026-11-06T11:30:05.000Z',
+  'resultado': 'criada',
+  'motivo': '',
+  'tarefa': 12,
 };
 
 const _meta = {'id': '2026-09-30-poe-abc', 'perfil': 'poe', 'titulo': 't', 'criadaEm': '2026-09-30T10:00:00Z'};
@@ -127,6 +140,28 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
     'custoUSD': 0.03,
     'pedida': true,
   },
+  'rotinas': {
+    'lista': [
+      {
+        'id': 'plano-do-dia',
+        'nome': 'Plano do dia',
+        'ativa': true,
+        'posicao': 'executor',
+        'tarefa': {'titulo': 'Plano do dia {data}', 'porque': 'organizar o dia'},
+        'cron': '30 8 * * 1-5',
+        'webhook': true,
+        'concorrencia': 'pular',
+        'perdidos': 'um',
+        'equipe': 'casa',
+        'proximo': '2026-11-09T11:30:00.000Z',
+        'ultimoDisparo': _disparo,
+        'disparos': [_disparo],
+        'token': 'abc123',
+        'url': '/rotinas/casa/plano-do-dia',
+      },
+      {'id': 'memoria', 'nome': 'Agenda da memória', 'cron': '*/5 * * * *', 'equipe': null, 'sistema': true, 'proximo': null, 'ultimoDisparo': null, 'disparos': []},
+    ],
+  },
   'tarefas': {
     'lista': [
       _tarefa,
@@ -176,6 +211,12 @@ final _saidas = <Saida>[
   const AprovarPlano(3),
   const PedirAuditoria(),
   const DecidirTarefa.aprovar(3),
+  const PedirRotinas(),
+  const DispararRotina('casa', 'plano-do-dia'),
+  const AtivarRotina('casa', 'plano-do-dia', ativa: false),
+  const SalvarRotina('casa', Rotina(id: 'plano-do-dia', nome: 'Plano do dia', posicao: 'executor', titulo: 't')),
+  const ExcluirRotina('casa', 'plano-do-dia'),
+  const TrocarTokenDaRotina('casa', 'plano-do-dia'),
 ];
 
 void main() {
@@ -304,6 +345,150 @@ void main() {
       for (final MapEntry(key: de, value: paras) in transicoesDeTarefa.entries) {
         expect(servidor, contains('$de: [${paras.map((p) => '"$p"').join(', ')}]'), reason: de);
       }
+    });
+  });
+
+  group('rotinas', () {
+    const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [
+      PosicaoResumo(id: 'executor', titulo: 'executor', persona: 'alfred', capacidades: ['comandos'], aprovacao: 'auto'),
+      PosicaoResumo(id: 'revisora', titulo: 'revisora', capacidades: ['comandos']),
+    ]);
+    const plano = Rotina(id: 'plano-do-dia', nome: 'Plano do dia', posicao: 'executor', titulo: 'Plano do dia {data}', cron: '30 8 * * 1-5');
+    String? erroDe(String cron) {
+      try {
+        lerCron(cron);
+        return null;
+      } on ErroDeCron catch (e) {
+        return e.mensagem;
+      }
+    }
+
+    test('rotinas decodificam com disparos, token e a de sistema; padrões seguros', () {
+      final e = Entrada.decodificar(jsonEncode({'tipo': 'rotinas', ..._fixturasEntrada['rotinas']!})) as RotinasRecebidas;
+      final [r, sistema] = e.lista;
+      expect([r.id, r.nome, r.titulo, r.porque, r.descricao, r.cron, r.webhook, r.token, r.url],
+          ['plano-do-dia', 'Plano do dia', 'Plano do dia {data}', 'organizar o dia', '', '30 8 * * 1-5', true, 'abc123', '/rotinas/casa/plano-do-dia']);
+      expect(r.proximo!.isAtSameMomentAs(DateTime.utc(2026, 11, 9, 11, 30)), isTrue);
+      expect(r.proximo!.isUtc, isFalse);
+      expect([r.ultimoDisparo!.tarefa, r.ultimoDisparo!.origem, r.disparos.single.resultado], [12, 'cron', 'criada']);
+      expect(r.ultimoDisparo!.resumo, 'horário · criou a tarefa · #12');
+      expect([sistema.sistema, sistema.equipe, sistema.ativa, sistema.concorrencia, sistema.perdidos, sistema.ultimoDisparo],
+          [true, null, true, 'pular', 'um', null]);
+      final vazia = Rotina.deJson(const {});
+      expect([vazia.ativa, vazia.concorrencia, vazia.perdidos, vazia.webhook, vazia.disparos], [true, 'pular', 'um', false, isEmpty]);
+    });
+
+    test('rotina-salvar leva a definição sem campos vazios', () {
+      final json = jsonDecode(SalvarRotina('casa', plano.copiar(porque: '  ', descricao: ' ler a agenda ')).codificar()) as Map;
+      expect(json, {
+        'tipo': 'rotina-salvar',
+        'equipe': 'casa',
+        'rotina': {
+          'id': 'plano-do-dia',
+          'nome': 'Plano do dia',
+          'ativa': true,
+          'posicao': 'executor',
+          'tarefa': {'titulo': 'Plano do dia {data}', 'descricao': 'ler a agenda'},
+          'cron': '30 8 * * 1-5',
+          'concorrencia': 'pular',
+          'perdidos': 'um',
+        },
+      });
+      expect((jsonDecode(SalvarRotina('casa', plano.copiar(cron: '', webhook: true)).codificar())['rotina'] as Map)['webhook'], true);
+      expect(jsonDecode(const AtivarRotina('casa', 'x', ativa: false).codificar()),
+          {'tipo': 'rotina-ativar', 'equipe': 'casa', 'id': 'x', 'ativa': false});
+    });
+
+    test('cron de dias úteis: sábado aponta para segunda 08:30', () {
+      final cron = lerCron('30 8 * * 1-5');
+      final sabado = DateTime(2026, 11, 7, 10, 0);
+      expect(sabado.weekday, DateTime.saturday);
+      expect(proximoHorario(cron, sabado), DateTime(2026, 11, 9, 8, 30));
+      expect(proximosHorarios(cron, sabado, 3), [DateTime(2026, 11, 9, 8, 30), DateTime(2026, 11, 10, 8, 30), DateTime(2026, 11, 11, 8, 30)]);
+      expect(proximoHorario(cron, DateTime(2026, 11, 9, 8, 30, 20)), DateTime(2026, 11, 10, 8, 30));
+    });
+
+    test('dia do mês e dia da semana restritos juntos valem como "ou"; 7 é domingo', () {
+      final ou = lerCron('0 0 31 * 1');
+      expect(proximosHorarios(ou, DateTime(2026, 10, 29, 12), 3),
+          [DateTime(2026, 10, 31), DateTime(2026, 11, 2), DateTime(2026, 11, 9)]);
+      expect(proximoHorario(lerCron('0 9 * * 7'), DateTime(2026, 11, 7, 10)), DateTime(2026, 11, 8, 9));
+      expect(lerCron('0 9 * * 7').semana, {0});
+      expect(proximoHorario(lerCron('0 0 1 1 *'), DateTime(2026, 11, 5)), DateTime(2027, 1, 1));
+    });
+
+    test('listas, faixas e passos', () {
+      expect(lerCron('*/20 * * * *').minutos, {0, 20, 40});
+      expect(lerCron('10-30/10 * * * *').minutos, {10, 20, 30});
+      expect(lerCron('50/5 * * * *').minutos, {50, 55});
+      expect(lerCron('0,15,45 * * * *').minutos, {0, 15, 45});
+      expect(lerCron('0 * * * 5-7').semana, {5, 6, 0});
+    });
+
+    test('erros do cron com as mensagens do servidor', () {
+      expect(erroDe('61 * * * *'), 'minuto: 61 fora de 0–59');
+      expect(erroDe('* * *'), 'use 5 campos: minuto hora dia-do-mês mês dia-da-semana');
+      expect(erroDe('5-1 * * * *'), 'minuto: faixa 5-1 invertida');
+      expect(erroDe('a * * * *'), 'minuto: "a" não é número');
+      expect(erroDe('0 24 * * *'), 'hora: 24 fora de 0–23');
+      expect(erroDe('0 0 0 * *'), 'dia do mês: 0 fora de 1–31');
+      expect(erroDe('0 0 * JAN *'), 'mês: "JAN" não é número');
+      expect(erroDe('1/2/3 * * * *'), 'minuto: "1/2/3" inválido');
+      expect(erroDe('0 0 * * 8'), 'dia da semana: 8 fora de 0–7');
+      expect(erroDe('*/0 * * * *'), 'minuto: 0 fora de 1–60');
+    });
+
+    test('intervalo mínimo conta a virada do dia', () {
+      expect(menorIntervaloEmMinutos(lerCron('*/20 * * * *')), 20);
+      expect(menorIntervaloEmMinutos(lerCron('*/10 * * * *')), 10);
+      expect(menorIntervaloEmMinutos(lerCron('0,50 * * * *')), 10);
+      expect(menorIntervaloEmMinutos(lerCron('55 23 * * *')), 1440);
+      expect(menorIntervaloEmMinutos(lerCron('0 8,20 * * *')), 720);
+    });
+
+    test('validação espelha a do servidor', () {
+      expect(errosDaRotina(plano, casa), isEmpty);
+      expect(errosDaRotina(plano.copiar(cron: '*/20 * * * *'), casa), isEmpty);
+      expect(errosDaRotina(plano.copiar(cron: '55 23 * * *'), casa), isEmpty);
+      expect(errosDaRotina(plano.copiar(cron: ''), casa), isEmpty);
+      expect(errosDaRotina(plano.copiar(cron: '*/10 * * * *'), casa),
+          ['rotina plano-do-dia: o cron dispara com menos de 15 minutos de intervalo']);
+      expect(errosDaRotina(plano.copiar(cron: '0,50 * * * *'), casa),
+          ['rotina plano-do-dia: o cron dispara com menos de 15 minutos de intervalo']);
+      expect(errosDaRotina(plano.copiar(cron: '61 * * * *'), casa),
+          ['rotina plano-do-dia: cron inválido (minuto: 61 fora de 0–59)']);
+      expect(errosDaRotina(plano.copiar(id: 'Plano'), casa), ['rotina: id inválido (Plano)']);
+      expect(errosDaRotina(plano.copiar(nome: ' ', titulo: '', posicao: 'sumiu', concorrencia: 'x', perdidos: 'y'), casa), [
+        'rotina plano-do-dia: nome obrigatório',
+        'rotina plano-do-dia: título da tarefa obrigatório',
+        'rotina plano-do-dia: posição inexistente (sumiu)',
+        'rotina plano-do-dia: concorrência inválida',
+        'rotina plano-do-dia: perdidos inválido',
+      ]);
+    });
+
+    test('título, autor, id novo, atalhos e aviso do webhook', () {
+      expect(tituloDaTarefa('Plano do dia {data} às {hora}', DateTime(2026, 11, 5, 8, 30)), 'Plano do dia 05/11 às 08:30');
+      expect(rotinaDoAutor('rotina:casa/plano-do-dia'), (equipe: 'casa', id: 'plano-do-dia'));
+      expect(rotinaDoAutor('ueslei'), isNull);
+      expect(rotinaDoAutor(null), isNull);
+      expect(idDaNovaRotina('Plano do Dia', ['plano-do-dia']), 'plano-do-dia-2');
+      expect(idDaNovaRotina('', const []), 'rotina');
+      expect([cronTodoDia(8, 30), cronDiasUteis(8, 30), cronSemanal(1, 9, 0), cronACadaHoras(4), cronACadaHoras(1)],
+          ['30 8 * * *', '30 8 * * 1-5', '0 9 * * 1', '0 */4 * * *', '0 * * * *']);
+      expect(lerHoraMinuto('8:30'), (hora: 8, minuto: 30));
+      expect(lerHoraMinuto('9'), (hora: 9, minuto: 0));
+      expect(lerHoraMinuto('24:00'), isNull);
+      expect(horarioCurto(DateTime(2026, 11, 9, 8, 30)), 'seg 09/11 08:30');
+      expect(webhookArriscado(plano.copiar(webhook: true), casa), isTrue);
+      expect(webhookArriscado(plano, casa), isFalse);
+      expect(webhookArriscado(plano.copiar(webhook: true, posicao: 'revisora'), casa), isFalse);
+      expect(urlDoWebhook('192.168.0.5:7878', '/rotinas/casa/x'), 'http://192.168.0.5:7878/rotinas/casa/x');
+      expect(descricaoDoGatilho(plano.copiar(cron: '', webhook: false)), 'só manual');
+    });
+
+    test('tarefa traz criadaPor', () {
+      expect(Tarefa.deJson({..._tarefa, 'criadaPor': 'rotina:casa/plano-do-dia'}).criadaPor, 'rotina:casa/plano-do-dia');
     });
   });
 

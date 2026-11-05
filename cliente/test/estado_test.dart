@@ -4,10 +4,12 @@ import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
 import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/estado/equipes.dart';
+import 'package:control_tower/estado/rotinas.dart';
 import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
+import 'package:control_tower/nucleo/rotinas.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _meta = MetaConversa(id: 'c1', perfil: 'poe', titulo: 'oi', criadaEm: null);
@@ -115,6 +117,88 @@ void main() {
         {'tipo': 'tarefa-decidir', 'id': 3, 'decisao': 'mudanca', 'texto': 'faltou o teste'},
       ]);
       expect(estado.lista, isEmpty);
+    });
+  });
+
+  group('EstadoRotinas', () {
+    const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor', persona: 'alfred')]);
+    const plano = Rotina(id: 'plano-do-dia', nome: 'Plano do dia', posicao: 'executor', titulo: 'Plano {data}', equipe: 'casa');
+    const sistema = Rotina(id: 'memoria', nome: 'Agenda da memória', cron: '*/5 * * * *', sistema: true);
+
+    test('lista separa equipe e sistema, e a de sistema não dispara nem ativa', () {
+      final estado = EstadoRotinas(enviar)
+        ..carregar()
+        ..tratar(const RotinasRecebidas([plano, sistema]));
+      expect(estado.carregada, isTrue);
+      expect(estado.daEquipe('casa').map((r) => r.id), ['plano-do-dia']);
+      expect(estado.doSistema.single.id, 'memoria');
+      estado
+        ..disparar(sistema)
+        ..alternarAtiva(sistema)
+        ..editar(sistema)
+        ..disparar(plano)
+        ..alternarAtiva(plano);
+      expect(estado.rascunho, isNull);
+      expect(enviados, [
+        {'tipo': 'rotinas'},
+        {'tipo': 'rotina-disparar', 'equipe': 'casa', 'id': 'plano-do-dia'},
+        {'tipo': 'rotina-ativar', 'equipe': 'casa', 'id': 'plano-do-dia', 'ativa': false},
+      ]);
+      expect(estado.criadaPelaRotina('rotina:casa/plano-do-dia'), 'criada pela rotina Plano do dia');
+      expect(estado.criadaPelaRotina('rotina:casa/sumiu'), 'criada pela rotina sumiu');
+      expect(estado.criadaPelaRotina('ueslei'), isNull);
+    });
+
+    test('nova rotina gera o id do nome, não salva com erro e fixa o id depois de salva', () {
+      final estado = EstadoRotinas(enviar)..tratar(const RotinasRecebidas([plano]));
+      estado.novaRotina(casa);
+      expect([estado.nova, estado.rascunho!.posicao], [true, 'executor']);
+      estado.mudar((r) => r.copiar(nome: 'Plano do dia'));
+      expect(estado.rascunho!.id, 'plano-do-dia-2');
+      expect(estado.errosDoRascunho(casa), ['rotina plano-do-dia-2: título da tarefa obrigatório']);
+      estado.salvar(casa);
+      expect(enviados, isEmpty);
+      expect(estado.erro, isNotNull);
+      estado
+        ..mudar((r) => r.copiar(titulo: 'Plano {data}', cron: '30 8 * * 1-5'))
+        ..salvar(casa);
+      expect(enviados.single['tipo'], 'rotina-salvar');
+      expect((enviados.single['rotina'] as Map)['id'], 'plano-do-dia-2');
+      expect(estado.salvando, isTrue);
+      estado.tratar(const RotinasRecebidas([plano]));
+      expect(estado.salvando, isTrue);
+      estado.tratar(RotinasRecebidas([plano, plano.copiar(id: 'plano-do-dia-2')]));
+      expect([estado.salvando, estado.nova], [false, false]);
+      estado.mudar((r) => r.copiar(nome: 'Outro nome'));
+      expect(estado.rascunho!.id, 'plano-do-dia-2');
+    });
+
+    test('erro do servidor ao salvar fica no estado; excluir fecha o editor quando some da lista', () {
+      final estado = EstadoRotinas(enviar)
+        ..tratar(const RotinasRecebidas([plano]))
+        ..editar(plano)
+        ..salvar(casa);
+      estado.tratar(const Erro('rotina plano-do-dia: posição inexistente (x)'));
+      expect([estado.salvando, estado.erro], [false, 'rotina plano-do-dia: posição inexistente (x)']);
+      estado.excluir();
+      expect(enviados.last, {'tipo': 'rotina-excluir', 'equipe': 'casa', 'id': 'plano-do-dia'});
+      estado.tratar(const RotinasRecebidas([plano]));
+      expect(estado.rascunho, isNotNull);
+      estado.tratar(const RotinasRecebidas([]));
+      expect([estado.rascunho, estado.salvando], [null, false]);
+    });
+
+    test('trocar token só com o webhook salvo', () {
+      final estado = EstadoRotinas(enviar)
+        ..tratar(const RotinasRecebidas([plano]))
+        ..editar(plano)
+        ..mudar((r) => r.copiar(webhook: true))
+        ..trocarToken();
+      expect(enviados, isEmpty);
+      estado
+        ..tratar(RotinasRecebidas([plano.copiar(webhook: true)]))
+        ..trocarToken();
+      expect(enviados.single, {'tipo': 'rotina-token', 'equipe': 'casa', 'id': 'plano-do-dia'});
     });
   });
 

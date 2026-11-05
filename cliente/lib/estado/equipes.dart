@@ -21,6 +21,14 @@ class EstadoEquipes extends ChangeNotifier {
   bool? mostrarPersonas;
   bool pausadoTudo = false;
   List<LinhaDeAuditoria>? auditoria;
+  bool vendoRotinas = false;
+
+  void verRotinas(bool sim) {
+    if (vendoRotinas == sim) return;
+    vendoRotinas = sim;
+    if (sim) selecionada = null;
+    notifyListeners();
+  }
 
   void pausar(String alvo) => _enviar(Pausar(alvo));
 

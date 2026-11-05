@@ -17,7 +17,7 @@ class TelaTarefas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: sala.tarefas,
+        listenable: Listenable.merge([sala.tarefas, sala.rotinas]),
         builder: (context, _) {
           final aberta = sala.tarefas.aberta;
           return aberta == null
@@ -250,6 +250,7 @@ class _DetalheState extends State<_Detalhe> {
       if (t.porque.isNotEmpty) 'Por quê: ${t.porque}',
       if (t.dependeDe.isNotEmpty) 'Depende de: ${t.dependeDe.map((d) => '#$d').join(', ')}',
       if (t.pai != null) 'Parte da tarefa #${t.pai}',
+      ?widget.sala.rotinas.criadaPelaRotina(t.criadaPor),
       if (t.descricao.isNotEmpty) t.descricao,
     ].join('\n\n');
     return PopScope(

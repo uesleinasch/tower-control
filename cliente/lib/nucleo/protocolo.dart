@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'modelos.dart';
+import 'rotinas.dart';
 import 'tarefas.dart';
 
 sealed class Entrada {
@@ -59,6 +60,7 @@ sealed class Entrada {
           pedida: json['pedida'] == true,
         ),
       'tarefas' => TarefasRecebidas(listaDeJson(json['lista'], Tarefa.deJson)),
+      'rotinas' => RotinasRecebidas(listaDeJson(json['lista'], Rotina.deJson)),
       _ => Desconhecida(tipo, bruto),
     };
   }
@@ -147,6 +149,11 @@ class PersonasRecebidas extends Entrada {
 class TarefasRecebidas extends Entrada {
   const TarefasRecebidas(this.lista);
   final List<Tarefa> lista;
+}
+
+class RotinasRecebidas extends Entrada {
+  const RotinasRecebidas(this.lista);
+  final List<Rotina> lista;
 }
 
 class TarefaRecebida extends Entrada {
@@ -551,4 +558,67 @@ class DecidirTarefa extends Saida {
   String get tipo => 'tarefa-decidir';
   @override
   Map<String, Object?> get campos => {'id': id, 'decisao': decisao, 'texto': texto};
+}
+
+class PedirRotinas extends Saida {
+  const PedirRotinas();
+
+  @override
+  String get tipo => 'rotinas';
+}
+
+class DispararRotina extends Saida {
+  const DispararRotina(this.equipe, this.id);
+  final String equipe;
+  final String id;
+
+  @override
+  String get tipo => 'rotina-disparar';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'id': id};
+}
+
+class AtivarRotina extends Saida {
+  const AtivarRotina(this.equipe, this.id, {required this.ativa});
+  final String equipe;
+  final String id;
+  final bool ativa;
+
+  @override
+  String get tipo => 'rotina-ativar';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'id': id, 'ativa': ativa};
+}
+
+class SalvarRotina extends Saida {
+  const SalvarRotina(this.equipe, this.rotina);
+  final String equipe;
+  final Rotina rotina;
+
+  @override
+  String get tipo => 'rotina-salvar';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'rotina': rotina.paraJson()};
+}
+
+class ExcluirRotina extends Saida {
+  const ExcluirRotina(this.equipe, this.id);
+  final String equipe;
+  final String id;
+
+  @override
+  String get tipo => 'rotina-excluir';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'id': id};
+}
+
+class TrocarTokenDaRotina extends Saida {
+  const TrocarTokenDaRotina(this.equipe, this.id);
+  final String equipe;
+  final String id;
+
+  @override
+  String get tipo => 'rotina-token';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'id': id};
 }

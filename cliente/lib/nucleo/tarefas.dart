@@ -242,6 +242,7 @@ class Tarefa {
     this.retorno,
     this.voltas = 0,
     this.comQuem,
+    this.criadaPor,
   });
 
   final int id;
@@ -261,6 +262,7 @@ class Tarefa {
   final int? retorno;
   final int voltas;
   final String? comQuem;
+  final String? criadaPor;
 
   List<String> get proximosStatus => transicoesDeTarefa[status] ?? const [];
 
@@ -290,6 +292,7 @@ class Tarefa {
         retorno: (j['retorno'] as num?)?.toInt(),
         voltas: (j['voltas'] as num?)?.toInt() ?? 0,
         comQuem: j['comQuem'] as String?,
+        criadaPor: j['criadaPor'] as String?,
       );
 }
 

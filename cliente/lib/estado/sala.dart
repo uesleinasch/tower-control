@@ -9,6 +9,7 @@ import 'areas.dart';
 import 'chat.dart';
 import 'equipes.dart';
 import 'presenca.dart';
+import 'rotinas.dart';
 import 'servidor.dart';
 import 'tarefas.dart';
 
@@ -22,6 +23,7 @@ class Sala extends ChangeNotifier {
     decisoes = EstadoDecisoes(canal.enviar);
     tarefas = EstadoTarefas(canal.enviar);
     equipes = EstadoEquipes(canal.enviar);
+    rotinas = EstadoRotinas(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -38,6 +40,7 @@ class Sala extends ChangeNotifier {
   late final EstadoDecisoes decisoes;
   late final EstadoTarefas tarefas;
   late final EstadoEquipes equipes;
+  late final EstadoRotinas rotinas;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -59,6 +62,7 @@ class Sala extends ChangeNotifier {
     if (nova == Tela.decisoes && !decisoes.carregada) decisoes.carregar();
     if (nova == Tela.tarefas && !tarefas.carregada) tarefas.carregar();
     if (nova == Tela.equipes && !equipes.carregada) equipes.carregar();
+    if ((nova == Tela.equipes || nova == Tela.tarefas) && !rotinas.carregada) rotinas.carregar();
     notifyListeners();
     _atualizarPresenca();
   }
@@ -106,6 +110,7 @@ class Sala extends ChangeNotifier {
     if (decisoes.carregada) decisoes.carregar();
     if (tarefas.carregada) tarefas.carregar();
     if (equipes.carregada) equipes.carregar();
+    if (rotinas.carregada) rotinas.carregar();
   }
 
   void _tratar(Entrada e) {
@@ -117,6 +122,9 @@ class Sala extends ChangeNotifier {
         return;
       case Erro() when equipes.salvando:
         equipes.tratar(e);
+        return;
+      case Erro() when rotinas.salvando:
+        rotinas.tratar(e);
         return;
       case Aviso(:final texto) when tela != Tela.chat:
         _avisos.add(texto);
@@ -145,6 +153,7 @@ class Sala extends ChangeNotifier {
         decisoes.tratar(e);
         tarefas.tratar(e);
         equipes.tratar(e);
+        rotinas.tratar(e);
     }
   }
 
@@ -162,6 +171,7 @@ class Sala extends ChangeNotifier {
     decisoes.dispose();
     tarefas.dispose();
     equipes.dispose();
+    rotinas.dispose();
     canal.dispose();
     super.dispose();
   }
