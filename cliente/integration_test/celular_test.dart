@@ -110,6 +110,7 @@ Future<void> _respostaNoChat(WidgetTester t, {required String cena, required Str
   final sala = salaDe(t);
   final escuta = EscutaDoApp(sala);
   addTearDown(escuta.parar);
+  addTearDown(() => negarPendentes(escuta));
 
   await _abrirNova(t, 'Alfred');
   await _enviar(t, mensagem);
@@ -264,6 +265,7 @@ void main() {
     final sala = salaDe(t);
     final escuta = EscutaDoApp(sala);
     addTearDown(escuta.parar);
+    addTearDown(() => negarPendentes(escuta));
     await esperarAteAssincrono(
       t,
       () => const ServicoDeAvisos().ligado(),
@@ -328,6 +330,7 @@ void main() {
     final sala = salaDe(t);
     final escuta = EscutaDoApp(sala);
     addTearDown(escuta.parar);
+    addTearDown(() => negarPendentes(escuta));
 
     await _abrirNova(t, 'Alfred');
     await tocar(t, find.widgetWithText(FilterChip, 'auto'));

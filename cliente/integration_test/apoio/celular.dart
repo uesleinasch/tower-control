@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'ambiente.dart';
 import 'app.dart' show salaDe;
 import 'esperas.dart';
+import 'falsos.dart' show ws;
 import 'pacote.dart';
 
 app.ControlTower? _montado;
@@ -50,12 +51,16 @@ Future<void> subirCelular(WidgetTester t, AmbienteDeTeste a) async {
 }
 
 class EscutaDoApp {
-  EscutaDoApp(Sala sala) {
-    _inscricao = sala.canal.eventos.listen(recebidas.add);
+  EscutaDoApp(this._sala) {
+    _inscricao = _sala.canal.eventos.listen(recebidas.add);
   }
+
+  final Sala _sala;
 
   late final StreamSubscription<Entrada> _inscricao;
   final recebidas = <Entrada>[];
+
+  bool get conectado => _sala.canal.conectado;
 
   List<PedidoDePermissao> get pedidos => recebidas.whereType<PedidoDePermissao>().toList();
 
@@ -96,4 +101,30 @@ Future<void> tocarNoBotaoDoAviso(WidgetTester t, ActiveNotification ativa, Strin
     ),
   );
   await t.pump();
+}
+
+Future<void> negarPendentes(EscutaDoApp escuta) async {
+  final pendentes = [
+    for (final p in escuta.pedidos)
+      if (escuta.resolvida(p.id) == null) p.id,
+  ];
+  if (pendentes.isEmpty) return;
+  final fins = escuta.recebidas.whereType<Fim>().length;
+  final c = await ws();
+  try {
+    for (final id in pendentes) {
+      c.mandar({'tipo': 'permissao-resposta', 'id': id, 'permitido': false});
+    }
+    final limite = DateTime.now().add(const Duration(seconds: 60));
+    bool pendurado() =>
+        pendentes.any((id) => escuta.resolvida(id) == null) || escuta.recebidas.whereType<Fim>().length == fins;
+    while (escuta.conectado && pendurado()) {
+      if (DateTime.now().isAfter(limite)) {
+        throw StateError('o turno do Alfred continuou pendurado depois de negar $pendentes no teardown');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  } finally {
+    await c.fechar();
+  }
 }
