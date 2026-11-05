@@ -32,6 +32,7 @@ const estado = {
   rotinas: [],
   workflows: { definicoes: [], fluxos: [] },
   skills: [],
+  espelho: null,
   grafo: null,
   caixaVista: null,
   equipes: [],
@@ -168,6 +169,17 @@ function sincronizarPainel() {
   if (quer === estado.assinandoPainel) return
   estado.assinandoPainel = quer
   enviar({ tipo: "painel", ativo: quer })
+  if (quer) enviar({ tipo: "espelho" })
+}
+
+function linhaDoEspelho() {
+  const e = estado.espelho
+  if (!e?.config?.ativo) return null
+  const s = e.estado ?? {}
+  const texto = s.conectado
+    ? `TickTask: ${s.abertos} item(ns) espelhado(s)${s.pendentes ? `, ${s.pendentes} esperando` : ""}`
+    : `TickTask fora do ar${s.erro ? `: ${s.erro}` : ""}${s.pendentes ? ` · ${s.pendentes} esperando` : ""}`
+  return Object.assign(document.createElement("small"), { className: "painel-vazio", textContent: texto })
 }
 
 function ajustarAoModo() {
@@ -1477,6 +1489,7 @@ function renderPainel() {
     secaoAgora(r.agora),
     secaoDeCartoes(r.personas),
     Object.assign(document.createElement("small"), { className: "painel-vazio", textContent: gasto }),
+    ...[linhaDoEspelho()].filter(Boolean),
     secaoDeContagem(r.tarefas),
     secaoDeProximas(r.proximasRotinas),
     secaoDeAtividadeDoPainel(r.atividade),
@@ -2031,6 +2044,11 @@ function tratar(msg) {
       renderEquipes()
       renderPainel()
       if (estado.modo === "tarefas" && estado.detalhe) renderTarefa()
+      break
+    }
+    case "espelho": {
+      estado.espelho = msg
+      renderPainel()
       break
     }
     case "skills": {

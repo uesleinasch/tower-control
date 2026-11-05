@@ -1,6 +1,22 @@
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
+  CONFIG_PADRAO_DO_ESPELHO,
+  Espelho,
+  acaoDo,
+  chaveDo,
+  comparar,
+  decidirPuxada,
+  descricaoNoTickTask,
+  desejados,
+  validarConfigDoEspelho,
+  type AcaoDoEspelho,
+  type EstadoDaLinha,
+  type LinhaDoEspelho,
+  type TickTask,
+} from "./orquestra/espelho"
+import type { ItemDeAtencao } from "./orquestra/painel"
+import {
   apagarSkill,
   conjuntoDaChamada,
   exigirRascunho,
@@ -578,7 +594,7 @@ describe("runtime de execução", () => {
       const db = new Database(caminho)
       db.exec(
         "DROP TABLE eventos; DROP TABLE execucoes; DROP TABLE pausas; DROP TABLE auditoria; DROP TABLE avisos_de_orcamento; " +
-          "DROP TABLE rotinas_estado; DROP TABLE disparos; DROP TABLE fichas; DROP TABLE fluxos; " +
+          "DROP TABLE rotinas_estado; DROP TABLE disparos; DROP TABLE fichas; DROP TABLE fluxos; DROP TABLE espelho; " +
           "ALTER TABLE tarefas DROP COLUMN fluxo; ALTER TABLE tarefas DROP COLUMN ficha; " +
           "ALTER TABLE tarefas DROP COLUMN politica; ALTER TABLE tarefas DROP COLUMN etapa; " +
           "ALTER TABLE tarefas DROP COLUMN retorno; ALTER TABLE tarefas DROP COLUMN voltas; PRAGMA user_version = 1",
@@ -2776,6 +2792,164 @@ describe("skills", () => {
       expect((await lerBiblioteca(raiz, [])).map((s) => s.id)).toEqual(["quebrada"])
       await expect(apagarSkill(raiz, "casa", "relatorio")).rejects.toThrow("não existe")
     } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("espelho do TickTask", () => {
+  const item = (tipo: string, extra: Record<string, unknown> = {}): ItemDeAtencao =>
+    ({ tipo, titulo: `t ${tipo}`, detalhe: "d", desde: "2026-11-05T10:00:00Z", acoes: [], ...extra }) as ItemDeAtencao
+  const config = { ...CONFIG_PADRAO_DO_ESPELHO, ativo: true }
+
+  test("chave e ação de cada tipo", () => {
+    expect(chaveDo(item("aprovacao", { tarefaId: 3 }))).toBe("aprovacao:3")
+    expect(chaveDo(item("decisao", { fluxo: 2, ficha: 9 }))).toBe("decisao:2:9")
+    expect(chaveDo(item("orcamento", { persona: "poe" }))).toBe("orcamento:poe")
+    expect(chaveDo(item("rotina", { equipe: "casa", rotina: "r" }))).toBe("rotina:casa/r")
+    expect(chaveDo(item("comando", { permissaoId: "x" }))).toBeNull()
+    expect(acaoDo(item("aprovacao", { tarefaId: 3 }))).toEqual({ tipo: "aprovar", tarefa: 3 })
+    expect(acaoDo(item("plano", { tarefaId: 3 }))).toEqual({ tipo: "aprovar-plano", tarefa: 3 })
+    expect(acaoDo(item("entrega", { tarefaId: 3 }))).toEqual({ tipo: "concluir", tarefa: 3 })
+    expect(acaoDo(item("backlog", { tarefaId: 3 }))).toEqual({ tipo: "liberar", tarefa: 3 })
+    expect(acaoDo(item("sinal", { fluxo: 1, ficha: 2 }))).toEqual({ tipo: "sinalizar", fluxo: 1, ficha: 2 })
+    expect(acaoDo(item("bloqueada", { tarefaId: 3 }))).toEqual({ tipo: "nenhuma" })
+    expect(descricaoNoTickTask(item("aprovacao", { tarefaId: 3 }), "http://x:7878")).toContain("Finalizar aqui aprova a entrega")
+  })
+
+  test("configuração", () => {
+    expect(validarConfigDoEspelho({})).toEqual(CONFIG_PADRAO_DO_ESPELHO)
+    expect(validarConfigDoEspelho({ ativo: true, tipos: ["sinal", "aprovacao"] }).tipos).toEqual(["aprovacao", "sinal"])
+    expect(() => validarConfigDoEspelho({ tipos: ["comando"] })).toThrow("tipo desconhecido (comando)")
+    expect(() => validarConfigDoEspelho({ projeto: " " })).toThrow("projeto do TickTask obrigatório")
+  })
+
+  const linha = (id: number, chave: string, estado: EstadoDaLinha, extra: Partial<LinhaDoEspelho> = {}): LinhaDoEspelho => ({
+    id,
+    chave,
+    tipo: chave.split(":")[0]!,
+    titulo: chave,
+    ticktask: estado === "criar" ? null : 100 + id,
+    opcoes: {},
+    estado,
+    acao: { tipo: "aprovar", tarefa: id },
+    criadoEm: "",
+    atualizadoEm: "",
+    erro: null,
+    ...extra,
+  })
+
+  test("comparar decide o que criar, fechar, resolver e arquivar", () => {
+    const querem = desejados(
+      [item("aprovacao", { tarefaId: 1 }), item("aprovacao", { tarefaId: 2 }), item("bloqueada", { tarefaId: 4 }), item("vaga", { tarefaId: 5 })],
+      config,
+    )
+    expect([...querem.keys()]).toEqual(["aprovacao:1", "aprovacao:2", "bloqueada:4"])
+    const c = comparar(querem, [
+      linha(1, "aprovacao:1", "aberto"),
+      linha(2, "bloqueada:4", "dispensado"),
+      linha(3, "aprovacao:9", "aberto"),
+      linha(4, "aprovacao:8", "criar"),
+      linha(5, "aprovacao:7", "criar", { ticktask: 55 }),
+      linha(6, "entrega:6", "dispensado"),
+      linha(7, "aprovacao:2", "fechar"),
+    ])
+    expect(c.criar.map((x) => x.chave)).toEqual(["aprovacao:2"])
+    expect(c.fechar).toEqual([3, 5])
+    expect(c.resolverSemSubir).toEqual([4])
+    expect(c.arquivar).toEqual([6])
+  })
+
+  test("puxar só age quando foi finalizada lá e o item ainda está pendente", () => {
+    const querem = desejados([item("aprovacao", { tarefaId: 1 }), item("decisao", { fluxo: 1, ficha: 2, opcoes: ["seguir", "parar"] })], config)
+    const aberta = { finalizada: false, subtarefas: [] }
+    const fim = { finalizada: true, subtarefas: [] }
+    expect(decidirPuxada(linha(1, "aprovacao:1", "aberto"), aberta, querem)).toEqual({ estado: "aberto" })
+    expect(decidirPuxada(linha(1, "aprovacao:1", "aberto"), fim, querem)).toEqual({ estado: "resolvido_la", acao: { tipo: "aprovar", tarefa: 1 } })
+    expect(decidirPuxada(linha(9, "aprovacao:9", "aberto"), fim, querem)).toEqual({ estado: "resolvido_aqui" })
+    expect(decidirPuxada(linha(1, "aprovacao:1", "aberto"), null, querem)).toEqual({ estado: "dispensado" })
+    expect(decidirPuxada(linha(1, "aprovacao:1", "aberto", { acao: { tipo: "nenhuma" } }), fim, querem)).toEqual({ estado: "dispensado" })
+    const decisao = linha(2, "decisao:1:2", "aberto", { opcoes: { seguir: 11, parar: 12 }, acao: { tipo: "decidir", fluxo: 1, ficha: 2 } })
+    expect(decidirPuxada(decisao, { finalizada: false, subtarefas: [{ id: 11, finalizada: false }, { id: 12, finalizada: true }] }, querem)).toEqual({
+      estado: "resolvido_la",
+      acao: { tipo: "decidir", fluxo: 1, ficha: 2, opcao: "parar" },
+    })
+    expect(decidirPuxada(decisao, { finalizada: true, subtarefas: [{ id: 11, finalizada: false }] }, querem)).toEqual({ estado: "dispensado" })
+  })
+
+  test("a volta com um TickTask falso: sobe, puxa, age uma vez, fecha e espera quando cai", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-espelho-"))
+    const repo = new Repositorio(caminhoDoBanco(raiz))
+    try {
+      const tarefas = new Map<number, { nome: string; finalizada: boolean; pai?: number; notas: string[] }>()
+      let proximo = 500
+      let fora = false
+      const falso: TickTask = {
+        async criar(t) {
+          if (fora) throw new Error("caiu")
+          tarefas.set(++proximo, { nome: t.nome, finalizada: false, pai: t.pai, notas: [] })
+          return proximo
+        },
+        async finalizar(id, nota) {
+          const t = tarefas.get(id)!
+          t.finalizada = true
+          if (nota) t.notas.push(nota)
+        },
+        async ler(id) {
+          const t = tarefas.get(id)
+          if (!t) return null
+          return { finalizada: t.finalizada, subtarefas: [...tarefas].filter(([, s]) => s.pai === id).map(([sid, s]) => ({ id: sid, finalizada: s.finalizada })) }
+        },
+        async fechar() {},
+      }
+      let itens: ItemDeAtencao[] = [
+        item("aprovacao", { tarefaId: 1, titulo: "#1 espera sua aprovação" }),
+        item("decisao", { fluxo: 3, ficha: 4, opcoes: ["seguir", "parar"] }),
+      ]
+      const acoes: AcaoDoEspelho[] = []
+      const espelho = new Espelho({
+        repo,
+        config: () => config,
+        itens: () => itens,
+        conectar: async () => (fora ? null : falso),
+        agir: (a) => {
+          acoes.push(a)
+          itens = itens.filter((i) => !(a.tipo === "aprovar" && i.tarefaId === a.tarefa))
+        },
+        endereco: () => "http://ct:7878",
+        mudou: () => {},
+      })
+      await espelho.volta()
+      expect([...tarefas.values()].map((t) => t.nome)).toEqual(["[CT] #1 espera sua aprovação", "[CT] t decisao", "[CT] seguir", "[CT] parar"])
+      expect(espelho.resumo()).toMatchObject({ conectado: true, abertos: 2, pendentes: 0 })
+      await espelho.volta()
+      expect(tarefas.size).toBe(4)
+
+      tarefas.get(501)!.finalizada = true
+      await espelho.volta()
+      await espelho.volta()
+      expect(acoes).toEqual([{ tipo: "aprovar", tarefa: 1 }])
+
+      tarefas.get(504)!.finalizada = true
+      await espelho.volta()
+      expect(acoes.at(-1)).toEqual({ tipo: "decidir", fluxo: 3, ficha: 4, opcao: "parar" })
+      expect(tarefas.get(502)!.finalizada).toBe(true)
+      expect(tarefas.get(503)!.finalizada).toBe(true)
+
+      itens = [item("entrega", { tarefaId: 7 })]
+      fora = true
+      await espelho.volta()
+      expect(espelho.resumo()).toMatchObject({ conectado: false, pendentes: 1 })
+      fora = false
+      await espelho.volta()
+      expect(tarefas.get(505)!.nome).toBe("[CT] t entrega")
+      itens = []
+      await espelho.volta()
+      expect(tarefas.get(505)).toMatchObject({ finalizada: true })
+      expect(tarefas.get(505)!.notas[0]).toStartWith("Resolvido no control-tower em")
+      expect(acoes).toHaveLength(2)
+    } finally {
+      repo.fechar()
       await rm(raiz, { recursive: true, force: true })
     }
   })

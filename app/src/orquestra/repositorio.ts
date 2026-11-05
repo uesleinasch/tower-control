@@ -5,6 +5,7 @@ import { NOMES_DE_STATUS, exigirMudanca, type NovaTarefa, type Registro, type St
 import type { Etapa } from "./equipe"
 import type { Disparo } from "./rotinas"
 import type { Valor, Workflow } from "./workflow"
+import type { AcaoDoEspelho, EstadoDaLinha, LinhaDoEspelho } from "./espelho"
 import {
   exigirMudancaDeExecucao,
   truncar,
@@ -15,7 +16,7 @@ import {
   type TipoDeEvento,
 } from "./execucao"
 
-const VERSAO = 6
+const VERSAO = 7
 
 const ESQUEMA = `
 CREATE TABLE tarefas (
@@ -170,6 +171,24 @@ CREATE TABLE fichas (
 CREATE INDEX fichas_por_fluxo ON fichas(fluxo, id);
 ALTER TABLE tarefas ADD COLUMN fluxo INTEGER;
 ALTER TABLE tarefas ADD COLUMN ficha INTEGER;
+`
+
+const ESQUEMA_7 = `
+CREATE TABLE espelho (
+  id INTEGER PRIMARY KEY,
+  chave TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  titulo TEXT NOT NULL,
+  ticktask INTEGER,
+  opcoes TEXT NOT NULL DEFAULT '{}',
+  estado TEXT NOT NULL,
+  acao TEXT NOT NULL,
+  criado_em TEXT NOT NULL,
+  atualizado_em TEXT NOT NULL,
+  erro TEXT
+);
+CREATE UNIQUE INDEX espelho_um_por_chave ON espelho(chave) WHERE estado IN ('criar', 'aberto', 'dispensado');
+CREATE INDEX espelho_por_estado ON espelho(estado, id);
 `
 
 export interface Fluxo {
@@ -383,6 +402,7 @@ export class Repositorio {
         if (user_version < 4) this.db.exec(ESQUEMA_4)
         if (user_version < 5) this.db.exec(ESQUEMA_5)
         if (user_version < 6) this.db.exec(ESQUEMA_6)
+        if (user_version < 7) this.db.exec(ESQUEMA_7)
         this.db.exec(`PRAGMA user_version = ${VERSAO}`)
       })()
     }
@@ -972,5 +992,44 @@ export class Repositorio {
       this.db.query("INSERT OR IGNORE INTO avisos_de_orcamento (persona, mes, nivel) VALUES (?, ?, ?)").run(persona, mes, nivel)
         .changes > 0
     )
+  }
+
+  linhasDoEspelho(): LinhaDoEspelho[] {
+    const linhas = this.db
+      .query("SELECT * FROM espelho WHERE estado IN ('criar', 'aberto', 'fechar', 'dispensado') ORDER BY id")
+      .all() as Record<string, unknown>[]
+    return linhas.map((l) => ({
+      id: l.id as number,
+      chave: l.chave as string,
+      tipo: l.tipo as string,
+      titulo: l.titulo as string,
+      ticktask: (l.ticktask as number | null) ?? null,
+      opcoes: JSON.parse(l.opcoes as string) as Record<string, number>,
+      estado: l.estado as EstadoDaLinha,
+      acao: JSON.parse(l.acao as string) as AcaoDoEspelho,
+      criadoEm: l.criado_em as string,
+      atualizadoEm: l.atualizado_em as string,
+      erro: (l.erro as string | null) ?? null,
+    }))
+  }
+
+  criarLinha(l: { chave: string; tipo: string; titulo: string; acao: AcaoDoEspelho }, agora = new Date()): LinhaDoEspelho {
+    const em = agora.toISOString()
+    const { id } = this.db
+      .query(
+        "INSERT INTO espelho (chave, tipo, titulo, estado, acao, criado_em, atualizado_em) VALUES (?, ?, ?, 'criar', ?, ?, ?) RETURNING id",
+      )
+      .get(l.chave, l.tipo, l.titulo, JSON.stringify(l.acao), em, em) as { id: number }
+    return { id, ...l, ticktask: null, opcoes: {}, estado: "criar", criadoEm: em, atualizadoEm: em, erro: null }
+  }
+
+  mudarLinha(id: number, mudanca: Partial<Pick<LinhaDoEspelho, "estado" | "ticktask" | "opcoes" | "erro">>, agora = new Date()): void {
+    const campos: string[] = ["atualizado_em = ?"]
+    const valores: (string | number | null)[] = [agora.toISOString()]
+    if (mudanca.estado !== undefined) campos.push("estado = ?"), valores.push(mudanca.estado)
+    if (mudanca.ticktask !== undefined) campos.push("ticktask = ?"), valores.push(mudanca.ticktask)
+    if (mudanca.opcoes !== undefined) campos.push("opcoes = ?"), valores.push(JSON.stringify(mudanca.opcoes))
+    if (mudanca.erro !== undefined) campos.push("erro = ?"), valores.push(mudanca.erro)
+    this.db.query(`UPDATE espelho SET ${campos.join(", ")} WHERE id = ?`).run(...valores, id)
   }
 }

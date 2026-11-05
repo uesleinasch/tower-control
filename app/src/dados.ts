@@ -6,7 +6,7 @@ import { diretorioDeSessoes } from "./sessao-sdk"
 export const MARCADOR = ".control-tower"
 export const ARQUIVO_ORIGEM = ".importar-de"
 const IMPORTAVEIS = ["profiles", "decisions", "board", "atalhos.md", "conversations"]
-const VERSIONADOS = ["profiles", "equipes", "skills", "decisions", "board", "atalhos.md"]
+const VERSIONADOS = ["profiles", "equipes", "skills", "decisions", "board", "atalhos.md", "ticktask.json"]
 const GITIGNORE = "conversations/\nmemoria/\norquestra/\n.importar-de\n"
 const IDENTIDADE = ["-c", "user.name=control-tower", "-c", "user.email=control-tower@localhost", "-c", "commit.gpgsign=false"]
 

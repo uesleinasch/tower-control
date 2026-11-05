@@ -22,6 +22,17 @@ import {
   versaoNoDisco,
 } from "./orquestra/elenco"
 import { Agendador } from "./orquestra/agendador"
+import {
+  Espelho,
+  conectarTickTask,
+  gravarConfigDoEspelho,
+  lerConfigDoEspelho,
+  validarConfigDoEspelho,
+  type AcaoDoEspelho,
+  type ConfigDoEspelho,
+} from "./orquestra/espelho"
+import { enderecoTickTask } from "./ticktask"
+import { enderecos } from "./rede"
 import { DONO_CASA, apagarSkill, exigirRascunho, garantirManifesto, gravarSkill, lerBiblioteca, lerSkillsDoDono } from "./orquestra/skills"
 import { LIMITE_DO_CORPO, validarRotina } from "./orquestra/rotinas"
 import { corDaPersona, exigirMudancaDeEquipe, resumoDaMudanca, slugValido, validarEquipe, validarPersona } from "./orquestra/equipe"
@@ -93,6 +104,7 @@ try {
   process.exit(1)
 }
 const TAREFAS = new Repositorio(caminhoDoBanco(RAIZ))
+let espelhoPronto: Espelho | undefined
 const CONTAS = new Contas()
 CONTAS.carregar(await lerUso(RAIZ).catch(() => []))
 aoGravarUso((registro) => CONTAS.registrar(registro))
@@ -644,6 +656,98 @@ const PAINEL = new AssinaturaDoPainel<Cliente>(retratoDoPainel, (ws, retrato) =>
 
 function agendarPainel(): void {
   PAINEL.mudou()
+  espelhoPronto?.agendar()
+}
+
+// ── espelho no TickTask ────────────────────────────────────────────
+
+let CONFIG_DO_ESPELHO: ConfigDoEspelho
+try {
+  CONFIG_DO_ESPELHO = await lerConfigDoEspelho(RAIZ)
+} catch (erro) {
+  console.error(`ticktask.json inválido: ${(erro as Error).message}`)
+  process.exit(1)
+}
+
+function agirPeloEspelho(acao: AcaoDoEspelho): void {
+  const mudarStatus = (id: number, status: "concluida" | "a_fazer") => {
+    const de = TAREFAS.exigir(id).status
+    TAREFAS.mudarStatus(id, status, "ueslei")
+    publicarTarefa(id)
+    ORQUESTRA.aoMudarStatus(id, de, status)
+  }
+  switch (acao.tipo) {
+    case "aprovar":
+      ORQUESTRA.decidir(acao.tarefa, "aprovar", "")
+      publicarTarefa(acao.tarefa)
+      break
+    case "aprovar-plano":
+      ORQUESTRA.aprovarPlano(acao.tarefa)
+      publicarTarefa(acao.tarefa)
+      break
+    case "concluir":
+      mudarStatus(acao.tarefa, "concluida")
+      break
+    case "liberar":
+      mudarStatus(acao.tarefa, "a_fazer")
+      break
+    case "decidir":
+      MOTOR.decidir(acao.fluxo, acao.ficha, acao.opcao ?? "", "")
+      break
+    case "sinalizar":
+      MOTOR.sinalizar(acao.fluxo, acao.ficha)
+      break
+    case "nenhuma":
+      return
+  }
+  const alvo = "tarefa" in acao ? `tarefa:${acao.tarefa}` : "fluxo" in acao ? `fluxo:${acao.fluxo}` : ""
+  TAREFAS.auditar("ueslei", `${acao.tipo}${acao.tipo === "decidir" ? ` "${acao.opcao}"` : ""} via TickTask`, alvo)
+}
+
+function enderecoDoControlTower(): string | null {
+  const { tailscale, lan } = enderecos()
+  const ip = tailscale ?? lan
+  return ip ? `http://${ip}:${PORTA}` : null
+}
+
+let ultimoEspelho = ""
+function espelhoParaCliente() {
+  return { tipo: "espelho", config: CONFIG_DO_ESPELHO, estado: ESPELHO.resumo() }
+}
+
+function publicarEspelho(sempre = false): void {
+  const msg = espelhoParaCliente()
+  const texto = JSON.stringify(msg)
+  if (!sempre && texto === ultimoEspelho) return
+  ultimoEspelho = texto
+  mandarATodos(msg)
+}
+
+const ESPELHO: Espelho = new Espelho({
+  repo: TAREFAS,
+  config: () => CONFIG_DO_ESPELHO,
+  itens: () => retratoDoPainel().atencao,
+  conectar: async () => {
+    const endereco = await enderecoTickTask()
+    return endereco ? conectarTickTask(endereco) : null
+  },
+  agir: agirPeloEspelho,
+  endereco: enderecoDoControlTower,
+  mudou: () => publicarEspelho(),
+})
+
+espelhoPronto = ESPELHO
+
+async function salvarEspelho(bruto: unknown): Promise<void> {
+  const config = validarConfigDoEspelho(bruto)
+  const antes = CONFIG_DO_ESPELHO
+  await gravarConfigDoEspelho(RAIZ, config)
+  CONFIG_DO_ESPELHO = config
+  const como = antes.ativo === config.ativo ? "configurado" : config.ativo ? "ligado" : "desligado"
+  await registrarNoGit(RAIZ, `espelho do TickTask ${como}: projeto ${config.projeto}, ${config.tipos.join(", ") || "nenhum tipo"}`)
+  TAREFAS.auditar("ueslei", `espelho do TickTask ${como}`, "espelho")
+  publicarEspelho(true)
+  if (config.ativo) void ESPELHO.volta()
 }
 
 const abertoOuNada = (ws?: Cliente) => (ws?.readyState === WebSocket.OPEN ? ws : undefined)
@@ -1084,6 +1188,19 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       mandar(ws, workflowsParaCliente())
       return
     }
+    case "espelho": {
+      mandar(ws, espelhoParaCliente())
+      return
+    }
+    case "espelho-salvar": {
+      await salvarEspelho(msg.config)
+      return
+    }
+    case "espelho-sincronizar": {
+      await ESPELHO.volta()
+      publicarEspelho(true)
+      return
+    }
     case "skills": {
       mandar(ws, await skillsParaCliente())
       return
@@ -1333,6 +1450,7 @@ LEMBRETES.iniciar()
 ORQUESTRA.iniciar()
 AGENDADOR.iniciar()
 setInterval(agendarPainel, 30_000)
+setInterval(() => void ESPELHO.volta(), 30_000)
 MOTOR.retomar()
 setInterval(() => MOTOR.tique(), 30_000)
 

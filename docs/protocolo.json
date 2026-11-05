@@ -43,7 +43,10 @@
     "workflow-excluir",
     "skills",
     "skill-salvar",
-    "skill-excluir"
+    "skill-excluir",
+    "espelho",
+    "espelho-salvar",
+    "espelho-sincronizar"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -72,7 +75,8 @@
     "rotinas",
     "painel",
     "workflows",
-    "skills"
+    "skills",
+    "espelho"
   ],
   "cliente→servidor só no desktop": [
     "equipe-salvar",
@@ -83,6 +87,8 @@
     "workflow-salvar",
     "workflow-excluir",
     "skill-salvar",
-    "skill-excluir"
+    "skill-excluir",
+    "espelho-salvar",
+    "espelho-sincronizar"
   ]
 }
