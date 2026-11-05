@@ -48,7 +48,7 @@ Future<int> _criarNoEspelho(Conexao c, String titulo) async {
   return criada['tarefa']['id'] as int;
 }
 
-Future<Map> _noTickTask(WidgetTester t, int tarefa, {String? status}) async {
+Future<Map> _noTickTask(WidgetTester t, int tarefa, {String? status, String? nota}) async {
   final nome = '[CT] #$tarefa espera sua aprovação';
   late Map achada;
   await esperarAteAssincrono(t, () async {
@@ -56,8 +56,8 @@ Future<Map> _noTickTask(WidgetTester t, int tarefa, {String? status}) async {
     if (iguais.length > 1) throw StateError('$nome subiu ${iguais.length} vezes');
     if (iguais.isEmpty) return false;
     achada = iguais.single;
-    return status == null || achada['status'] == status;
-  }, descricao: '"$nome"${status == null ? '' : ' $status'} no TickTask falso', prazo: _prazoDaEntrega);
+    return (status == null || achada['status'] == status) && (nota == null || '${achada['notas']}'.contains(nota));
+  }, descricao: '"$nome"${status == null ? '' : ' $status'}${nota == null ? '' : ' com a nota "$nota"'} no TickTask falso', prazo: _prazoDaEntrega);
   return achada;
 }
 
@@ -80,7 +80,6 @@ void cenaDoEspelho() {
       },
     ]);
     final c = await ws();
-    await subirDesktop(t, ambiente);
     addTearDown(() async {
       await c.pedir(
         {
@@ -100,6 +99,7 @@ void cenaDoEspelho() {
       }
       await c.fechar();
     });
+    await subirDesktop(t, ambiente);
     await c.pedir(
       {'tipo': 'equipe-salvar', 'equipe': _equipeDoEspelho},
       'equipes',
@@ -111,13 +111,17 @@ void cenaDoEspelho() {
     await digitar(t, campoRotulado('Projeto do TickTask'), 'Control Tower teste');
     await digitar(t, campoRotulado('Tag'), 'ct-teste');
     await tocar(t, botao('Salvar'));
-    await esperarArquivo(dados('ticktask.json'), contendo: 'ct-teste');
-    expect(lerJson(dados('ticktask.json')), allOf(
+    final config = await esperarJson(
+      dados('ticktask.json'),
+      ate: (j) => j['tag'] == 'ct-teste',
+      descricao: 'o espelho configurado',
+    );
+    expect(config, allOf(
       containsPair('ativo', true),
       containsPair('projeto', 'Control Tower teste'),
       containsPair('tag', 'ct-teste'),
     ));
-    expect((lerJson(dados('ticktask.json'))['tipos'] as List), contains('aprovacao'));
+    expect(config['tipos'] as List, contains('aprovacao'));
 
     final primeira = await _criarNoEspelho(c, 'Conferir o espelho, primeira');
     final la = await _noTickTask(t, primeira);
@@ -151,9 +155,8 @@ void cenaDoEspelho() {
       () async => (await tarefaNoServidor(c, segunda))['tarefa']['status'] == 'concluida',
       descricao: '#$segunda concluída pela tela',
     );
-    final finalizada = await _noTickTask(t, segunda, status: 'finalizada');
+    final finalizada = await _noTickTask(t, segunda, status: 'finalizada', nota: 'Resolvido no control-tower');
     expect(finalizada['id'], segundaLa['id']);
-    expect('${finalizada['notas']}', contains('Resolvido no control-tower'));
   });
 }
 
@@ -236,13 +239,22 @@ void cenaDosModelos() {
     }, descricao: 'a prévia com a Natália e sem erros');
     await tocar(t, botao('Importar'));
 
-    final equipe = jsonDecode(await esperarArquivo(dados('equipes/casa-2/equipe.json'))) as Map<String, dynamic>;
+    final equipe = await esperarJson(
+      dados('equipes/casa-2/equipe.json'),
+      ate: (e) => e['id'] == 'casa-2',
+      descricao: 'a equipe casa-2',
+    );
     final posicoes = {for (final p in (equipe['posicoes'] as List).cast<Map>()) p['id']: p};
     expect(posicoes['conselho-nati']?['persona'], 'natalia');
     expect(posicoes['conselho-poe']?['persona'], 'poe');
     expect(posicoes['executor']?['persona'], 'alfred');
-    expect(lerJson(dados('profiles/natalia/persona.json'))['nome'], 'Natália');
-    final daCasa = {for (final p in (lerJson(dados('equipes/casa/equipe.json'))['posicoes'] as List).cast<Map>()) p['id']: p};
+    await esperarJson(dados('profiles/natalia/persona.json'), ate: (p) => p['nome'] == 'Natália', descricao: 'a persona Natália');
+    final casa = await esperarJson(
+      dados('equipes/casa/equipe.json'),
+      ate: (e) => (e['posicoes'] as List).any((p) => p['id'] == 'conselho-natalia'),
+      descricao: 'a posição conselho-natalia na Casa',
+    );
+    final daCasa = {for (final p in (casa['posicoes'] as List).cast<Map>()) p['id']: p};
     expect(daCasa['conselho-nati']?['persona'], 'nati');
     expect(daCasa['conselho-natalia'], containsPair('persona', 'natalia'));
     expect(daCasa['conselho-natalia']?['capacidades'], isNot(contains('board')));

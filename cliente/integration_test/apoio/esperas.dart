@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -77,6 +78,29 @@ Future<String> esperarArquivo(String caminho, {String? contendo, Duration prazo 
         'prazo de ${prazo.inMilliseconds} ms estourado esperando o arquivo $caminho'
         '${contendo == null ? '' : ' com "$contendo"'}',
       );
+    }
+    await Future<void>.delayed(_passo);
+  }
+}
+
+Future<Map<String, dynamic>> esperarJson(
+  String caminho, {
+  bool Function(Map<String, dynamic> json)? ate,
+  required String descricao,
+  Duration prazo = prazoPadrao,
+}) async {
+  final limite = DateTime.now().add(prazo);
+  Object? ultimo;
+  while (true) {
+    try {
+      final json = jsonDecode(await File(caminho).readAsString()) as Map<String, dynamic>;
+      if (ate == null || ate(json)) return json;
+      ultimo = 'o arquivo ainda não tem $descricao';
+    } catch (erro) {
+      ultimo = erro;
+    }
+    if (DateTime.now().isAfter(limite)) {
+      fail('prazo de ${prazo.inMilliseconds} ms estourado esperando $descricao em $caminho (último: $ultimo)');
     }
     await Future<void>.delayed(_passo);
   }
