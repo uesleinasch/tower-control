@@ -59,7 +59,7 @@ class Desktop with WindowListener {
   bandeja.TrayIcon? _icone;
   String? _iconeAtual;
 
-  Future<void> iniciar({required bool naBandeja}) async {
+  Future<void> iniciar({required bool naBandeja, bool comBandeja = true}) async {
     sala.presenca.definirPrimeiroPlano(!naBandeja);
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
@@ -70,6 +70,7 @@ class Desktop with WindowListener {
       },
     );
     windowManager.addListener(this);
+    if (!comBandeja) return;
     _montarBandeja();
     sala.canal.addListener(_atualizarBandeja);
     _atualizarBandeja();

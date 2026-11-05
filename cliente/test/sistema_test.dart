@@ -107,6 +107,8 @@ emulator-5554          unauthorized transport_id:2
     test('argumento --bandeja', () {
       expect(pedeBandeja(['--bandeja']), isTrue);
       expect(pedeBandeja([]), isFalse);
+      expect(pedeSemBandeja(['--sem-bandeja']), isTrue);
+      expect(pedeBandeja(['--sem-bandeja']), isFalse);
     });
   });
 

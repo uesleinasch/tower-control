@@ -1,9 +1,11 @@
-import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+
 import 'package:image_picker/image_picker.dart';
 
 import '../conexao/http.dart';
 import '../estado/sala.dart';
 import '../nucleo/formato.dart';
+import '../sistema/arquivos.dart';
 
 enum FonteAnexo { arquivo, camera, galeria }
 
@@ -20,9 +22,9 @@ Future<List<_Escolhido>> _escolher(FonteAnexo fonte) async {
       final fotos = await imagens.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
       return [for (final f in fotos) (nome: f.name, ler: f.readAsBytes, bytes: await f.length())];
     case FonteAnexo.arquivo:
-      final arquivos = await FilePicker.pickFiles();
+      final arquivos = await escolherArquivos() ?? [];
       return [
-        for (final f in arquivos) (nome: f.name, ler: f.xFile.readAsBytes, bytes: await f.xFile.length()),
+        for (final f in arquivos) (nome: f.nome, ler: File(f.caminho).readAsBytes, bytes: await File(f.caminho).length()),
       ];
   }
 }

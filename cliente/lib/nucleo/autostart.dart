@@ -22,3 +22,5 @@ String caminhoAutostart(Map<String, String> ambiente) {
 }
 
 bool pedeBandeja(List<String> argumentos) => argumentos.contains('--bandeja');
+
+bool pedeSemBandeja(List<String> argumentos) => argumentos.contains('--sem-bandeja');

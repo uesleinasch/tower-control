@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../estado/importacao.dart';
@@ -11,6 +9,7 @@ import '../nucleo/importacao.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
+import '../sistema/arquivos.dart';
 
 const _corDoAviso = Color(0xFFE0A458);
 
@@ -36,18 +35,9 @@ Future<void> _exportar(BuildContext context, Future<ModeloRecebido> pedido) asyn
   final mensageiro = ScaffoldMessenger.maybeOf(context);
   try {
     final modelo = await pedido;
-    final bytes = Uint8List.fromList(utf8.encode(modelo.conteudo));
-    final destino = await FilePicker.saveFile(
-      dialogTitle: 'Salvar o modelo',
-      fileName: modelo.nome,
-      bytes: bytes,
-      mimeType: 'application/json',
-      type: FileType.custom,
-      allowedExtensions: const ['json'],
-    );
+    final destino = await salvarArquivo(nome: modelo.nome, bytes: utf8.encode(modelo.conteudo));
     if (destino == null) return;
-    if (destino.scheme == 'file') await File.fromUri(destino).writeAsBytes(bytes);
-    _avisar(mensageiro, 'Modelo salvo em ${destino.scheme == 'file' ? destino.toFilePath() : destino}');
+    _avisar(mensageiro, 'Modelo salvo em $destino');
   } catch (erro) {
     _avisar(mensageiro, 'Não consegui exportar: $erro');
   }
@@ -58,14 +48,10 @@ Future<void> importarModelo(BuildContext context, Sala sala, {String? destino}) 
   final String texto;
   final String nome;
   try {
-    final arquivos = await FilePicker.pickFiles(
-      dialogTitle: destino == null ? 'Abrir modelo de equipe' : 'Abrir modelo de workflow',
-      type: FileType.custom,
-      allowedExtensions: const ['json'],
-    );
-    if (arquivos.isEmpty) return;
-    nome = arquivos.first.name;
-    texto = await arquivos.first.xFile.readAsString();
+    final arquivos = await escolherArquivos(extensoes: const ['json']);
+    if (arquivos == null || arquivos.isEmpty) return;
+    nome = arquivos.first.nome;
+    texto = await File(arquivos.first.caminho).readAsString();
   } catch (erro) {
     _avisar(mensageiro, 'Não consegui ler o arquivo: $erro');
     return;

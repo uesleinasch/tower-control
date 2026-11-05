@@ -84,7 +84,7 @@ Future<void> main(List<String> argumentos) async {
     sala: sala,
     configuracao: (_) => TelaConfiguracao(sala: sala, servidor: servidor, autostart: autostart),
   ));
-  await desktop.iniciar(naBandeja: pedeBandeja(argumentos));
+  await desktop.iniciar(naBandeja: pedeBandeja(argumentos), comBandeja: !pedeSemBandeja(argumentos));
 }
 
 class ControlTower extends StatelessWidget {
