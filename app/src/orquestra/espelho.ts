@@ -253,7 +253,8 @@ export async function conectarTickTask(endereco: { url: string; token: string })
         tags: [t.tag],
         ...(t.pai ? { parent_task_id: t.pai } : {}),
       })
-      const id = (r.task as { id?: unknown } | undefined)?.id ?? r.id ?? r.created
+      const criado = r.created && typeof r.created === "object" ? (r.created as { id?: unknown }).id : r.created
+      const id = (r.task as { id?: unknown } | undefined)?.id ?? r.id ?? criado
       if (typeof id !== "number") throw new Error("o TickTask não devolveu o id da tarefa criada")
       return id
     },
