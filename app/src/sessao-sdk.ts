@@ -6,9 +6,10 @@ const PADRAO_SESSAO = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 // O Claude Code guarda o histórico de cada sessão em ~/.claude/projects/<slug>/<id>.jsonl
 // e monta o slug trocando por "-" tudo que não é alfanumérico no caminho do projeto.
-export function diretorioDeSessoes(raiz: string, home: string = homedir()): string {
+export function diretorioDeSessoes(raiz: string, home?: string): string {
   const slug = resolve(raiz).replace(/[^a-zA-Z0-9]/g, "-")
-  return join(home, ".claude", "projects", slug)
+  const base = home ? join(home, ".claude") : (process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"))
+  return join(base, "projects", slug)
 }
 
 // Único ponto do app que apaga arquivo fora do repositório, e o diretório também

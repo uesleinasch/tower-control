@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import {
   CONFIG_PADRAO_DO_ESPELHO,
   Espelho,
@@ -5000,6 +5000,21 @@ describe("ticktask falso", () => {
       await expect(conectarTickTask({ url, token: "errado" })).rejects.toThrow()
     } finally {
       falso.fechar()
+    }
+  })
+})
+
+describe("sessão do SDK e CLAUDE_CONFIG_DIR", () => {
+  test("pasta da sessão do SDK respeita CLAUDE_CONFIG_DIR", () => {
+    const antes = process.env.CLAUDE_CONFIG_DIR
+    try {
+      process.env.CLAUDE_CONFIG_DIR = "/tmp/x"
+      expect(diretorioDeSessoes("/a/b").startsWith("/tmp/x/projects/")).toBe(true)
+      delete process.env.CLAUDE_CONFIG_DIR
+      expect(diretorioDeSessoes("/a/b").startsWith(join(homedir(), ".claude", "projects") + "/")).toBe(true)
+    } finally {
+      if (antes === undefined) delete process.env.CLAUDE_CONFIG_DIR
+      else process.env.CLAUDE_CONFIG_DIR = antes
     }
   })
 })
