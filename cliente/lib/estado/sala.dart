@@ -233,7 +233,6 @@ class Sala extends ChangeNotifier {
         return;
       case ConversaAberta():
         chat.tratar(e);
-        ir(Tela.chat);
         return;
       default:
         chat.tratar(e);
