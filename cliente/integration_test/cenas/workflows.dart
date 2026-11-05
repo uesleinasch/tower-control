@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:control_tower/estado/equipes.dart';
+import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/nucleo/editor_de_workflow.dart';
 import 'package:control_tower/tela/workflows.dart';
 import 'package:flutter/material.dart';
@@ -218,15 +218,17 @@ void cenasDeWorkflows() {
       _respondeTexto('poe-analisa', 'Poe, analise a demanda', 'análise do Poe pronta'),
     ]);
     final c = await ws();
-    await subirDesktop(t, ambiente);
-    final sala = salaDe(t);
+    Sala? subida;
     addTearDown(() async {
-      sala.editorDeWorkflow.fechar();
-      sala.workflows.fecharGrafo();
-      await cancelarFluxosDe(c, 'triagem');
+      subida?.editorDeWorkflow.fechar();
+      subida?.workflows.fecharGrafo();
+      await excluirWorkflow(c, 'triagem');
       await cancelarAbertas(c);
       await c.fechar();
     });
+    await excluirWorkflow(c, 'triagem');
+    await subirDesktop(t, ambiente);
+    final sala = subida = salaDe(t);
     final editor = sala.editorDeWorkflow;
     await escolherEquipe(t, 'casa', 'Casa');
     await verAba(t, AbaDaEquipe.workflows);
@@ -316,12 +318,15 @@ void cenasDeWorkflows() {
     );
 
     await tocar(t, botao('Salvar'));
-    final salvo = jsonDecode(await esperarArquivo(dados('equipes/casa/workflows/triagem.json')));
-    expect(salvo['versao'], 1);
+    final salvo = await esperarJson(
+      dados('equipes/casa/workflows/triagem.json'),
+      ate: (w) => w['versao'] == 1,
+      descricao: 'a triagem salva na versão 1',
+    );
     expect(salvo['entrada'], {'dados': 'texto'});
     expect(salvo['inicio'], 'executar');
     expect({for (final n in (salvo['nos'] as List).cast<Map>()) n['id']: n}, _caixasDaTriagem);
-    expect(ligacoesDe(salvo as Map<String, dynamic>), esperadas);
+    expect(ligacoesDe(salvo), esperadas);
 
     final antes = await _fluxosAtuais(c);
     await esperarAte(t, () => !editor.alterado && editor.versaoBase == 1, descricao: 'o editor na versão 1 salva');
@@ -393,7 +398,7 @@ void cenasDeWorkflows() {
       await cancelarAbertas(c);
       await c.fechar();
     });
-    if (!File(dados('equipes/casa/workflows/triagem.json')).existsSync()) await salvarWorkflow(c, _triagemSemeada());
+    await salvarWorkflow(c, {..._triagemSemeada(), 'versao': versaoNoDisco('triagem')});
     final antes = await _fluxosAtuais(c);
     await subirDesktop(t, ambiente);
     await escolherEquipe(t, 'casa', 'Casa');
@@ -468,12 +473,10 @@ void cenasDeWorkflows() {
   testWidgets('cena 9: cancelar uma tarefa do fluxo cancela o fluxo', (t) async {
     await roteiro('workflows-cancelar', []);
     final c = await ws();
-    await pausarAlfred(c);
-    await subirDesktop(t, ambiente);
-    final sala = salaDe(t);
+    Sala? sala;
     addTearDown(() async {
-      sala.tarefas.fecharDetalhe();
-      sala.workflows.fecharGrafo();
+      sala?.tarefas.fecharDetalhe();
+      sala?.workflows.fecharGrafo();
       await excluirWorkflow(c, 'cancelavel');
       await cancelarAbertas(c);
       await retomarAlfred(c);
@@ -493,6 +496,9 @@ void cenasDeWorkflows() {
         ],
       ),
     );
+    await pausarAlfred(c);
+    await subirDesktop(t, ambiente);
+    sala = salaDe(t);
     final antes = await _fluxosAtuais(c);
     c.mandar({'tipo': 'workflow-iniciar', 'equipe': 'casa', 'id': 'cancelavel', 'entrada': <String, Object?>{}});
     final fluxo = await _fluxoNovo(t, c, 'cancelavel', antes);
@@ -514,14 +520,15 @@ void cenasDeWorkflows() {
       _respondeTexto('executor-esquece-de-devolver', 'Classifique sem devolver a demanda', 'achei que era alta'),
     ]);
     final c = await ws();
-    await subirDesktop(t, ambiente);
-    final sala = salaDe(t);
+    Sala? sala;
     addTearDown(() async {
-      sala.tarefas.fecharDetalhe();
+      sala?.tarefas.fecharDetalhe();
       await excluirWorkflow(c, 'sem-devolucao');
       await cancelarAbertas(c);
       await c.fechar();
     });
+    await subirDesktop(t, ambiente);
+    sala = salaDe(t);
     await salvarWorkflow(
       c,
       _semeado(

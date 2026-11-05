@@ -51,8 +51,15 @@ List<Map> fichasDe(Map fluxo) => (fluxo['fichas'] as List).cast<Map>();
 Future<void> salvarWorkflow(Conexao c, Map<String, Object?> workflow) => c.pedir(
   {'tipo': 'workflow-salvar', 'equipe': 'casa', 'workflow': workflow},
   'workflows',
-  filtro: (m) => (m['definicoes'] as List).any((d) => d['equipe'] == 'casa' && d['id'] == workflow['id']),
+  filtro: (m) => (m['definicoes'] as List).any(
+    (d) => d['equipe'] == 'casa' && d['id'] == workflow['id'] && d['versao'] == (workflow['versao'] as int) + 1,
+  ),
 );
+
+int versaoNoDisco(String workflow) {
+  final arquivo = File(dados('equipes/casa/workflows/$workflow.json'));
+  return arquivo.existsSync() ? (jsonDecode(arquivo.readAsStringSync())['versao'] as int) : 0;
+}
 
 Future<void> cancelarFluxosDe(Conexao c, String id) async {
   for (final f in await fluxosNoServidor(c)) {
