@@ -122,7 +122,20 @@ export async function garantirIgnorado(dados: string, linha: string): Promise<vo
   await Bun.write(arquivo, `${atual}${atual && !atual.endsWith("\n") ? "\n" : ""}${linha}\n`)
 }
 
-export async function registrarNoGit(dados: string, motivo: string): Promise<boolean> {
+const filaDoGit = new Map<string, Promise<unknown>>()
+
+// Duas gravações seguidas (duas equipes, dois workflows) disputariam o index.lock do git.
+export function registrarNoGit(dados: string, motivo: string): Promise<boolean> {
+  const anterior = filaDoGit.get(dados) ?? Promise.resolve()
+  const vez = anterior.then(
+    () => registrarAgora(dados, motivo),
+    () => registrarAgora(dados, motivo),
+  )
+  filaDoGit.set(dados, vez.catch(() => {}))
+  return vez
+}
+
+async function registrarAgora(dados: string, motivo: string): Promise<boolean> {
   const presentes = await versionadosPresentes(dados)
   if (!presentes.length || !(await existe(join(dados, ".git")))) return false
   const mudancas = await git(dados, ["status", "--porcelain", "--", ...presentes])
