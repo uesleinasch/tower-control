@@ -44,7 +44,7 @@ export function lerPedido(corpo: unknown): PedidoRecebido {
   }
 
   let resultadoDe: string | null = null
-  const ultima = mensagens[mensagens.length - 1]
+  const ultima = mensagens.findLast((m) => m.role !== "system")
   if (ultima?.role === "user") {
     const resultados = blocosDe(ultima.content).filter((b) => b.type === "tool_result")
     const id = resultados[resultados.length - 1]?.tool_use_id

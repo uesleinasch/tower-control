@@ -4892,6 +4892,23 @@ describe("modelo falso", () => {
     expect(casar([regra], new Map(), pedido)?.nome).toBe("r")
   })
 
+  test("resultadoDe acha o tool_result antes da mensagem de sistema que o Opus põe no fim", () => {
+    const corpo = {
+      model: "claude-opus-5-5",
+      system: [{ type: "text", text: "sis" }],
+      messages: [
+        { role: "user", content: [{ type: "text", text: "rode" }] },
+        { role: "system", content: "# Environment" },
+        { role: "assistant", content: [{ type: "tool_use", id: "toolu_1", name: "Bash", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "a" }] },
+        { role: "system", content: [{ type: "text", text: "<total_tokens>1</total_tokens>" }] },
+      ],
+    }
+    const pedido = lerPedidoDoModelo(corpo)
+    expect(pedido.resultadoDe).toBe("Bash")
+    expect(pedido.ultimaMensagem).toBe("rode")
+  })
+
   test("regra de fundo não se esgota", () => {
     const regra: Regra = { nome: "f", quando: {}, responde: [{ texto: "x" }], fundo: true }
     const usadas = new Map<string, number>()
