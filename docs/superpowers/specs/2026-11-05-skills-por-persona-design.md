@@ -196,3 +196,19 @@ a skill com script numa tarefa do Alfred, com a aprovação do comando.
 Nomes internos, o desenho da aba e do editor, o texto dos erros e a ordem dos commits. A ordem
 sugerida é: leitura, validação e gravação de skills; conjunto e opções do SDK nas chamadas; anexos
 em persona e posição; protocolo; telas.
+
+## Como ficou na implementação
+
+- **Instrução no prompt.** No teste de ponta a ponta, a Nati via a lista e não abria a skill
+  própria: o `systemPrompt` do control-tower substitui o do Claude Code, e junto ia a orientação de
+  usar skills. As instruções da casa, do executor e do parecer ganharam um bloco "Skills" que
+  manda abrir a skill que casa com o pedido. Com ele a Nati abriu nas duas tentativas. Conversas
+  que já existiam ficam com o prompt antigo, que congela no começo da sessão.
+- **Git.** `skills/` entrou na lista de pastas versionadas do git dos dados; sem isso os commits
+  das skills não aconteciam.
+- **Anexos.** A existência das skills anexadas é conferida ao salvar, com `validarPersona` e
+  `validarEquipe` recebendo o conjunto da Casa mais o que já estava anexado, para uma skill
+  apagada à mão não travar outras mudanças.
+- **Telas.** O dono da skill se escolhe no botão "Nova skill" e não muda no editor. O "+" só
+  oferece skills válidas da Casa. Erro ao anexar na persona cai no aviso genérico, como o do
+  orçamento. O celular não tem a aba Skills, só a lista nos detalhes de persona e posição.
