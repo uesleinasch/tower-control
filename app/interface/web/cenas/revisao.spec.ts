@@ -3,7 +3,8 @@ import { join } from "node:path"
 import {
   ambiente,
   conferirSemRegra,
-  criarTarefa,
+  criarPelaTela,
+  desfazerSemeadura,
   esperarArquivo,
   esperarStatus,
   mudarPosicao,
@@ -30,7 +31,11 @@ test.afterAll(async () => {
 })
 
 test.afterEach(async () => {
-  await conferirSemRegra()
+  try {
+    await desfazerSemeadura(conexao)
+  } finally {
+    await conferirSemRegra()
+  }
 })
 
 const fimDaDecisao = (nome: string, cabecalho: string, ferramenta: string): Regra => ({
@@ -71,8 +76,7 @@ test("cena 6: mudança volta à executora e a nova entrega volta à mesma reviso
     ]
   })
   await page.goto(ambiente().servidor)
-  await page.locator("#botao-tarefas").click()
-  const tarefa = await criarTarefa(conexao, "escrever o relatório")
+  const tarefa = await criarPelaTela(page, conexao, "escrever o relatório")
   await page.locator("#mensagens li", { hasText: "escrever o relatório" }).click()
 
   await expect(page.locator("#mensagens .msg.mudanca")).toContainText("falta o teste")
@@ -90,10 +94,6 @@ test("cena 6: mudança volta à executora e a nova entrega volta à mesma reviso
   expect(turnos(lista, "# Nati")).toHaveLength(2)
   expect(turnos(lista, "# Poe")).toHaveLength(1)
   expect(turnos(lista, "# Alfred")).toHaveLength(2)
-
-  await mudarPosicao(conexao, "executor", (p) => {
-    delete p.politica
-  })
 })
 
 test("cena 6: board como revisão decide pela síntese", async ({ page }) => {
@@ -118,8 +118,7 @@ test("cena 6: board como revisão decide pela síntese", async ({ page }) => {
     p.politica = [{ tipo: "revisao", por: { board: true } }]
   })
   await page.goto(ambiente().servidor)
-  await page.locator("#botao-tarefas").click()
-  const tarefa = await criarTarefa(conexao, "organizar as fotos")
+  const tarefa = await criarPelaTela(page, conexao, "organizar as fotos")
   await page.locator("#mensagens li", { hasText: "organizar as fotos" }).click()
 
   await expect(page.locator("#mensagens .msg.aprovado")).toContainText("DECISÃO: aprovar")
@@ -135,8 +134,4 @@ test("cena 6: board como revisão decide pela síntese", async ({ page }) => {
   const lista = await pedidos("board")
   for (const nome of ["Lucas", "Nati", "Pami", "Poe"]) expect(turnos(lista, `# ${nome}`)).toHaveLength(1)
   expect(lista.filter((p) => p.ultimaMensagem.includes("Produza a síntese"))).toHaveLength(1)
-
-  await mudarPosicao(conexao, "executor", (p) => {
-    delete p.politica
-  })
 })

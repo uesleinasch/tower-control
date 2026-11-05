@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 import {
   ambiente,
   conferirSemRegra,
+  criarPelaTela,
   esperarStatus,
   pedidos,
   roteiro,
@@ -35,11 +36,7 @@ test("cena 4: tarefa criada na web volta em revisão com a entrega, e o comentá
     { nome: "alfred-entrega", quando: { sistema: "# Alfred", mensagem: `## Tarefa #1: ${titulo}` }, responde: [{ texto: "entrega 1" }] },
   ])
   await page.goto(ambiente().servidor)
-  await page.locator("#botao-tarefas").click()
-  const form = page.locator("form.nova-tarefa")
-  await form.locator('select[name="posicao"]').selectOption("executor")
-  await form.locator('input[name="titulo"]').fill(titulo)
-  await form.locator('button[type="submit"]').click()
+  await criarPelaTela(page, conexao, titulo)
 
   await page.locator("#mensagens li", { hasText: titulo }).click()
   const documento = page.locator("#mensagens .msg.documento")

@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { readdir, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { expect, type Page } from "@playwright/test"
 import type { PedidoRecebido, Regra } from "../falsos/roteiro"
 
 export type { PedidoRecebido, Regra }
@@ -44,26 +45,49 @@ export async function esperarAte<T>(
   throw new Error(`prazo de ${prazoMs} ms estourado esperando ${descricao}${motivo}`)
 }
 
+function grupoVivo(pid: number): boolean {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch (erro) {
+    if ((erro as NodeJS.ErrnoException).code === "ESRCH") return false
+    throw erro
+  }
+}
+
+async function esperarGrupoSumir(pid: number, prazoMs: number): Promise<boolean> {
+  const limite = Date.now() + prazoMs
+  while (Date.now() < limite) {
+    if (!grupoVivo(pid)) return true
+    await new Promise((ok) => setTimeout(ok, 100))
+  }
+  return !grupoVivo(pid)
+}
+
 export async function subirCena(semear?: (amb: Ambiente) => Promise<void>): Promise<() => Promise<void>> {
   const pasta = mkdtempSync(join(tmpdir(), "ct-web-"))
   const arquivo = join(pasta, "ambiente.json")
   let saida = ""
   const processo: ChildProcess = spawn("bun", ["run", "interface/subir.ts", pasta], {
     cwd: RAIZ_DO_APP,
+    detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   })
   processo.stdout?.on("data", (d) => (saida += d))
   processo.stderr?.on("data", (d) => (saida += d))
-  const saiu = new Promise<void>((ok) => processo.once("exit", () => ok()))
+  const pid = processo.pid!
 
   const descer = async () => {
-    if (processo.exitCode !== null || processo.signalCode !== null) return
-    process.kill(processo.pid!, "SIGTERM")
-    const morreu = await Promise.race([saiu.then(() => true), new Promise<boolean>((ok) => setTimeout(() => ok(false), 15_000))])
-    if (!morreu) {
-      process.kill(processo.pid!, "SIGKILL")
-      await saiu
+    const pidDoServidor = existsSync(arquivo) ? Number(JSON.parse(readFileSync(arquivo, "utf8")).pidDoServidor) : NaN
+    if (grupoVivo(pid)) {
+      process.kill(-pid, "SIGTERM")
+      if (await esperarGrupoSumir(pid, 25_000)) return
+      process.kill(-pid, "SIGKILL")
     }
+    if (Number.isInteger(pidDoServidor) && grupoVivo(pidDoServidor)) process.kill(-pidDoServidor, "SIGKILL")
+    await esperarGrupoSumir(pid, 5_000)
+    if (Number.isInteger(pidDoServidor)) await esperarGrupoSumir(pidDoServidor, 5_000)
+    rmSync(pasta, { recursive: true, force: true })
   }
 
   try {
@@ -220,6 +244,45 @@ export async function criarTarefa(conexao: Conexao, titulo: string, posicao = "e
     (m) => m.tarefa?.titulo === titulo,
   )
   return msg.tarefa
+}
+
+export async function criarPelaTela(page: Page, conexao: Conexao, titulo: string, posicao = "executor"): Promise<any> {
+  await page.locator("#botao-tarefas").click()
+  const form = page.locator("form.nova-tarefa")
+  await expect(form.locator(`select[name="posicao"] option[value="${posicao}"]`)).toHaveCount(1)
+  const criada = conexao.esperar("tarefa", (m) => m.tarefa?.titulo === titulo)
+  await form.locator('select[name="posicao"]').selectOption(posicao)
+  await form.locator('input[name="titulo"]').fill(titulo)
+  await form.locator('button[type="submit"]').click()
+  return (await criada).tarefa
+}
+
+export async function desfazerSemeadura(conexao: Conexao): Promise<void> {
+  const { lista } = await pedir(conexao, { tipo: "tarefas" }, "tarefas")
+  for (const t of lista.filter((t: any) => t.status !== "concluida" && t.status !== "cancelada")) {
+    await pedir(conexao, { tipo: "tarefa-status", id: t.id, status: "cancelada" }, "tarefa", (m) => m.tarefa.id === t.id && m.tarefa.status === "cancelada")
+  }
+  await pedir(conexao, { tipo: "retomar", alvo: "*" }, "orquestra", (m) => m.pausadoTudo === false)
+  await pedir(conexao, { tipo: "retomar", alvo: "alfred" }, "personas")
+  const { lista: personas } = await pedir(conexao, { tipo: "personas" }, "personas")
+  const alfred = personas.find((p: any) => p.id === "alfred")
+  if (alfred.orcamentoMensalUSD !== null || alfred.orcamentoMensalTokens !== null) {
+    await pedir(
+      conexao,
+      { tipo: "persona-salvar", persona: { id: "alfred", orcamentoMensalUSD: null, orcamentoMensalTokens: null } },
+      "personas",
+      (m) => m.lista.some((p: any) => p.id === "alfred" && p.orcamentoMensalUSD === null && p.orcamentoMensalTokens === null),
+    )
+  }
+  const executor = (await lerEquipe()).posicoes.find((p: any) => p.id === "executor")
+  if ("aprovarPlano" in executor || "politica" in executor) {
+    await mudarPosicao(conexao, "executor", (p) => {
+      delete p.aprovarPlano
+      delete p.politica
+    })
+    const gravada = (await lerEquipe()).posicoes.find((p: any) => p.id === "executor")
+    if ("aprovarPlano" in gravada || "politica" in gravada) throw new Error("o executor continuou com aprovarPlano ou politica")
+  }
 }
 
 export async function detalheDaTarefa(conexao: Conexao, id: number): Promise<any> {
