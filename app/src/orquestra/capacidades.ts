@@ -10,6 +10,7 @@ export const FERRAMENTAS_ORQUESTRA = [
   "mcp__orquestra__delegar",
   "mcp__orquestra__aprovar",
   "mcp__orquestra__pedir_mudanca",
+  "mcp__orquestra__devolver",
 ]
 
 export interface OpcoesDaPosicao {

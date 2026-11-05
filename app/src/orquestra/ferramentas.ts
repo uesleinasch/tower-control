@@ -1,5 +1,6 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk"
 import { z } from "zod"
+import type { Saidas } from "./workflow"
 
 export interface Delegacao {
   posicao: string
@@ -8,12 +9,33 @@ export interface Delegacao {
   porque?: string
 }
 
+export interface Devolucao {
+  saidas: Saidas
+  registrar: (dados: Record<string, unknown>) => string
+}
+
+function esquemaDe(saidas: Saidas) {
+  const campos: Record<string, z.ZodTypeAny> = {}
+  for (const [campo, tipo] of Object.entries(saidas)) {
+    campos[campo] =
+      tipo === "texto"
+        ? z.string()
+        : tipo === "numero"
+          ? z.number()
+          : tipo === "booleano"
+            ? z.boolean()
+            : z.enum(tipo.escolha as [string, ...string[]])
+  }
+  return campos
+}
+
 export interface AcoesDaTarefa {
   comentar: (texto: string) => string
   pedirAjuda?: (motivo: string) => string
   delegar?: (pedido: Delegacao) => string
   aprovar?: (parecer: string) => string
   pedirMudanca?: (oQueMudar: string) => string
+  devolver?: Devolucao
 }
 
 function resposta(texto: string) {
@@ -30,7 +52,7 @@ function protegido(acao: () => string): string {
 
 // A tarefa é fixada na criação: nenhuma ferramenta recebe id de tarefa do modelo.
 export function servidorDaOrquestra(acoes: AcoesDaTarefa) {
-  const { delegar, pedirAjuda, aprovar, pedirMudanca } = acoes
+  const { delegar, pedirAjuda, aprovar, pedirMudanca, devolver } = acoes
   return createSdkMcpServer({
     name: "orquestra",
     version: "1.0.0",
@@ -56,6 +78,16 @@ export function servidorDaOrquestra(acoes: AcoesDaTarefa) {
         { texto: z.string().min(1) },
         async ({ texto }) => resposta(protegido(() => acoes.comentar(texto))),
       ),
+      ...(devolver
+        ? [
+            tool(
+              "devolver",
+              "Registra a devolutiva desta caixa do workflow, com os campos pedidos. Chame antes de terminar.",
+              esquemaDe(devolver.saidas),
+              async (args) => resposta(protegido(() => devolver.registrar(args as Record<string, unknown>))),
+            ),
+          ]
+        : []),
       ...(pedirAjuda
         ? [
             tool(

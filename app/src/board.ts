@@ -80,6 +80,38 @@ sozinha, exatamente "DECISÃO: aprovar" se a entrega pode seguir como está, ou 
 se ela precisa voltar à executora; nesse caso, a Recomendação final diz o que mudar e por quê.`
 
 export async function revisarComBoard(raiz: string, pedido: RevisaoDoBoard): Promise<ResultadoDaRevisao> {
+  const { sintese, ata } = await pareceresESintese(raiz, pedido, REGRA_DA_DECISAO)
+  return { sintese, ata, decisao: decisaoDaSintese(sintese) }
+}
+
+export interface DeliberacaoDoBoard {
+  titulo: string
+  pauta: string
+  membros: Conselheiro[]
+  modelo: (persona: Conselheiro) => string
+  opcoes?: string[]
+  memoria?: Memoria
+}
+
+export function opcaoDaSintese(sintese: string, opcoes: string[]): string | null {
+  const linhas = [...sintese.matchAll(/^[\s*_#>-]*DECIS[AÃ]O:\s*\**\s*(.+?)\s*\**\s*$/gim)]
+  const dita = linhas.at(-1)?.[1]?.trim().toLowerCase()
+  return dita ? (opcoes.find((o) => o.toLowerCase() === dita) ?? null) : null
+}
+
+export async function deliberarComBoard(raiz: string, pedido: DeliberacaoDoBoard): Promise<{ sintese: string; ata: string; decisao: string | null }> {
+  const regra = pedido.opcoes?.length
+    ? `Termine a síntese com uma linha sozinha, exatamente "DECISÃO: <opção>", escolhendo uma destas opções: ${pedido.opcoes.join(", ")}.`
+    : ""
+  const { sintese, ata } = await pareceresESintese(raiz, pedido, regra)
+  return { sintese, ata, decisao: pedido.opcoes?.length ? opcaoDaSintese(sintese, pedido.opcoes) : null }
+}
+
+async function pareceresESintese(
+  raiz: string,
+  pedido: Pick<RevisaoDoBoard, "titulo" | "pauta" | "membros" | "modelo" | "controle" | "memoria"> & { tarefaId?: number; execucaoId?: number },
+  regra: string,
+): Promise<{ sintese: string; ata: string }> {
   const uso = { tipo: "tarefa" as const, tarefaId: pedido.tarefaId, execucaoId: pedido.execucaoId }
   const pareceres = await Promise.all(
     pedido.membros.map(async (perfil) => {
@@ -107,14 +139,14 @@ export async function revisarComBoard(raiz: string, pedido: RevisaoDoBoard): Pro
   const { system, prompt } = montarPromptSintese(pedido.pauta, pareceres)
   const sintese = await perguntarUmaVez({
     raiz,
-    system: `${system}\n\n${REGRA_DA_DECISAO}`,
+    system: regra ? `${system}\n\n${regra}` : system,
     prompt,
     modelo: MODELO_DA_SINTESE_EM_TAREFA,
     uso: { ...uso, modelo: MODELO_DA_SINTESE_EM_TAREFA },
     controle: pedido.controle,
   })
   const ata = await gravarAta(raiz, pedido.pauta, pareceres, sintese, pedido.titulo)
-  return { sintese, ata, decisao: decisaoDaSintese(sintese) }
+  return { sintese, ata }
 }
 
 async function gravarAta(

@@ -17,6 +17,7 @@ import {
 } from "./rotinas"
 import { lerNovaTarefa, type StatusTarefa, type Tarefa } from "./tarefa"
 import type { NovoAviso } from "../avisos/central"
+import type { Saidas } from "./workflow"
 import { avisoDeRotinaQueFalhou } from "../avisos/fontes"
 
 export interface AmbienteDoAgendador {
@@ -29,6 +30,12 @@ export interface AmbienteDoAgendador {
   avisar: (aviso: NovoAviso) => void
   sistema?: () => Promise<void>
   agora?: () => Date
+  fluxos?: {
+    aberto: (autor: string) => number | null
+    entrada: (equipe: string, workflow: string) => Saidas | undefined
+    iniciar: (equipe: string, workflow: string, entrada: Record<string, string>, autor: string, depoisDe: number | null) => number
+    cancelar: (id: number, quem: string, motivo: string) => void
+  }
 }
 
 export interface RotinaDaEquipe {
@@ -152,6 +159,20 @@ export class Agendador {
       if (!rotina.ativa) return repo.registrarDisparo({ ...base, resultado: "pulada", motivo: "a rotina está desativada" })
       if (repo.pausas().has(TUDO)) return repo.registrarDisparo({ ...base, resultado: "pulada", motivo: "tudo pausado" })
       const autor = autorDaRotina(equipe, id)
+      if (rotina.workflow) {
+        const fluxos = this.amb.fluxos
+        if (!fluxos) throw new Error("os workflows não estão disponíveis")
+        const aberto = fluxos.aberto(autor)
+        if (aberto !== null && rotina.concorrencia === "pular") {
+          return repo.registrarDisparo({ ...base, resultado: "pulada", motivo: `o workflow #${aberto} desta rotina ainda está aberto` })
+        }
+        if (aberto !== null && rotina.concorrencia === "substituir") fluxos.cancelar(aberto, autor, "substituído por um disparo novo da rotina")
+        const entrada = "dados" in (fluxos.entrada(equipe, rotina.workflow) ?? {}) ? { dados: extra.corpo ?? "" } : {}
+        const depoisDe = aberto !== null && rotina.concorrencia === "enfileirar" ? aberto : null
+        const fluxo = fluxos.iniciar(equipe, rotina.workflow, entrada, autor, depoisDe)
+        const motivo = depoisDe === null ? `iniciou o workflow (execução #${fluxo})` : `enfileirou o workflow (execução #${fluxo}, depois da #${depoisDe})`
+        return repo.registrarDisparo({ ...base, resultado: "criada", motivo })
+      }
       const plano = planoDoDisparo(rotina.concorrencia, repo.tarefaAbertaDe(autor))
       if (plano.acao === "pular") return repo.registrarDisparo({ ...base, resultado: "pulada", motivo: plano.motivo })
       const nova = lerNovaTarefa(

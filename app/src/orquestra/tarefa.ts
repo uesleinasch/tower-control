@@ -30,6 +30,8 @@ export interface Tarefa {
   etapa: number | null
   retorno: number | null
   voltas: number
+  fluxo: number | null
+  ficha: number | null
 }
 
 export interface Registro {
@@ -51,6 +53,8 @@ export interface NovaTarefa {
   dependeDe: number[]
   status: StatusTarefa
   politica?: Etapa[]
+  fluxo?: number
+  ficha?: number
 }
 
 const TRANSICOES: Record<StatusTarefa, readonly StatusTarefa[]> = {

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path"
 import { NOMES_DE_STATUS, exigirMudanca, type NovaTarefa, type Registro, type StatusTarefa, type Tarefa } from "./tarefa"
 import type { Etapa } from "./equipe"
 import type { Disparo } from "./rotinas"
+import type { Valor, Workflow } from "./workflow"
 import {
   exigirMudancaDeExecucao,
   truncar,
@@ -14,7 +15,7 @@ import {
   type TipoDeEvento,
 } from "./execucao"
 
-const VERSAO = 5
+const VERSAO = 6
 
 const ESQUEMA = `
 CREATE TABLE tarefas (
@@ -134,6 +135,143 @@ CREATE TABLE disparos (
 CREATE INDEX disparos_por_rotina ON disparos(equipe, rotina, id);
 `
 
+const ESQUEMA_6 = `
+CREATE TABLE fluxos (
+  id INTEGER PRIMARY KEY,
+  equipe TEXT NOT NULL,
+  workflow TEXT NOT NULL,
+  versao INTEGER NOT NULL,
+  definicao TEXT NOT NULL,
+  entrada TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL,
+  resultado TEXT,
+  criado_por TEXT NOT NULL,
+  depois_de INTEGER,
+  criado_em TEXT NOT NULL,
+  atualizado_em TEXT NOT NULL,
+  erro TEXT
+);
+CREATE INDEX fluxos_por_status ON fluxos(status, id);
+CREATE TABLE fichas (
+  id INTEGER PRIMARY KEY,
+  fluxo INTEGER NOT NULL REFERENCES fluxos(id),
+  no TEXT NOT NULL,
+  status TEXT NOT NULL,
+  tarefa INTEGER,
+  veio_de INTEGER,
+  chegadas TEXT NOT NULL DEFAULT '[]',
+  saidas TEXT NOT NULL DEFAULT '{}',
+  acorda_em TEXT,
+  prazo_em TEXT,
+  avisada INTEGER NOT NULL DEFAULT 0,
+  criada_em TEXT NOT NULL,
+  concluida_em TEXT
+);
+CREATE INDEX fichas_por_fluxo ON fichas(fluxo, id);
+ALTER TABLE tarefas ADD COLUMN fluxo INTEGER;
+ALTER TABLE tarefas ADD COLUMN ficha INTEGER;
+`
+
+export interface Fluxo {
+  id: number
+  equipe: string
+  workflow: string
+  versao: number
+  definicao: Workflow
+  entrada: Record<string, Valor>
+  status: "esperando" | "rodando" | "concluido" | "falhou" | "cancelado"
+  resultado: string | null
+  criadoPor: string
+  depoisDe: number | null
+  criadoEm: string
+  atualizadoEm: string
+  erro: string | null
+}
+
+export interface Ficha {
+  id: number
+  fluxo: number
+  no: string
+  status: "esperando" | "concluida" | "cancelada"
+  tarefa: number | null
+  veioDe: number | null
+  chegadas: string[]
+  saidas: Record<string, Valor>
+  acordaEm: string | null
+  prazoEm: string | null
+  avisada: boolean
+  criadaEm: string
+  concluidaEm: string | null
+}
+
+interface LinhaFluxo {
+  id: number
+  equipe: string
+  workflow: string
+  versao: number
+  definicao: string
+  entrada: string
+  status: Fluxo["status"]
+  resultado: string | null
+  criado_por: string
+  depois_de: number | null
+  criado_em: string
+  atualizado_em: string
+  erro: string | null
+}
+
+interface LinhaFicha {
+  id: number
+  fluxo: number
+  no: string
+  status: Ficha["status"]
+  tarefa: number | null
+  veio_de: number | null
+  chegadas: string
+  saidas: string
+  acorda_em: string | null
+  prazo_em: string | null
+  avisada: number
+  criada_em: string
+  concluida_em: string | null
+}
+
+function montarFluxo(l: LinhaFluxo): Fluxo {
+  return {
+    id: l.id,
+    equipe: l.equipe,
+    workflow: l.workflow,
+    versao: l.versao,
+    definicao: JSON.parse(l.definicao) as Workflow,
+    entrada: JSON.parse(l.entrada) as Record<string, Valor>,
+    status: l.status,
+    resultado: l.resultado,
+    criadoPor: l.criado_por,
+    depoisDe: l.depois_de,
+    criadoEm: l.criado_em,
+    atualizadoEm: l.atualizado_em,
+    erro: l.erro,
+  }
+}
+
+function montarFicha(l: LinhaFicha): Ficha {
+  return {
+    id: l.id,
+    fluxo: l.fluxo,
+    no: l.no,
+    status: l.status,
+    tarefa: l.tarefa,
+    veioDe: l.veio_de,
+    chegadas: JSON.parse(l.chegadas) as string[],
+    saidas: JSON.parse(l.saidas) as Record<string, Valor>,
+    acordaEm: l.acorda_em,
+    prazoEm: l.prazo_em,
+    avisada: l.avisada === 1,
+    criadaEm: l.criada_em,
+    concluidaEm: l.concluida_em,
+  }
+}
+
 export interface LinhaDeAuditoria {
   id: number
   em: string
@@ -216,6 +354,8 @@ interface LinhaTarefa {
   etapa: number | null
   retorno: number | null
   voltas: number
+  fluxo: number | null
+  ficha: number | null
 }
 
 const SEM_DONO: readonly StatusTarefa[] = ["backlog", "a_fazer", "bloqueada"]
@@ -242,6 +382,7 @@ export class Repositorio {
         if (user_version < 3) this.db.exec(ESQUEMA_3)
         if (user_version < 4) this.db.exec(ESQUEMA_4)
         if (user_version < 5) this.db.exec(ESQUEMA_5)
+        if (user_version < 6) this.db.exec(ESQUEMA_6)
         this.db.exec(`PRAGMA user_version = ${VERSAO}`)
       })()
     }
@@ -276,6 +417,8 @@ export class Repositorio {
       etapa: linha.etapa,
       retorno: linha.retorno,
       voltas: linha.voltas,
+      fluxo: linha.fluxo,
+      ficha: linha.ficha,
     }
   }
 
@@ -317,8 +460,8 @@ export class Repositorio {
       for (const dep of nova.dependeDe) this.exigir(dep)
       const { id } = this.db
         .query(
-          `INSERT INTO tarefas (equipe, posicao, titulo, descricao, porque, pai, status, criada_por, criada_em, atualizada_em, politica)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          `INSERT INTO tarefas (equipe, posicao, titulo, descricao, porque, pai, status, criada_por, criada_em, atualizada_em, politica, fluxo, ficha)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         )
         .get(
           nova.equipe,
@@ -332,6 +475,8 @@ export class Repositorio {
           em,
           em,
           JSON.stringify(nova.politica ?? []),
+          nova.fluxo ?? null,
+          nova.ficha ?? null,
         ) as {
         id: number
       }
@@ -400,6 +545,139 @@ export class Repositorio {
       this.registrar(id, "status", autor, texto, em)
       return this.exigir(id)
     })()
+  }
+
+  definirPolitica(id: number, politica: Etapa[]): Tarefa {
+    this.db.query("UPDATE tarefas SET politica = ? WHERE id = ?").run(JSON.stringify(politica), id)
+    return this.exigir(id)
+  }
+
+  ligarFicha(tarefa: number, ficha: number): void {
+    this.db.query("UPDATE tarefas SET ficha = ? WHERE id = ?").run(ficha, tarefa)
+    this.db.query("UPDATE fichas SET tarefa = ? WHERE id = ?").run(tarefa, ficha)
+  }
+
+  criarFluxo(f: Omit<Fluxo, "id" | "atualizadoEm" | "resultado" | "erro">): Fluxo {
+    const { id } = this.db
+      .query(
+        `INSERT INTO fluxos (equipe, workflow, versao, definicao, entrada, status, criado_por, depois_de, criado_em, atualizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      )
+      .get(
+        f.equipe,
+        f.workflow,
+        f.versao,
+        JSON.stringify(f.definicao),
+        JSON.stringify(f.entrada),
+        f.status,
+        f.criadoPor,
+        f.depoisDe,
+        f.criadoEm,
+        f.criadoEm,
+      ) as { id: number }
+    return this.exigirFluxo(id)
+  }
+
+  fluxo(id: number): Fluxo | undefined {
+    const linha = this.db.query("SELECT * FROM fluxos WHERE id = ?").get(id) as LinhaFluxo | null
+    return linha ? montarFluxo(linha) : undefined
+  }
+
+  exigirFluxo(id: number): Fluxo {
+    const fluxo = this.fluxo(id)
+    if (!fluxo) throw new Error(`execução de workflow ${id} não existe`)
+    return fluxo
+  }
+
+  fluxosAbertos(): Fluxo[] {
+    return (this.db.query("SELECT * FROM fluxos WHERE status IN ('esperando', 'rodando') ORDER BY id").all() as LinhaFluxo[]).map(montarFluxo)
+  }
+
+  fluxosRecentes(limite = 20): Fluxo[] {
+    return (
+      this.db.query("SELECT * FROM fluxos WHERE status NOT IN ('esperando', 'rodando') ORDER BY id DESC LIMIT ?").all(limite) as LinhaFluxo[]
+    ).map(montarFluxo)
+  }
+
+  fluxoAbertoDe(criadoPor: string): Fluxo | undefined {
+    const linha = this.db
+      .query("SELECT * FROM fluxos WHERE criado_por = ? AND status IN ('esperando', 'rodando') ORDER BY id DESC LIMIT 1")
+      .get(criadoPor) as LinhaFluxo | null
+    return linha ? montarFluxo(linha) : undefined
+  }
+
+  fluxosEsperandoPor(id: number): Fluxo[] {
+    return (this.db.query("SELECT * FROM fluxos WHERE status = 'esperando' AND depois_de = ? ORDER BY id").all(id) as LinhaFluxo[]).map(
+      montarFluxo,
+    )
+  }
+
+  mudarFluxo(id: number, campos: { status?: Fluxo["status"]; resultado?: string | null; erro?: string | null }, agora = new Date()): Fluxo {
+    const atual = this.exigirFluxo(id)
+    this.db
+      .query("UPDATE fluxos SET status = ?, resultado = ?, erro = ?, atualizado_em = ? WHERE id = ?")
+      .run(
+        campos.status ?? atual.status,
+        campos.resultado !== undefined ? campos.resultado : atual.resultado,
+        campos.erro !== undefined ? campos.erro : atual.erro,
+        agora.toISOString(),
+        id,
+      )
+    return this.exigirFluxo(id)
+  }
+
+  criarFicha(f: { fluxo: number; no: string; veioDe: number | null; chegadas?: string[]; acordaEm?: string | null; prazoEm?: string | null }, agora = new Date()): Ficha {
+    const { id } = this.db
+      .query(
+        `INSERT INTO fichas (fluxo, no, status, veio_de, chegadas, acorda_em, prazo_em, criada_em)
+         VALUES (?, ?, 'esperando', ?, ?, ?, ?, ?) RETURNING id`,
+      )
+      .get(f.fluxo, f.no, f.veioDe, JSON.stringify(f.chegadas ?? []), f.acordaEm ?? null, f.prazoEm ?? null, agora.toISOString()) as { id: number }
+    return this.exigirFicha(id)
+  }
+
+  ficha(id: number): Ficha | undefined {
+    const linha = this.db.query("SELECT * FROM fichas WHERE id = ?").get(id) as LinhaFicha | null
+    return linha ? montarFicha(linha) : undefined
+  }
+
+  exigirFicha(id: number): Ficha {
+    const ficha = this.ficha(id)
+    if (!ficha) throw new Error(`ficha ${id} não existe`)
+    return ficha
+  }
+
+  fichasDo(fluxo: number): Ficha[] {
+    return (this.db.query("SELECT * FROM fichas WHERE fluxo = ? ORDER BY id").all(fluxo) as LinhaFicha[]).map(montarFicha)
+  }
+
+  fichasEsperando(): Ficha[] {
+    return (this.db.query("SELECT * FROM fichas WHERE status = 'esperando' ORDER BY id").all() as LinhaFicha[]).map(montarFicha)
+  }
+
+  mudarFicha(
+    id: number,
+    campos: Partial<Pick<Ficha, "status" | "chegadas" | "saidas" | "acordaEm" | "prazoEm" | "avisada">>,
+    agora = new Date(),
+  ): Ficha {
+    const f = { ...this.exigirFicha(id), ...campos }
+    this.db
+      .query(
+        `UPDATE fichas SET status = ?, chegadas = ?, saidas = ?, acorda_em = ?, prazo_em = ?, avisada = ?,
+         concluida_em = CASE WHEN ? = 'esperando' THEN NULL ELSE COALESCE(concluida_em, ?) END WHERE id = ?`,
+      )
+      .run(
+        f.status,
+        JSON.stringify(f.chegadas),
+        JSON.stringify(f.saidas),
+        f.acordaEm,
+        f.prazoEm,
+        f.avisada ? 1 : 0,
+        f.status,
+        agora.toISOString(),
+        id,
+      )
+    return this.exigirFicha(id)
   }
 
   marcarRetorno(id: number, retorno: number | null, voltas: number): Tarefa {

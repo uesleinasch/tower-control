@@ -5,9 +5,23 @@ import { CHAVE_DO_BOARD, etapaAtual, etapaDoUeslei, ultimaEntrega } from "./poli
 import type { LinhaDeAuditoria } from "./repositorio"
 import type { Disparo } from "./rotinas"
 import type { Registro, StatusTarefa, Tarefa } from "./tarefa"
+import type { Ficha, Fluxo } from "./repositorio"
+import { interpolar, type Contexto } from "./workflow"
 
-export type TipoDeAtencao = "comando" | "aprovacao" | "plano" | "entrega" | "bloqueada" | "backlog" | "orcamento" | "rotina" | "vaga"
-export type AcaoDoPainel = "aprovar" | "negar" | "pedir-mudanca" | "aprovar-plano" | "concluir" | "liberar" | "abrir"
+export type TipoDeAtencao =
+  | "comando"
+  | "aprovacao"
+  | "decisao"
+  | "plano"
+  | "entrega"
+  | "sinal"
+  | "bloqueada"
+  | "atrasada"
+  | "backlog"
+  | "orcamento"
+  | "rotina"
+  | "vaga"
+export type AcaoDoPainel = "aprovar" | "negar" | "pedir-mudanca" | "aprovar-plano" | "concluir" | "liberar" | "abrir" | "decidir" | "sinalizar"
 
 export interface ItemDeAtencao {
   tipo: TipoDeAtencao
@@ -21,6 +35,18 @@ export interface ItemDeAtencao {
   persona?: string
   equipe?: string
   rotina?: string
+  fluxo?: number
+  ficha?: number
+  opcoes?: string[]
+}
+
+export interface FluxoNoPainel {
+  fluxo: number
+  equipe: string
+  workflow: string
+  nome: string
+  desde: string
+  ativas: { ficha: number; no: string; titulo: string; tipo: string; tarefaId: number | null }[]
 }
 
 export interface ExecucaoViva {
@@ -77,6 +103,7 @@ export interface Retrato {
   gasto: { mes: string; tarefasUSD: number; totalUSD: number; tokensTarefas: number; tokensTotal: number }
   proximasRotinas: { equipe: string; id: string; nome: string; proximo: string }[]
   atividade: ItemDeAtividade[]
+  workflows: FluxoNoPainel[]
 }
 
 export interface PersonaDoPainel {
@@ -126,6 +153,7 @@ export interface DadosDoPainel {
   registrosRecentes: (Registro & { equipe: string })[]
   auditoria: LinhaDeAuditoria[]
   disparos: Disparo[]
+  fluxos?: { fluxo: Fluxo; fichas: Ficha[] }[]
 }
 
 export const LIMITE_DO_DETALHE = 180
@@ -134,13 +162,16 @@ export const LIMITE_DA_ATIVIDADE = 100
 const PRIORIDADE: Record<TipoDeAtencao, number> = {
   comando: 1,
   aprovacao: 2,
-  plano: 3,
-  entrega: 4,
-  bloqueada: 5,
-  backlog: 6,
-  orcamento: 7,
-  rotina: 8,
-  vaga: 9,
+  decisao: 3,
+  plano: 4,
+  entrega: 5,
+  sinal: 6,
+  bloqueada: 7,
+  atrasada: 8,
+  backlog: 9,
+  orcamento: 10,
+  rotina: 11,
+  vaga: 12,
 }
 
 export function cortar(texto: string, limite = LIMITE_DO_DETALHE): string {
@@ -260,6 +291,40 @@ export function itensDeAtencao(dados: DadosDoPainel): ItemDeAtencao[] {
       acoes: ["abrir"],
       persona: p.id,
     })
+  }
+  for (const { fluxo, fichas } of dados.fluxos ?? []) {
+    if (fluxo.status !== "rodando") continue
+    const contexto: Contexto = { entrada: fluxo.entrada }
+    for (const f of fichas) if (f.status === "concluida") contexto[f.no] = f.saidas
+    for (const ficha of fichas) {
+      if (ficha.status !== "esperando") continue
+      const no = fluxo.definicao.nos.find((n) => n.id === ficha.no)
+      if (!no) continue
+      const caixa = no.titulo ?? no.id
+      const base = { fluxo: fluxo.id, ficha: ficha.id, equipe: fluxo.equipe, desde: ficha.criadaEm }
+      if (no.tipo === "decisao_humana") {
+        itens.push({
+          ...base,
+          tipo: "decisao",
+          titulo: `${fluxo.definicao.nome} pergunta`,
+          detalhe: cortar(interpolar(no.pergunta, contexto)),
+          acoes: ["decidir"],
+          opcoes: no.opcoes,
+        })
+      } else if (no.tipo === "espera" && no.sinal) {
+        itens.push({ ...base, tipo: "sinal", titulo: `${fluxo.definicao.nome} espera o sinal "${no.sinal}"`, detalhe: caixa, acoes: ["sinalizar"] })
+      } else if (no.tipo !== "espera" && ficha.prazoEm && Date.parse(ficha.prazoEm) <= dados.agora.getTime()) {
+        itens.push({
+          ...base,
+          tipo: "atrasada",
+          titulo: `${fluxo.definicao.nome}: ${caixa} passou do prazo`,
+          detalhe: `prazo de ${no.prazo ?? ""}`,
+          desde: ficha.prazoEm,
+          acoes: ["abrir"],
+          ...(ficha.tarefa ? { tarefaId: ficha.tarefa } : {}),
+        })
+      }
+    }
   }
   for (const r of dados.rotinas) {
     if (r.ultimoDisparo?.resultado !== "falhou") continue
@@ -434,6 +499,21 @@ export function montarRetrato(dados: DadosDoPainel, personaDaExecucao: (id: numb
     gasto,
     proximasRotinas,
     atividade: atividade(dados, personaDaExecucao),
+    workflows: (dados.fluxos ?? [])
+      .filter(({ fluxo }) => fluxo.status === "rodando" || fluxo.status === "esperando")
+      .map(({ fluxo, fichas }) => ({
+        fluxo: fluxo.id,
+        equipe: fluxo.equipe,
+        workflow: fluxo.workflow,
+        nome: fluxo.definicao.nome,
+        desde: fluxo.criadoEm,
+        ativas: fichas
+          .filter((f) => f.status === "esperando")
+          .map((f) => {
+            const no = fluxo.definicao.nos.find((n) => n.id === f.no)
+            return { ficha: f.id, no: f.no, titulo: no?.titulo ?? f.no, tipo: no?.tipo ?? "", tarefaId: f.tarefa }
+          }),
+      })),
   }
 }
 

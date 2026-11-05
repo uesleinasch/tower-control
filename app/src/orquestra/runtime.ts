@@ -49,6 +49,15 @@ import {
 import type { trabalhar } from "../sessions"
 import type { RegistroDeUso } from "../uso"
 import type { ResultadoDaRevisao, RevisaoDoBoard } from "../board"
+import { validarValores, type Saidas, type Valor } from "./workflow"
+import { SEM_DEVOLUCAO } from "./motor"
+
+export interface GanchosDoFluxo {
+  aoEntregar: (tarefa: Tarefa, entrega: string, devolvido?: Record<string, Valor>) => boolean
+  saidasDa: (tarefa: Tarefa) => Saidas | undefined
+  aoConcluir: (id: number) => void
+  aoCancelar: (id: number) => void
+}
 
 export interface Ambiente {
   raiz: string
@@ -68,6 +77,7 @@ export interface Ambiente {
   cancelarPedidos: (tarefaId: number) => void
   bloqueio?: (persona: string) => MotivoDeBloqueio | null
   aposExecucao?: (persona: string) => void
+  fluxo?: GanchosDoFluxo
 }
 
 interface Viva {
@@ -146,7 +156,11 @@ export class Orquestra {
       if (naFila) this.amb.publicarExecucao(this.repo.descartar(naFila.id, `a tarefa foi para ${para}`))
     }
     if (para === "a_fazer") this.acordar(id, "atribuicao")
-    if (para === "concluida") this.acordarDependentes(id)
+    if (para === "concluida") {
+      this.acordarDependentes(id)
+      this.amb.fluxo?.aoConcluir(id)
+    }
+    if (para === "cancelada") this.amb.fluxo?.aoCancelar(id)
   }
 
   aoComentar(id: number): void {
@@ -291,6 +305,8 @@ export class Orquestra {
     const aprovado = planoAprovado(registros)
     const modo: ModoDaExecucao = !deTrabalho ? { tipo: "plano" } : aprovado ? { tipo: "plano_aprovado", plano: aprovado } : { tipo: "normal" }
     const abaixo = deTrabalho ? subordinadas(equipe, posicao.id) : []
+    const saidas = deTrabalho ? this.amb.fluxo?.saidasDa(tarefa) : undefined
+    let devolvido: Record<string, Valor> | undefined
     let pedidoDeAjuda: string | undefined
     let uso: RegistroDeUso | undefined
     try {
@@ -328,6 +344,15 @@ export class Orquestra {
             return "Pedido registrado. A tarefa fica bloqueada até o Ueslei responder: pare agora."
           },
           delegar: abaixo.length ? (pedido) => this.delegar(tarefa, execucao, persona, posicao, abaixo, pedido) : undefined,
+          devolver: saidas
+            ? {
+                saidas,
+                registrar: (dados) => {
+                  devolvido = validarValores(saidas, dados)
+                  return "Devolutiva registrada. Termine com um resumo do que fez."
+                },
+              }
+            : undefined,
         },
         onEvento: (tipo, conteudo) => this.evento(execucao, tipo, conteudo),
         onComando: (comando, aprovar) => this.amb.pedirComando(tarefa.id, persona, comando, aprovar),
@@ -339,6 +364,7 @@ export class Orquestra {
         this.interrompida(execucao, viva, custo)
         return
       }
+      if (saidas && !devolvido && !pedidoDeAjuda) throw new Error(SEM_DEVOLUCAO)
       const entrega = resposta.texto || "(a execução terminou sem texto)"
       this.terminar(execucao, { status: "concluida", falha: false, resultado: entrega, ...custo })
       this.repo.comentar(tarefa.id, persona, entrega, new Date(), deTrabalho ? "entrega" : "plano")
@@ -349,7 +375,7 @@ export class Orquestra {
       const nome = this.amb.nome(persona)
       if (pedidoDeAjuda) this.amb.avisar(avisoDePedidoDeAjuda(tarefa.id, nome, pedidoDeAjuda))
       else if (!deTrabalho) this.amb.avisar(avisoDePlano(tarefa.id, nome, entrega))
-      else this.depoisDaEntrega(tarefa.id, nome, entrega)
+      else this.depoisDaEntrega(tarefa.id, nome, entrega, devolvido)
     } catch (erro) {
       const custo = this.custo(uso, sessao?.custoAcumuladoUSD ?? null)
       if (viva.parada) {
@@ -364,7 +390,8 @@ export class Orquestra {
     }
   }
 
-  private depoisDaEntrega(id: number, nome: string, entrega: string): void {
+  private depoisDaEntrega(id: number, nome: string, entrega: string, devolvido?: Record<string, Valor>): void {
+    if (this.amb.fluxo?.aoEntregar(this.repo.exigir(id), entrega, devolvido)) return
     const tarefa = this.repo.exigir(id)
     const destino = aposEntrega(tarefa.politica, tarefa.retorno)
     if (destino.tipo === "etapa") this.entrarNaEtapa(id, destino.etapa)
@@ -495,8 +522,9 @@ export class Orquestra {
       }
       this.repo.mudarStatus(id, "concluida", autor)
       this.amb.publicarTarefa(id)
-      if (autor !== "ueslei") this.amb.avisar(avisoDeConclusaoPelaPolitica(id, quem, texto))
+      if (autor !== "ueslei" && tarefa.fluxo === null) this.amb.avisar(avisoDeConclusaoPelaPolitica(id, quem, texto))
       this.acordarDependentes(id)
+      this.amb.fluxo?.aoConcluir(id)
       return
     }
     const mudanca = aposMudanca(tarefa, indice, autor === "ueslei")

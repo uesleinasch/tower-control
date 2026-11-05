@@ -51,6 +51,8 @@ import { Orquestra } from "./orquestra/runtime"
 import { lerCron, menorIntervaloEmMinutos, proximoHorario, proximosHorarios, ultimoHorarioEntre } from "./orquestra/cron"
 import { LIMITE_DO_CORPO, descricaoComDados, horarioDevido, planoDoDisparo, tituloDaTarefa, validarRotina } from "./orquestra/rotinas"
 import { Agendador } from "./orquestra/agendador"
+import { avaliar, corrente, etapasDaCorrente, interpolar, validarValores, validarWorkflow } from "./orquestra/workflow"
+import { Motor, SEM_DEVOLUCAO } from "./orquestra/motor"
 import { AssinaturaDoPainel, atividade, cartoesDePersonas, itensDeAtencao, montarRetrato, motivoDaEspera, type DadosDoPainel } from "./orquestra/painel"
 import type { Registro, Tarefa } from "./orquestra/tarefa"
 import type { Execucao } from "./orquestra/execucao"
@@ -552,7 +554,8 @@ describe("runtime de execução", () => {
       const db = new Database(caminho)
       db.exec(
         "DROP TABLE eventos; DROP TABLE execucoes; DROP TABLE pausas; DROP TABLE auditoria; DROP TABLE avisos_de_orcamento; " +
-          "DROP TABLE rotinas_estado; DROP TABLE disparos; " +
+          "DROP TABLE rotinas_estado; DROP TABLE disparos; DROP TABLE fichas; DROP TABLE fluxos; " +
+          "ALTER TABLE tarefas DROP COLUMN fluxo; ALTER TABLE tarefas DROP COLUMN ficha; " +
           "ALTER TABLE tarefas DROP COLUMN politica; ALTER TABLE tarefas DROP COLUMN etapa; " +
           "ALTER TABLE tarefas DROP COLUMN retorno; ALTER TABLE tarefas DROP COLUMN voltas; PRAGMA user_version = 1",
       )
@@ -1789,6 +1792,496 @@ describe("painel de controle", () => {
     expect(recebidos).toHaveLength(3)
   })
 
+})
+
+describe("workflows em grafo", () => {
+  const personas = new Set(["alfred", "nati", "pami", "lucas"])
+  const equipe = validarEquipe(
+    {
+      id: "casa",
+      nome: "Casa",
+      posicoes: [
+        { id: "executor", titulo: "executor", persona: "alfred", capacidades: ["arquivos"] },
+        { id: "conselho-nati", titulo: "engenheira", persona: "nati", capacidades: ["arquivos", "board"] },
+        { id: "conselho-pami", titulo: "projetista", persona: "pami", capacidades: ["arquivos", "board"] },
+      ],
+    },
+    personas,
+  )
+  const exemplo = () => ({
+    id: "mudanca-com-plano",
+    nome: "Mudança com plano",
+    entrada: { pedido: "texto" },
+    inicio: "plano",
+    nos: [
+      {
+        id: "plano",
+        tipo: "executar",
+        posicao: "conselho-nati",
+        instrucao: "Escreva um plano para: {{entrada.pedido}}",
+        criterio: "Passos numerados.",
+        saidas: { plano: "texto", risco: { escolha: ["baixo", "alto"] } },
+      },
+      { id: "risco", tipo: "condicao", regras: [{ campo: "plano.risco", op: "igual", valor: "alto", saida: "alto" }] },
+      { id: "ok", tipo: "decisao_humana", pergunta: "Risco alto em {{plano.plano}}. Seguir?", opcoes: ["seguir", "parar"] },
+      { id: "frente", tipo: "paralelo" },
+      { id: "executa", tipo: "executar", posicao: "executor", instrucao: "Execute: {{plano.plano}}" },
+      { id: "revisa", tipo: "revisar", de: "executa", por: { posicao: "conselho-nati" } },
+      { id: "nota", tipo: "executar", posicao: "conselho-pami", instrucao: "Nota de: {{plano.plano}}" },
+      { id: "junta", tipo: "juncao" },
+      { id: "fim", tipo: "fim" },
+      { id: "parou", tipo: "fim", resultado: "cancelado pelo Ueslei" },
+    ],
+    arestas: [
+      { de: "plano", para: "risco" },
+      { de: "risco", para: "ok", quando: "alto" },
+      { de: "risco", para: "frente", quando: "senao" },
+      { de: "ok", para: "frente", quando: "seguir" },
+      { de: "ok", para: "parou", quando: "parar" },
+      { de: "frente", para: "executa" },
+      { de: "frente", para: "nota" },
+      { de: "executa", para: "revisa" },
+      { de: "revisa", para: "junta", quando: "aprovado" },
+      { de: "nota", para: "junta" },
+      { de: "junta", para: "fim" },
+    ],
+  })
+  const erroDe = (mudar: (w: ReturnType<typeof exemplo>) => void) => {
+    const w = exemplo()
+    mudar(w)
+    try {
+      validarWorkflow(w, equipe)
+      return ""
+    } catch (erro) {
+      return (erro as Error).message
+    }
+  }
+
+  test("o exemplo da spec é aceito e cada erro de formato é recusado", () => {
+    const w = validarWorkflow(exemplo(), equipe)
+    expect(w).toMatchObject({ versao: 1, inicio: "plano", entrada: { pedido: "texto" } })
+    expect(corrente(w, "executa").map((n) => n.id)).toEqual(["revisa"])
+    expect(etapasDaCorrente(corrente(w, "executa"))).toEqual([{ tipo: "revisao", por: { posicao: "conselho-nati" } }])
+    expect(erroDe((w) => w.arestas.push({ de: "fim", para: "fantasma" }))).toContain("ligação para caixa inexistente (fantasma)")
+    expect(erroDe((w) => (w.arestas = w.arestas.filter((a) => a.quando !== "parar")))).toContain('caixa ok: falta a ligação "parar"')
+    expect(erroDe((w) => (w.arestas[1]!.quando = "talvez"))).toContain('caixa risco: ligação com "quando" inválido (talvez)')
+    expect(erroDe((w) => w.nos.push({ id: "solta", tipo: "fim" } as never))).toContain("caixa solta: não é alcançável")
+    expect(erroDe((w) => w.arestas.push({ de: "fim", para: "plano" }))).toContain("ciclo que não passa por um laço")
+    expect(erroDe((w) => (w.arestas = w.arestas.filter((a) => a.de !== "nota")))).toContain("a junção precisa de 2 ou mais ligações entrando")
+    expect(erroDe((w) => ((w.nos[4] as { instrucao: string }).instrucao = "{{nota.devolutiva}}"))).toContain(
+      "caixa executa: o texto usa nota, que não vem antes",
+    )
+    expect(erroDe((w) => ((w.nos[4] as { instrucao: string }).instrucao = "{{plano.custo}}"))).toContain("plano.custo, que não é saída de plano")
+    expect(erroDe((w) => ((w.nos[4] as { instrucao: string }).instrucao = "{{entrada.prazo}}"))).toContain("entrada.prazo, que não existe")
+    expect(erroDe((w) => ((w.nos[1] as { regras: { valor: string }[] }).regras[0]!.valor = "médio"))).toContain(
+      "médio não é uma das escolhas de plano.risco",
+    )
+    expect(erroDe((w) => ((w.nos[1] as { regras: { op: string }[] }).regras[0]!.op = "maior"))).toContain("maior só vale para número")
+    expect(erroDe((w) => ((w.nos[5] as { por: unknown }).por = { posicao: "executor" }))).toContain("alfred revisaria o próprio trabalho")
+    expect(erroDe((w) => ((w.nos[5] as { de: string }).de = "nota"))).toContain("caixa revisa: precisa vir logo depois de nota")
+    expect(erroDe((w) => ((w.nos[4] as { posicao: string }).posicao = "vaga"))).toContain("caixa executa: posição inexistente (vaga)")
+    expect(erroDe((w) => w.nos.push({ id: "laco", tipo: "laco", maxVoltas: 30 } as never))).toContain("maxVoltas obrigatório, de 1 a 20")
+    expect(erroDe((w) => w.nos.push({ id: "espera", tipo: "espera", duracao: "1h", sinal: "x" } as never))).toContain(
+      "use exatamente um de duracao, ate e sinal",
+    )
+  })
+
+  test("valores: troca no texto, avalia regras e confere a devolutiva pelos tipos", () => {
+    const contexto = { entrada: { pedido: "limpar o disco" }, plano: { risco: "alto", n: 3, ok: false } }
+    expect(interpolar("Faça {{ entrada.pedido }} ({{plano.risco}}, {{plano.ok}}, {{x.y}})", contexto)).toBe("Faça limpar o disco (alto, não, )")
+    expect(avaliar({ campo: "plano.risco", op: "igual", valor: "alto" }, contexto)).toBe(true)
+    expect(avaliar({ campo: "plano.n", op: "maior", valor: 2 }, contexto)).toBe(true)
+    expect(avaliar({ campo: "plano.falta", op: "vazio" }, contexto)).toBe(true)
+    expect(avaliar({ campo: "plano.falta", op: "diferente", valor: true }, contexto)).toBe(true)
+    expect(avaliar({ campo: "entrada.pedido", op: "contem", valor: "DISCO" }, contexto)).toBe(true)
+    const saidas = { plano: "texto", n: "numero", ok: "booleano", risco: { escolha: ["baixo", "alto"] } } as const
+    expect(validarValores(saidas, { plano: " p ", n: 2, ok: true, risco: "baixo" })).toEqual({ plano: "p", n: 2, ok: true, risco: "baixo" })
+    expect(() => validarValores(saidas, { plano: "p", n: "2", ok: true, risco: "médio" })).toThrow(
+      "n precisa ser numero; risco precisa ser uma de: baixo, alto",
+    )
+  })
+
+  const ate = async (condicao: () => boolean) => {
+    for (let i = 0; i < 300 && !condicao(); i++) await Bun.sleep(5)
+  }
+  type Roteiro = (o: Parameters<typeof trabalhar>[0], vez: number) => string | void
+
+  function montarMotor(repo: Repositorio, roteiro: Record<string, Roteiro>, workflows: unknown[], agora?: { valor: Date }) {
+    const avisos: string[] = []
+    const chamadas: Parameters<typeof trabalhar>[0][] = []
+    const vezes = new Map<string, number>()
+    let motor: Motor
+    const orquestra = new Orquestra({
+      raiz: "/tmp/nao-usado",
+      repo,
+      teto: 3,
+      equipe: (id) => (id === "casa" ? equipe : undefined),
+      nome: (p) => p,
+      modelo: () => "haiku",
+      trabalhar: async (o) => {
+        chamadas.push(o)
+        const k = `${o.persona}${o.revisao ? ":revisa" : ""}`
+        const vez = (vezes.get(k) ?? 0) + 1
+        vezes.set(k, vez)
+        return { texto: roteiro[k]?.(o, vez) ?? `feito por ${o.persona}` }
+      },
+      publicarTarefa: () => {},
+      publicarExecucao: () => {},
+      publicarEvento: () => {},
+      avisar: (a) => avisos.push(a.titulo),
+      pedirComando: async () => false,
+      cancelarPedidos: () => {},
+      fluxo: {
+        aoEntregar: (t, e, d) => motor.aoEntregar(t, e, d),
+        saidasDa: (t) => motor.saidasDa(t),
+        aoConcluir: (id) => motor.aoConcluir(id),
+        aoCancelar: (id) => motor.aoCancelar(id),
+      },
+    })
+    motor = new Motor({
+      repo,
+      equipe: (id) => (id === "casa" ? equipe : undefined),
+      aoCriarTarefa: (t) => orquestra.aoCriar(t),
+      aoCancelarTarefa: (id, de) => orquestra.aoMudarStatus(id, de, "cancelada"),
+      publicarTarefa: () => {},
+      publicarFluxos: () => {},
+      avisar: (a) => avisos.push(a.titulo),
+      tudoPausado: () => false,
+      deliberar: async (p) => ({ sintese: `síntese de ${p.titulo}`, decisao: p.opcoes?.[0] ?? null }),
+      agora: agora ? () => agora.valor : undefined,
+    })
+    motor.carregar(workflows.map((w) => ({ equipe: "casa", workflow: validarWorkflow(w, equipe) })))
+    return { orquestra, motor, avisos, chamadas }
+  }
+
+  const nati = (risco: string) => (o: Parameters<typeof trabalhar>[0]) => {
+    o.acoes.devolver?.registrar({ plano: "1. limpar /tmp", risco })
+    return "plano pronto"
+  }
+
+  test("risco baixo: plano, paralelo, revisão com uma mudança, junção e fim", async () => {
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor, chamadas } = montarMotor(
+      repo,
+      {
+        nati: nati("baixo"),
+        "nati:revisa": (o, vez) => void (vez === 1 ? o.acoes.pedirMudanca!("faltou o log") : o.acoes.aprovar!("agora sim")),
+        alfred: (_, vez) => `execução ${vez}`,
+      },
+      [exemplo()],
+    )
+    try {
+      const fluxo = motor.iniciar("casa", "mudanca-com-plano", { pedido: "limpar o disco" }, "ueslei")
+      await ate(() => repo.exigirFluxo(fluxo.id).status !== "rodando")
+      expect(repo.exigirFluxo(fluxo.id).status).toBe("concluido")
+      const fichas = repo.fichasDo(fluxo.id)
+      expect(fichas.map((f) => `${f.no}:${f.status}`)).toEqual([
+        "plano:concluida",
+        "risco:concluida",
+        "frente:concluida",
+        "executa:concluida",
+        "nota:concluida",
+        "junta:concluida",
+        "revisa:concluida",
+        "fim:concluida",
+      ])
+      expect(fichas[0]!.saidas).toEqual({ plano: "1. limpar /tmp", risco: "baixo", devolutiva: "plano pronto" })
+      expect(fichas.find((f) => f.no === "executa")!.saidas.devolutiva).toBe("execução 2")
+      expect(fichas.find((f) => f.no === "revisa")!.saidas.parecer).toBe("agora sim")
+      expect(fichas.find((f) => f.no === "junta")!.chegadas.sort()).toEqual(["nota", "revisa"])
+      const doAlfred = chamadas.filter((c) => c.persona === "alfred")
+      expect(doAlfred).toHaveLength(2)
+      expect(doAlfred[0]!.bloco).toContain("Execute: 1. limpar /tmp")
+      expect(doAlfred[1]!.bloco).toContain("nati pediu mudança: faltou o log")
+      expect(chamadas[0]!.bloco).toContain("Escreva um plano para: limpar o disco")
+      expect(chamadas[0]!.bloco).toContain("chame a ferramenta devolver")
+      expect(repo.listar().every((t) => t.status === "concluida" && t.fluxo === fluxo.id)).toBe(true)
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("risco alto espera a decisão do Ueslei; parar termina com o resultado", async () => {
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor, avisos } = montarMotor(repo, { nati: nati("alto") }, [exemplo()])
+    try {
+      const fluxo = motor.iniciar("casa", "mudanca-com-plano", { pedido: "apagar o banco" }, "ueslei")
+      await ate(() => repo.fichasDo(fluxo.id).some((f) => f.no === "ok"))
+      const ok = repo.fichasDo(fluxo.id).find((f) => f.no === "ok")!
+      expect(ok.status).toBe("esperando")
+      expect(avisos).toContain("Mudança com plano pergunta")
+      expect(() => motor.decidir(fluxo.id, ok.id, "talvez")).toThrow("opção inválida")
+      motor.decidir(fluxo.id, ok.id, "parar", "muito arriscado")
+      expect(repo.exigirFluxo(fluxo.id)).toMatchObject({ status: "concluido", resultado: "cancelado pelo Ueslei" })
+      expect(repo.exigirFicha(ok.id).saidas).toEqual({ opcao: "parar", comentario: "muito arriscado" })
+      expect(() => motor.decidir(fluxo.id, ok.id, "seguir")).toThrow("não está esperando")
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("caixa com saídas que termina sem devolver conta como falha", async () => {
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor } = montarMotor(repo, { nati: () => "esqueci" }, [exemplo()])
+    try {
+      const fluxo = motor.iniciar("casa", "mudanca-com-plano", { pedido: "x" }, "ueslei")
+      await ate(() => repo.comStatus("na_fila").length === 1 && repo.execucoesDaTarefa(1).some((e) => e.status === "falhou"))
+      expect(repo.execucoesDaTarefa(1)[0]).toMatchObject({ status: "falhou", erro: SEM_DEVOLUCAO })
+      expect(repo.exigirFluxo(fluxo.id).status).toBe("rodando")
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("laço repete até o máximo, e a espera anda por duração, sinal e prazo", async () => {
+    const agora = { valor: new Date("2026-11-05T12:00:00Z") }
+    const laco = {
+      id: "tentativas",
+      nome: "Tentativas",
+      entrada: {},
+      inicio: "volta",
+      nos: [
+        { id: "volta", tipo: "laco", maxVoltas: 3, enquanto: { campo: "tenta.ok", op: "diferente", valor: true } },
+        { id: "tenta", tipo: "executar", posicao: "executor", instrucao: "Tente de novo", saidas: { ok: "booleano" } },
+        { id: "pausa", tipo: "espera", duracao: "2h" },
+        { id: "aviso", tipo: "espera", sinal: "deploy", prazo: "1d" },
+        { id: "fim", tipo: "fim", resultado: "acabou" },
+        { id: "tarde", tipo: "fim", resultado: "sem sinal" },
+      ],
+      arestas: [
+        { de: "volta", para: "tenta", quando: "repetir" },
+        { de: "tenta", para: "volta" },
+        { de: "volta", para: "pausa", quando: "sair" },
+        { de: "pausa", para: "aviso", quando: "pronto" },
+        { de: "aviso", para: "fim", quando: "pronto" },
+        { de: "aviso", para: "tarde", quando: "prazo" },
+      ],
+    }
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor } = montarMotor(repo, { alfred: (o) => void o.acoes.devolver?.registrar({ ok: false }) }, [laco], agora)
+    try {
+      const fluxo = motor.iniciar("casa", "tentativas", {}, "ueslei")
+      await ate(() => repo.fichasDo(fluxo.id).some((f) => f.no === "pausa"))
+      expect(repo.fichasDo(fluxo.id).filter((f) => f.no === "tenta")).toHaveLength(3)
+      expect(repo.fichasDo(fluxo.id).filter((f) => f.no === "volta").map((f) => f.saidas.voltas)).toEqual([1, 2, 3, 4])
+      motor.tique(new Date("2026-11-05T13:00:00Z"))
+      expect(repo.fichasDo(fluxo.id).some((f) => f.no === "aviso")).toBe(false)
+      agora.valor = new Date("2026-11-05T14:01:00Z")
+      motor.tique()
+      const aviso = repo.fichasDo(fluxo.id).find((f) => f.no === "aviso")!
+      expect(() => motor.sinalizar(fluxo.id, repo.fichasDo(fluxo.id).find((f) => f.no === "pausa")!.id)).toThrow("não está esperando")
+      motor.tique(new Date("2026-11-06T14:02:00Z"))
+      expect(repo.exigirFluxo(fluxo.id)).toMatchObject({ status: "concluido", resultado: "sem sinal" })
+      expect(repo.exigirFicha(aviso.id).saidas).toEqual({ motivo: "prazo" })
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("retomada continua na versão em que começou, e o freio para fan-out demais", async () => {
+    const agora = { valor: new Date("2026-11-05T12:00:00Z") }
+    const espera = {
+      id: "espera",
+      nome: "Espera",
+      entrada: {},
+      inicio: "e",
+      nos: [
+        { id: "e", tipo: "espera", sinal: "ok" },
+        { id: "fim", tipo: "fim", resultado: "versão 1" },
+      ],
+      arestas: [{ de: "e", para: "fim", quando: "pronto" }],
+    }
+    const repo = new Repositorio(":memory:")
+    const primeiro = montarMotor(repo, {}, [espera], agora)
+    const fluxo = primeiro.motor.iniciar("casa", "espera", {}, "ueslei")
+    primeiro.orquestra.parar()
+    const mudado = { ...espera, nos: [espera.nos[0]!, { id: "fim", tipo: "fim", resultado: "versão 2" }] }
+    const segundo = montarMotor(repo, {}, [mudado], agora)
+    try {
+      segundo.motor.retomar()
+      const ficha = repo.fichasDo(fluxo.id)[0]!
+      segundo.motor.sinalizar(fluxo.id, ficha.id)
+      expect(repo.exigirFluxo(fluxo.id)).toMatchObject({ status: "concluido", resultado: "versão 1" })
+      const leque = {
+        id: "leque",
+        nome: "Leque",
+        entrada: {},
+        inicio: "p",
+        nos: [
+          { id: "p", tipo: "paralelo" },
+          ...Array.from({ length: 21 }, (_, i) => ({ id: `d${i}`, tipo: "decisao_humana", pergunta: "?", opcoes: ["a", "b"] })),
+          { id: "fim", tipo: "fim" },
+        ],
+        arestas: [
+          ...Array.from({ length: 21 }, (_, i) => ({ de: "p", para: `d${i}` })),
+          ...Array.from({ length: 21 }, (_, i) => [
+            { de: `d${i}`, para: "fim", quando: "a" },
+            { de: `d${i}`, para: "fim", quando: "b" },
+          ]).flat(),
+        ],
+      }
+      segundo.motor.definir("casa", validarWorkflow(leque, equipe))
+      const grande = segundo.motor.iniciar("casa", "leque", {}, "ueslei")
+      expect(repo.exigirFluxo(grande.id)).toMatchObject({ status: "falhou", erro: "passou de 20 caixas ao mesmo tempo" })
+      expect(repo.fichasDo(grande.id)).toHaveLength(0)
+      expect(segundo.avisos).toContain("Leque parou")
+    } finally {
+      segundo.orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("cancelar uma tarefa do fluxo cancela o fluxo inteiro", async () => {
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor } = montarMotor(repo, { nati: nati("baixo"), alfred: () => new Promise(() => {}) as never }, [exemplo()])
+    try {
+      const fluxo = motor.iniciar("casa", "mudanca-com-plano", { pedido: "x" }, "ueslei")
+      await ate(() => repo.listar().length === 3)
+      const executa = repo.listar().find((t) => t.posicao === "executor")!
+      const de = repo.exigir(executa.id).status
+      repo.mudarStatus(executa.id, "cancelada", "ueslei")
+      orquestra.aoMudarStatus(executa.id, de, "cancelada")
+      expect(repo.exigirFluxo(fluxo.id)).toMatchObject({ status: "cancelado" })
+      expect(repo.listar().filter((t) => t.status !== "concluida").every((t) => t.status === "cancelada")).toBe(true)
+      expect(repo.fichasDo(fluxo.id).some((f) => f.status === "esperando")).toBe(false)
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("o painel mostra a decisão, o sinal e a caixa atrasada do fluxo", () => {
+    const agora = { valor: new Date("2026-11-05T12:00:00Z") }
+    const pergunta = {
+      id: "pergunta",
+      nome: "Pergunta",
+      entrada: { tema: "texto" },
+      inicio: "p",
+      nos: [
+        { id: "p", tipo: "paralelo" },
+        { id: "q", tipo: "decisao_humana", pergunta: "Seguir com {{entrada.tema}}?", opcoes: ["sim", "não"], prazo: "1h" },
+        { id: "s", tipo: "espera", sinal: "deploy" },
+        { id: "fim", tipo: "fim" },
+      ],
+      arestas: [
+        { de: "p", para: "q" },
+        { de: "p", para: "s" },
+        { de: "q", para: "fim", quando: "sim" },
+        { de: "q", para: "fim", quando: "não" },
+        { de: "s", para: "fim", quando: "pronto" },
+      ],
+    }
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor } = montarMotor(repo, {}, [pergunta], agora)
+    try {
+      const fluxo = motor.iniciar("casa", "pergunta", { tema: "o banco" }, "ueslei")
+      const fluxos = repo.fluxosAbertos().map((f) => ({
+        fluxo: { ...f, definicao: { ...f.definicao, nos: [...f.definicao.nos, { id: "x", titulo: "Executa", tipo: "executar", posicao: "executor", instrucao: "i", prazo: "1h" }] } } as never,
+        fichas: [
+          ...repo.fichasDo(f.id),
+          { ...repo.fichasDo(f.id)[0]!, id: 9, no: "x", status: "esperando", tarefa: 7, prazoEm: "2026-11-05T13:00:00.000Z" } as never,
+        ],
+      }))
+      const base = { agora: new Date("2026-11-05T13:30:00Z"), mes: "2026-11", teto: 2, pausas: new Map(), bloqueio: () => null, equipes: [equipe] }
+      const retrato = montarRetrato({
+        ...base,
+        personas: [],
+        tarefas: [],
+        registros: () => [],
+        rodando: [],
+        naFila: [],
+        personaDaFila: () => null,
+        ultimoEvento: () => undefined,
+        comandos: [],
+        rotinas: [],
+        registrosRecentes: [],
+        auditoria: [],
+        disparos: [],
+        fluxos,
+      })
+      expect(retrato.atencao.map((i) => [i.tipo, i.titulo, i.detalhe, i.acoes.join(",")])).toEqual([
+        ["decisao", "Pergunta pergunta", "Seguir com o banco?", "decidir"],
+        ["sinal", 'Pergunta espera o sinal "deploy"', "s", "sinalizar"],
+        ["atrasada", "Pergunta: Executa passou do prazo", "prazo de 1h", "abrir"],
+      ])
+      expect(retrato.atencao[2]).toMatchObject({ tarefaId: 7, ficha: 9 })
+      expect(retrato.atencao[0]).toMatchObject({ fluxo: fluxo.id, opcoes: ["sim", "não"] })
+      expect(retrato.workflows).toEqual([
+        {
+          fluxo: fluxo.id,
+          equipe: "casa",
+          workflow: "pergunta",
+          nome: "Pergunta",
+          desde: "2026-11-05T12:00:00.000Z",
+          ativas: [
+            { ficha: 2, no: "q", titulo: "q", tipo: "decisao_humana", tarefaId: null },
+            { ficha: 3, no: "s", titulo: "s", tipo: "espera", tarefaId: null },
+            { ficha: 9, no: "x", titulo: "Executa", tipo: "executar", tarefaId: 7 },
+          ],
+        },
+      ])
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("rotina com workflow inicia o fluxo e respeita a concorrência", () => {
+    const so = {
+      id: "so-dados",
+      nome: "Só dados",
+      entrada: { dados: "texto" },
+      inicio: "e",
+      nos: [
+        { id: "e", tipo: "espera", sinal: "ok" },
+        { id: "fim", tipo: "fim" },
+      ],
+      arestas: [{ de: "e", para: "fim", quando: "pronto" }],
+    }
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor } = montarMotor(repo, {}, [so, exemplo()])
+    try {
+      const entrada = (w: string) => motor.definicao("casa", w)?.entrada
+      expect(() => validarRotina({ id: "r", nome: "R", workflow: "mudanca-com-plano" }, equipe, entrada)).toThrow(
+        'pede entrada que a rotina não dá (só "dados" em texto)',
+      )
+      expect(() => validarRotina({ id: "r", nome: "R", workflow: "nao-existe" }, equipe, entrada)).toThrow("workflow inexistente")
+      const rotina = validarRotina({ id: "r", nome: "R", workflow: "so-dados", concorrencia: "enfileirar" }, equipe, entrada)
+      const agendador = new Agendador({
+        repo,
+        equipe: (id) => (id === "casa" ? equipe : undefined),
+        aoCriar: () => {},
+        aoMudarStatus: () => {},
+        publicarTarefa: () => {},
+        publicarRotinas: () => {},
+        avisar: () => {},
+        fluxos: {
+          aberto: (autor) => repo.fluxoAbertoDe(autor)?.id ?? null,
+          entrada: (e, w) => motor.definicao(e, w)?.entrada,
+          iniciar: (e, w, ent, autor, depoisDe) => motor.iniciar(e, w, ent, autor, depoisDe).id,
+          cancelar: (id, quem, motivo) => motor.cancelar(id, quem, motivo),
+        },
+      })
+      agendador.carregar([{ equipe: "casa", rotina }])
+      expect(agendador.disparar("casa", "r", "webhook", { corpo: "deploy feito" }).motivo).toBe("iniciou o workflow (execução #1)")
+      expect(repo.exigirFluxo(1).entrada).toEqual({ dados: "deploy feito" })
+      expect(agendador.disparar("casa", "r", "manual").motivo).toBe("enfileirou o workflow (execução #2, depois da #1)")
+      expect(repo.exigirFluxo(2).status).toBe("esperando")
+      motor.sinalizar(1, repo.fichasDo(1)[0]!.id)
+      expect(repo.exigirFluxo(1).status).toBe("concluido")
+      expect(repo.exigirFluxo(2).status).toBe("rodando")
+      agendador.definir("casa", { ...rotina, concorrencia: "substituir" })
+      expect(agendador.disparar("casa", "r", "manual").motivo).toBe("iniciou o workflow (execução #3)")
+      expect(repo.exigirFluxo(2).status).toBe("cancelado")
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
 })
 
 describe("conselheiro e executor", () => {

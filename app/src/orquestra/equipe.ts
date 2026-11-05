@@ -374,6 +374,7 @@ export interface TarefasDaPosicao {
   emAndamento: number
   citadas?: number
   rotinas?: number
+  workflows?: number
 }
 
 export function exigirMudancaDeEquipe(
@@ -386,10 +387,11 @@ export function exigirMudancaDeEquipe(
   if (antes.id === CASA && depois.nome !== antes.nome) erros.push("a Casa não pode ser renomeada")
   for (const velha of antes.posicoes) {
     const nova = depois.posicoes.find((p) => p.id === velha.id)
-    const { abertas, emAndamento, citadas = 0, rotinas = 0 } = tarefas(velha.id)
+    const { abertas, emAndamento, citadas = 0, rotinas = 0, workflows = 0 } = tarefas(velha.id)
     if (!nova && abertas > 0) erros.push(`posição ${velha.id}: tem ${abertas} tarefa(s) aberta(s) e não pode sair`)
     else if (!nova && citadas > 0) erros.push(`posição ${velha.id}: revisa ${citadas} tarefa(s) aberta(s) e não pode sair`)
     else if (!nova && rotinas > 0) erros.push(`posição ${velha.id}: recebe ${rotinas} rotina(s) e não pode sair`)
+    else if (!nova && workflows > 0) erros.push(`posição ${velha.id}: aparece em ${workflows} workflow(s) e não pode sair`)
     else if (nova && nova.persona !== velha.persona && emAndamento > 0) {
       erros.push(`posição ${velha.id}: tem tarefa em andamento e não pode trocar de persona agora`)
     }

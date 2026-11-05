@@ -1,5 +1,6 @@
 import { lerCron, menorIntervaloEmMinutos, ultimoHorarioEntre } from "./cron"
 import { slugValido, type Equipe } from "./equipe"
+import type { Saidas } from "./workflow"
 
 export type Concorrencia = "pular" | "enfileirar" | "substituir"
 export type Perdidos = "um" | "ignorar"
@@ -12,6 +13,7 @@ export interface Rotina {
   ativa: boolean
   posicao: string
   tarefa: { titulo: string; descricao?: string; porque?: string }
+  workflow?: string
   cron?: string
   webhook?: boolean
   concorrencia: Concorrencia
@@ -39,7 +41,7 @@ export const PERDIDOS: readonly Perdidos[] = ["um", "ignorar"]
 
 const texto = (v: unknown) => (typeof v === "string" ? v.trim() : "")
 
-export function validarRotina(bruto: unknown, equipe: Equipe): Rotina {
+export function validarRotina(bruto: unknown, equipe: Equipe, entradaDoWorkflow?: (id: string) => Saidas | undefined): Rotina {
   const r = (bruto && typeof bruto === "object" && !Array.isArray(bruto) ? bruto : {}) as Record<string, unknown>
   if (!slugValido(r.id)) throw new Error(`rotina: id inválido (${String(r.id)})`)
   const onde = `rotina ${r.id}`
@@ -48,9 +50,18 @@ export function validarRotina(bruto: unknown, equipe: Equipe): Rotina {
   if (!nome) erros.push(`${onde}: nome obrigatório`)
   const t = (r.tarefa && typeof r.tarefa === "object" ? r.tarefa : {}) as Record<string, unknown>
   const titulo = texto(t.titulo).slice(0, 200)
-  if (!titulo) erros.push(`${onde}: título da tarefa obrigatório`)
   const posicao = texto(r.posicao)
-  if (!equipe.posicoes.some((p) => p.id === posicao)) erros.push(`${onde}: posição inexistente (${posicao})`)
+  const workflow = texto(r.workflow)
+  if (workflow) {
+    const entrada = entradaDoWorkflow?.(workflow)
+    if (!entrada) erros.push(`${onde}: workflow inexistente (${workflow})`)
+    else if (Object.entries(entrada).some(([campo, tipo]) => campo !== "dados" || tipo !== "texto")) {
+      erros.push(`${onde}: o workflow ${workflow} pede entrada que a rotina não dá (só "dados" em texto)`)
+    }
+  } else {
+    if (!titulo) erros.push(`${onde}: título da tarefa obrigatório`)
+    if (!equipe.posicoes.some((p) => p.id === posicao)) erros.push(`${onde}: posição inexistente (${posicao})`)
+  }
   const concorrencia = (r.concorrencia ?? "pular") as Concorrencia
   if (!CONCORRENCIAS.includes(concorrencia)) erros.push(`${onde}: concorrência inválida`)
   const perdidos = (r.perdidos ?? "um") as Perdidos
@@ -72,6 +83,7 @@ export function validarRotina(bruto: unknown, equipe: Equipe): Rotina {
   if (descricao) rotina.tarefa.descricao = descricao
   if (porque) rotina.tarefa.porque = porque
   if (cron) rotina.cron = cron
+  if (workflow) rotina.workflow = workflow
   if (r.webhook === true) rotina.webhook = true
   return rotina
 }

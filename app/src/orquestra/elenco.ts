@@ -14,6 +14,7 @@ import {
   type Persona,
 } from "./equipe"
 import { validarRotina, type Rotina } from "./rotinas"
+import { validarWorkflow, type Saidas, type Workflow } from "./workflow"
 import type { RotinaDaEquipe } from "./agendador"
 
 let atual = elencoLegado()
@@ -110,7 +111,11 @@ export function caminhoDaRotina(raiz: string, equipe: string, id: string): strin
   return join(raiz, "equipes", equipe, "rotinas", `${id}.json`)
 }
 
-export async function lerRotinas(raiz: string, equipes: Equipe[]): Promise<RotinaDaEquipe[]> {
+export async function lerRotinas(
+  raiz: string,
+  equipes: Equipe[],
+  entradaDoWorkflow: (equipe: string, id: string) => Saidas | undefined = () => undefined,
+): Promise<RotinaDaEquipe[]> {
   const lidas: RotinaDaEquipe[] = []
   for (const equipe of equipes) {
     let nomes: string[]
@@ -123,7 +128,7 @@ export async function lerRotinas(raiz: string, equipes: Equipe[]): Promise<Rotin
       const caminho = join(raiz, "equipes", equipe.id, "rotinas", nome)
       let rotina: Rotina
       try {
-        rotina = validarRotina(await Bun.file(caminho).json(), equipe)
+        rotina = validarRotina(await Bun.file(caminho).json(), equipe, (id) => entradaDoWorkflow(equipe.id, id))
       } catch (erro) {
         throw new Error(`${caminho}: ${(erro as Error).message}`)
       }
@@ -140,6 +145,72 @@ export async function gravarRotina(raiz: string, equipe: string, rotina: Rotina)
 
 export async function apagarRotina(raiz: string, equipe: string, id: string): Promise<void> {
   await rm(caminhoDaRotina(raiz, equipe, id), { force: true })
+}
+
+export function caminhoDoWorkflow(raiz: string, equipe: string, id: string): string {
+  return join(raiz, "equipes", equipe, "workflows", `${id}.json`)
+}
+
+const CAMPOS_DE_TEXTO = ["instrucao", "criterio", "pergunta", "pauta"]
+const ARQUIVO_DE_TEXTO = /^@([a-z0-9][a-z0-9-]{0,63}\.md)$/
+
+// "@plano.md" num texto de caixa vira o conteúdo de workflows/<id>/plano.md; o nome é restrito porque vira caminho.
+async function comTextos(raiz: string, equipe: string, id: string, bruto: unknown): Promise<unknown> {
+  if (!bruto || typeof bruto !== "object" || !Array.isArray((bruto as { nos?: unknown }).nos)) return bruto
+  const w = bruto as { nos: Record<string, unknown>[] }
+  const nos = await Promise.all(
+    w.nos.map(async (no) => {
+      const copia = { ...no }
+      for (const campo of CAMPOS_DE_TEXTO) {
+        const valor = copia[campo]
+        const m = typeof valor === "string" ? ARQUIVO_DE_TEXTO.exec(valor.trim()) : null
+        if (!m) continue
+        const arquivo = Bun.file(join(raiz, "equipes", equipe, "workflows", id, m[1]!))
+        if (!(await arquivo.exists())) throw new Error(`caixa ${String(no.id)}: ${campo} aponta para ${m[1]}, que não existe`)
+        copia[campo] = await arquivo.text()
+      }
+      return copia
+    }),
+  )
+  return { ...w, nos }
+}
+
+export async function lerWorkflows(raiz: string, equipes: Equipe[]): Promise<{ equipe: string; workflow: Workflow }[]> {
+  const lidos: { equipe: string; workflow: Workflow }[] = []
+  for (const equipe of equipes) {
+    let nomes: string[]
+    try {
+      nomes = (await readdir(join(raiz, "equipes", equipe.id, "workflows"))).filter((n) => n.endsWith(".json")).sort()
+    } catch {
+      continue
+    }
+    for (const nome of nomes) {
+      const caminho = join(raiz, "equipes", equipe.id, "workflows", nome)
+      let workflow: Workflow
+      try {
+        const bruto = (await Bun.file(caminho).json()) as { id?: unknown }
+        workflow = validarWorkflow(await comTextos(raiz, equipe.id, String(bruto.id ?? ""), bruto), equipe)
+      } catch (erro) {
+        throw new Error(`${caminho}: ${(erro as Error).message}`)
+      }
+      if (`${workflow.id}.json` !== nome) throw new Error(`${caminho}: o id ${workflow.id} não bate com o nome do arquivo`)
+      lidos.push({ equipe: equipe.id, workflow })
+    }
+  }
+  return lidos
+}
+
+export async function validarWorkflowDaEquipe(raiz: string, equipe: Equipe, bruto: unknown): Promise<Workflow> {
+  const id = String((bruto as { id?: unknown } | null)?.id ?? "")
+  return validarWorkflow(await comTextos(raiz, equipe.id, id, bruto), equipe)
+}
+
+export async function gravarWorkflow(raiz: string, equipe: string, bruto: Record<string, unknown>): Promise<void> {
+  await gravarJson(caminhoDoWorkflow(raiz, equipe, String(bruto.id)), bruto)
+}
+
+export async function apagarWorkflow(raiz: string, equipe: string, id: string): Promise<void> {
+  await rm(caminhoDoWorkflow(raiz, equipe, id), { force: true })
 }
 
 export async function gravarPersona(raiz: string, persona: Persona): Promise<void> {
