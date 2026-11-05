@@ -11,6 +11,7 @@ import 'chat.dart';
 import 'editor_de_workflow.dart';
 import 'equipes.dart';
 import 'espelho.dart';
+import 'importacao.dart';
 import 'painel.dart';
 import 'presenca.dart';
 import 'rotinas.dart';
@@ -35,6 +36,7 @@ class Sala extends ChangeNotifier {
     editorDeWorkflow = EstadoEditorDeWorkflow(canal.enviar);
     skills = EstadoSkills(canal.enviar);
     espelho = EstadoEspelho(canal.enviar);
+    importacao = EstadoImportacao(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -57,6 +59,7 @@ class Sala extends ChangeNotifier {
   late final EstadoEditorDeWorkflow editorDeWorkflow;
   late final EstadoSkills skills;
   late final EstadoEspelho espelho;
+  late final EstadoImportacao importacao;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -144,6 +147,14 @@ class Sala extends ChangeNotifier {
     equipes.verAba(AbaDaEquipe.workflows);
   }
 
+  void abrirImportado(ModeloImportado m) {
+    final workflow = m.workflow;
+    if (workflow == null) return abrirEquipe(m.equipe);
+    abrirWorkflows(m.equipe);
+    final w = workflows.daEquipe(m.equipe).where((x) => x.id == workflow).firstOrNull;
+    if (w != null) workflows.verDefinicao(w);
+  }
+
   void agirNoPainel(ItemDeAtencao item, String acao, {String? texto, String? opcao}) {
     switch (painel.agir(item, acao, texto: texto, opcao: opcao)) {
       case IrParaTarefa(:final id):
@@ -164,6 +175,7 @@ class Sala extends ChangeNotifier {
     presenca.reconectou();
     painel.reconectou();
     espelho.reconectou();
+    importacao.reconectou();
     if (_primeiraConexao) {
       _primeiraConexao = false;
       return;
@@ -200,6 +212,9 @@ class Sala extends ChangeNotifier {
       case Erro() when espelho.ocupado:
         espelho.tratar(e);
         return;
+      case Erro() when importacao.ocupado:
+        importacao.tratar(e);
+        return;
       case Aviso(:final texto) when tela != Tela.chat:
         _avisos.add(texto);
         return;
@@ -233,6 +248,7 @@ class Sala extends ChangeNotifier {
         editorDeWorkflow.tratar(e);
         skills.tratar(e);
         espelho.tratar(e);
+        importacao.tratar(e);
     }
   }
 
@@ -256,6 +272,7 @@ class Sala extends ChangeNotifier {
     editorDeWorkflow.dispose();
     skills.dispose();
     espelho.dispose();
+    importacao.dispose();
     canal.dispose();
     super.dispose();
   }

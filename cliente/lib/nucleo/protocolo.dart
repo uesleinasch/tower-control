@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'espelho.dart';
+import 'importacao.dart';
 import 'modelos.dart';
 import 'painel.dart';
 import 'rotinas.dart';
@@ -52,6 +53,9 @@ sealed class Entrada {
           inteiro('tarefaId') ?? 0,
           EventoDeExecucao.deJson(json['evento'] as Map<String, dynamic>),
         ),
+      'modelo' => ModeloRecebido(texto('nome'), texto('conteudo')),
+      'modelo-previa' => PreviaDoModeloRecebida(PreviaDoModelo.deJson(json)),
+      'modelo-importado' => ModeloImportado(texto('equipe'), workflow: switch (json['workflow']) { final String w when w.isNotEmpty => w, _ => null }),
       'personas' => PersonasRecebidas(listaDeJson(json['lista'], Perfil.deJson)),
       'orquestra' => OrquestraRecebida(pausadoTudo: json['pausadoTudo'] == true),
       'painel' => PainelRecebido(Retrato.deJson(switch (json['retrato']) {
@@ -148,6 +152,23 @@ class EspelhoRecebido extends Entrada {
 class EquipesRecebidas extends Entrada {
   const EquipesRecebidas(this.lista);
   final List<EquipeResumo> lista;
+}
+
+class ModeloRecebido extends Entrada {
+  const ModeloRecebido(this.nome, this.conteudo);
+  final String nome;
+  final String conteudo;
+}
+
+class PreviaDoModeloRecebida extends Entrada {
+  const PreviaDoModeloRecebida(this.previa);
+  final PreviaDoModelo previa;
+}
+
+class ModeloImportado extends Entrada {
+  const ModeloImportado(this.equipe, {this.workflow});
+  final String equipe;
+  final String? workflow;
 }
 
 class OrquestraRecebida extends Entrada {
@@ -792,4 +813,48 @@ class SincronizarEspelho extends Saida {
 
   @override
   String get tipo => 'espelho-sincronizar';
+}
+
+class ExportarModelo extends Saida {
+  const ExportarModelo(this.equipe, {this.personas = true, this.rotinas = true}) : workflow = null;
+  const ExportarModelo.workflow(this.equipe, String this.workflow)
+      : personas = null,
+        rotinas = null;
+  final String equipe;
+  final String? workflow;
+  final bool? personas;
+  final bool? rotinas;
+
+  @override
+  String get tipo => 'modelo-exportar';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'workflow': workflow, 'personas': personas, 'rotinas': rotinas};
+}
+
+class PedirPreviaDoModelo extends Saida {
+  const PedirPreviaDoModelo(this.conteudo, {this.destino, this.escolhas});
+  final String conteudo;
+  final String? destino;
+  final EscolhasDoModelo? escolhas;
+
+  @override
+  String get tipo => 'modelo-previa';
+  @override
+  Map<String, Object?> get campos => {
+        'conteudo': conteudo,
+        'destino': destino,
+        'escolhas': escolhas == null || escolhas!.vazia ? null : escolhas!.paraJson(),
+      };
+}
+
+class ImportarModelo extends Saida {
+  const ImportarModelo(this.conteudo, {this.destino, required this.escolhas});
+  final String conteudo;
+  final String? destino;
+  final EscolhasDoModelo escolhas;
+
+  @override
+  String get tipo => 'modelo-importar';
+  @override
+  Map<String, Object?> get campos => {'conteudo': conteudo, 'destino': destino, 'escolhas': escolhas.paraJson()};
 }

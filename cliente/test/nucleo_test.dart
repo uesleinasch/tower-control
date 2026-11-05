@@ -6,6 +6,7 @@ import 'package:control_tower/nucleo/baloes.dart';
 import 'package:control_tower/nucleo/enderecos.dart';
 import 'package:control_tower/nucleo/espelho.dart';
 import 'package:control_tower/nucleo/formato.dart';
+import 'package:control_tower/nucleo/importacao.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/organograma.dart';
@@ -364,6 +365,42 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
       },
     ],
   },
+  'modelo': {'nome': 'work.ctmodelo.json', 'conteudo': '{"formato":"control-tower/modelo"}'},
+  'modelo-previa': _previaDeEquipe,
+  'modelo-importado': {'equipe': 'work-2'},
+};
+
+const _previaDeEquipe = <String, Object?>{
+  'resumo': {
+    'tipo': 'equipe',
+    'nome': 'Work',
+    'exportadoEm': '2026-11-05T12:00:00.000Z',
+    'posicoes': 3,
+    'personas': 2,
+    'workflows': 1,
+    'rotinas': 1,
+    'skills': 2,
+  },
+  'personasDoModelo': [
+    {'id': 'nati', 'nome': 'Nati', 'traz': true},
+    {'id': 'eva', 'nome': 'Eva', 'traz': true},
+    {'id': 'zed', 'nome': 'zed', 'traz': false},
+  ],
+  'posicoesDoModelo': [],
+  'entra': ['equipe Work 2 (work-2) com 3 posições'],
+  'escolhas': {
+    'equipe': {'id': 'work-2', 'nome': 'Work 2'},
+    'personas': {
+      'nati': {'acao': 'usar', 'persona': 'nati'},
+      'eva': {'acao': 'criar'},
+      'zed': {'acao': 'vaga'},
+    },
+    'skills': {
+      'relatorio': {'acao': 'usar'},
+    },
+  },
+  'avisos': ['a skill relatorio daqui é diferente da do modelo; fica a daqui'],
+  'erros': [],
 };
 
 final _saidas = <Saida>[
@@ -415,6 +452,9 @@ final _saidas = <Saida>[
   const PedirEspelho(),
   const SalvarEspelho(ConfigDoEspelho()),
   const SincronizarEspelho(),
+  const ExportarModelo('casa'),
+  const PedirPreviaDoModelo('{}'),
+  const ImportarModelo('{}', escolhas: EscolhasDoModelo()),
 ];
 
 void main() {
@@ -1695,6 +1735,157 @@ void main() {
       expect(ultimaVoltaDoEspelho(EstadoDoEspelho(ultimaVolta: DateTime(2026, 11, 5, 9, 7)), agora: agora), 'última volta às 09:07');
       expect(ultimaVoltaDoEspelho(EstadoDoEspelho(ultimaVolta: DateTime(2026, 11, 4, 22, 30)), agora: agora), 'última volta ontem, às 22:30');
       expect(ultimaVoltaDoEspelho(EstadoDoEspelho(ultimaVolta: DateTime(2026, 11, 1, 8)), agora: agora), 'última volta 1/nov, às 08:00');
+    });
+  });
+  group('importação de modelos', () {
+    test('modelo e modelo-importado decodificam', () {
+      final m = Entrada.decodificar(jsonEncode({'tipo': 'modelo', ..._fixturasEntrada['modelo']!})) as ModeloRecebido;
+      expect([m.nome, m.conteudo], ['work.ctmodelo.json', '{"formato":"control-tower/modelo"}']);
+      final i = Entrada.decodificar('{"tipo":"modelo-importado","equipe":"casa","workflow":"revisao-2"}') as ModeloImportado;
+      expect([i.equipe, i.workflow], ['casa', 'revisao-2']);
+      expect((Entrada.decodificar('{"tipo":"modelo-importado","equipe":"work-2"}') as ModeloImportado).workflow, isNull);
+    });
+
+    test('a prévia lê resumo, personas, escolhas, avisos e erros', () {
+      final p = (Entrada.decodificar(jsonEncode({'tipo': 'modelo-previa', ..._previaDeEquipe})) as PreviaDoModeloRecebida).previa;
+      expect([p.valida, p.deWorkflow, p.podeImportar], [true, false, true]);
+      expect(p.resumo!.contagem, '3 posições · 2 personas · 1 workflow · 1 rotina · 2 skills');
+      expect([for (final x in p.personas) '${x.id}:${x.traz}'], ['nati:true', 'eva:true', 'zed:false']);
+      expect([p.escolhas.equipeId, p.escolhas.equipeNome], ['work-2', 'Work 2']);
+      expect([for (final MapEntry(:key, :value) in p.escolhas.personas.entries) '$key:${value.opcao(key).name}'],
+          ['nati:daqui', 'eva:criar', 'zed:vaga']);
+      expect(p.skillsEmColisao, ['relatorio']);
+      expect(p.entra, ['equipe Work 2 (work-2) com 3 posições']);
+      expect(p.avisos, hasLength(1));
+      expect(p.escolhas.paraJson(), _previaDeEquipe['escolhas']);
+    });
+
+    test('arquivo que não é modelo vem com resumo nulo e não importa', () {
+      final p = PreviaDoModelo.deJson({
+        'resumo': null,
+        'personasDoModelo': [],
+        'posicoesDoModelo': [],
+        'entra': [],
+        'escolhas': {},
+        'avisos': [],
+        'erros': ['não é um modelo do control-tower'],
+      });
+      expect([p.valida, p.podeImportar, p.escolhas.vazia], [false, false, true]);
+      expect(p.erros, ['não é um modelo do control-tower']);
+    });
+
+    test('prévia de workflow lê posições e ligações, inclusive sem ligação', () {
+      final p = PreviaDoModelo.deJson({
+        'resumo': {'tipo': 'workflow', 'nome': 'Revisão', 'exportadoEm': 'x', 'posicoes': 2, 'personas': 0, 'workflows': 1, 'rotinas': 0, 'skills': 0},
+        'posicoesDoModelo': [
+          {'id': 'executor', 'titulo': 'executor'},
+          {'id': 'revisora', 'titulo': 'revisora'},
+        ],
+        'escolhas': {
+          'posicoes': {'executor': 'executor', 'revisora': null},
+          'workflow': {'id': 'revisao-2'},
+        },
+        'erros': ['posição revisora: escolha uma posição da equipe Casa para ela'],
+      });
+      expect([p.deWorkflow, p.podeImportar, p.resumo!.exportadoEm, p.resumo!.contagem], [true, false, null, '2 posições']);
+      expect(p.posicoes.map((x) => x.titulo), ['executor', 'revisora']);
+      expect(p.escolhas.posicoes, {'executor': 'executor', 'revisora': null});
+      expect(p.escolhas.paraJson(), {
+        'posicoes': {'executor': 'executor', 'revisora': null},
+        'workflow': {'id': 'revisao-2'},
+      });
+    });
+
+    test('as saídas levam o formato do protocolo', () {
+      expect(jsonDecode(const ExportarModelo('work', personas: false).codificar()),
+          {'tipo': 'modelo-exportar', 'equipe': 'work', 'personas': false, 'rotinas': true});
+      expect(jsonDecode(const ExportarModelo.workflow('casa', 'revisao').codificar()),
+          {'tipo': 'modelo-exportar', 'equipe': 'casa', 'workflow': 'revisao'});
+      expect(jsonDecode(const PedirPreviaDoModelo('{"a":1}').codificar()), {'tipo': 'modelo-previa', 'conteudo': '{"a":1}'});
+      const escolhas = EscolhasDoModelo(posicoes: {'revisora': 'revisora'}, workflowId: 'w');
+      expect(jsonDecode(const PedirPreviaDoModelo('{}', destino: 'casa', escolhas: escolhas).codificar()), {
+        'tipo': 'modelo-previa',
+        'conteudo': '{}',
+        'destino': 'casa',
+        'escolhas': {
+          'posicoes': {'revisora': 'revisora'},
+          'workflow': {'id': 'w'},
+        },
+      });
+      expect(jsonDecode(const ImportarModelo('{}', escolhas: EscolhasDoModelo()).codificar()),
+          {'tipo': 'modelo-importar', 'conteudo': '{}', 'escolhas': {}});
+    });
+
+    test('mudar a ação de uma persona', () {
+      final base = EscolhasDoModelo.deJson(_previaDeEquipe['escolhas']);
+      const daqui = ['nati', 'poe', 'alfred'];
+      Map<String, Object?> acao(EscolhasDoModelo e, String id) => e.personas[id]!.paraJson();
+      final outra = base.comOpcaoDePersona('nati', OpcaoDePersona.outra, nomeNoModelo: 'Nati', personasDaqui: daqui);
+      expect(acao(outra, 'nati'), {'acao': 'usar', 'persona': 'poe'});
+      expect(outra.personas['nati']!.opcao('nati'), OpcaoDePersona.outra);
+      final alfred = outra.comPersonaDaqui('nati', 'alfred');
+      expect(acao(alfred, 'nati'), {'acao': 'usar', 'persona': 'alfred'});
+      expect(acao(alfred.comOpcaoDePersona('nati', OpcaoDePersona.outra, nomeNoModelo: 'Nati', personasDaqui: daqui), 'nati'),
+          {'acao': 'usar', 'persona': 'alfred'});
+      final comNome = base.comOpcaoDePersona('nati', OpcaoDePersona.criarComNome, nomeNoModelo: 'Nati', personasDaqui: daqui);
+      expect(acao(comNome, 'nati'), {'acao': 'criar', 'nome': 'Nati'});
+      final vazio = comNome.comNomeDePersona('nati', '');
+      expect([acao(vazio, 'nati'), vazio.personas['nati']!.opcao('nati')], [
+        {'acao': 'criar', 'nome': ''},
+        OpcaoDePersona.criarComNome,
+      ]);
+      expect(acao(vazio.comOpcaoDePersona('nati', OpcaoDePersona.criar, nomeNoModelo: 'Nati', personasDaqui: daqui), 'nati'),
+          {'acao': 'criar'});
+      expect(acao(base.comOpcaoDePersona('eva', OpcaoDePersona.vaga, nomeNoModelo: 'Eva', personasDaqui: daqui), 'eva'),
+          {'acao': 'vaga'});
+      expect(acao(base.comOpcaoDePersona('eva', OpcaoDePersona.daqui, nomeNoModelo: 'Eva', personasDaqui: daqui), 'eva'),
+          {'acao': 'usar', 'persona': 'eva'});
+      expect(acao(base, 'nati'), {'acao': 'usar', 'persona': 'nati'});
+    });
+
+    test('mudar skill, posição, equipe e workflow', () {
+      final base = EscolhasDoModelo.deJson(_previaDeEquipe['escolhas']);
+      final importar = base.comOpcaoDeSkill('relatorio', OpcaoDeSkill.importar);
+      expect(importar.skills['relatorio']!.paraJson(), {'acao': 'importar', 'id': 'relatorio-2'});
+      final outroId = importar.comIdDeSkill('relatorio', 'relatorio-novo');
+      expect(outroId.comOpcaoDeSkill('relatorio', OpcaoDeSkill.importar).skills['relatorio']!.id, 'relatorio-novo');
+      expect(outroId.comOpcaoDeSkill('relatorio', OpcaoDeSkill.daqui).skills['relatorio']!.paraJson(), {'acao': 'usar'});
+      final equipe = base.comEquipe(id: 'work-3').comEquipe(nome: 'Trabalho');
+      expect(equipe.paraJson()['equipe'], {'id': 'work-3', 'nome': 'Trabalho'});
+      const w = EscolhasDoModelo(posicoes: {'executor': 'executor', 'revisora': null});
+      final ligada = w.comPosicao('revisora', 'executor').comPosicao('executor', '').comWorkflow('revisao-3');
+      expect(ligada.paraJson(), {
+        'posicoes': {'executor': null, 'revisora': 'executor'},
+        'workflow': {'id': 'revisao-3'},
+      });
+    });
+
+    test('completar com o servidor mantém o que o usuário escolheu e traz o que faltava', () {
+      final doServidor = EscolhasDoModelo.deJson({
+        'equipe': {'id': 'work-2', 'nome': 'Work 2'},
+        'personas': {
+          'nati': {'acao': 'usar', 'persona': 'nati'},
+          'eva': {'acao': 'criar'},
+        },
+        'skills': {'outra': {'acao': 'usar'}},
+      });
+      final local = const EscolhasDoModelo(equipeId: '').comNomeDePersona('eva', '');
+      final junta = local.completadaCom(doServidor);
+      expect(junta.paraJson(), {
+        'equipe': {'id': '', 'nome': 'Work 2'},
+        'personas': {
+          'nati': {'acao': 'usar', 'persona': 'nati'},
+          'eva': {'acao': 'criar', 'nome': ''},
+        },
+        'skills': {'outra': {'acao': 'usar'}},
+      });
+      expect(const EscolhasDoModelo().completadaCom(doServidor).paraJson(), doServidor.paraJson());
+    });
+
+    test('resumo diz quando foi exportado', () {
+      final r = ResumoDoModelo(tipo: 'equipe', nome: 'Work', exportadoEm: DateTime(2026, 11, 5, 9, 7));
+      expect(r.exportado(agora: DateTime(2026, 11, 5, 15)), 'exportado hoje, às 09:07');
+      expect(r.exportado(agora: DateTime(2026, 11, 8)), 'exportado 5/nov, às 09:07');
     });
   });
 }

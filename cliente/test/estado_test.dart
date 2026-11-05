@@ -4,6 +4,7 @@ import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
 import 'package:control_tower/estado/editor_de_workflow.dart';
 import 'package:control_tower/estado/espelho.dart';
+import 'package:control_tower/estado/importacao.dart';
 import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/painel.dart';
@@ -13,6 +14,7 @@ import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/estado/workflows.dart';
 import 'package:control_tower/nucleo/editor_de_workflow.dart';
 import 'package:control_tower/nucleo/espelho.dart';
+import 'package:control_tower/nucleo/importacao.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/painel.dart';
@@ -238,6 +240,142 @@ void main() {
       expect(enviados, hasLength(1));
       e.tratar(const EspelhoRecebido(salva, EstadoDoEspelho(conectado: true, abertos: 3, pendentes: 1)));
       expect([e.sincronizando, e.resumo], [false, 'desligado']);
+    });
+  });
+
+  group('EstadoImportacao', () {
+    PreviaDoModeloRecebida previa(Map<String, Object?> escolhas, {List<String> erros = const []}) =>
+        PreviaDoModeloRecebida(PreviaDoModelo.deJson({
+          'resumo': {'tipo': 'equipe', 'nome': 'Work', 'posicoes': 1},
+          'personasDoModelo': [
+            {'id': 'eva', 'nome': 'Eva', 'traz': true},
+          ],
+          'escolhas': escolhas,
+          'erros': erros,
+        }));
+    const padrao = {
+      'equipe': {'id': 'work-2', 'nome': 'Work 2'},
+      'personas': {
+        'eva': {'acao': 'criar'},
+      },
+    };
+    const daqui = ['poe', 'alfred'];
+
+    test('abrir pede a prévia sem escolhas e adota as do servidor', () {
+      final e = EstadoImportacao(enviar)..abrir('{"m":1}', arquivo: 'work.json');
+      expect(enviados, [
+        {'tipo': 'modelo-previa', 'conteudo': '{"m":1}'},
+      ]);
+      expect([e.aberta, e.pendente, e.podeImportar], [true, true, false]);
+      e.tratar(previa(padrao));
+      expect([e.pendente, e.podeImportar, e.escolhas.equipeId], [false, true, 'work-2']);
+    });
+
+    test('só uma prévia por vez: a mudança feita no meio sai depois, com as escolhas mais novas', () {
+      final e = EstadoImportacao(enviar)..abrir('{}');
+      e.tratar(previa(padrao));
+      e.mudar(e.escolhas.comOpcaoDePersona('eva', OpcaoDePersona.vaga, nomeNoModelo: 'Eva', personasDaqui: daqui));
+      e.mudar(e.escolhas.comOpcaoDePersona('eva', OpcaoDePersona.outra, nomeNoModelo: 'Eva', personasDaqui: daqui));
+      expect(enviados, hasLength(2));
+      expect([e.pendente, e.podeImportar], [true, false]);
+      e.tratar(previa({...padrao, 'personas': {'eva': {'acao': 'vaga'}}}));
+      expect(enviados, hasLength(3));
+      expect(((enviados.last['escolhas'] as Map)['personas'] as Map)['eva'], {'acao': 'usar', 'persona': 'poe'});
+      expect(e.escolhas.personas['eva']!.persona, 'poe');
+      expect(e.pendente, isTrue);
+      e.tratar(previa({...padrao, 'personas': {'eva': {'acao': 'usar', 'persona': 'poe'}}}));
+      expect([e.pendente, e.podeImportar, e.previa!.escolhas.personas['eva']!.persona], [false, true, 'poe']);
+    });
+
+    test('prévia sem pedido em voo é ignorada, e a de um arquivo anterior é descartada', () {
+      final e = EstadoImportacao(enviar)..tratar(previa(padrao));
+      expect(e.previa, isNull);
+      e.abrir('{"velho":1}');
+      e.abrir('{"novo":1}');
+      expect(enviados, hasLength(1));
+      e.tratar(previa(padrao));
+      expect(e.previa, isNull);
+      expect(enviados.last, {'tipo': 'modelo-previa', 'conteudo': '{"novo":1}'});
+      e.tratar(previa(padrao));
+      expect(e.previa, isNotNull);
+    });
+
+    test('campo de texto espera o fim da digitação para pedir a prévia', () async {
+      final e = EstadoImportacao(enviar, espera: const Duration(milliseconds: 20))..abrir('{}');
+      e.tratar(previa(padrao));
+      e
+        ..mudar(e.escolhas.comEquipe(id: 'w'), digitando: true)
+        ..mudar(e.escolhas.comEquipe(id: 'wo'), digitando: true)
+        ..mudar(e.escolhas.comEquipe(id: 'wor'), digitando: true);
+      expect([enviados.length, e.pendente], [1, true]);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(enviados, hasLength(2));
+      expect((enviados.last['escolhas'] as Map)['equipe'], {'id': 'wor', 'nome': 'Work 2'});
+      expect(e.escolhas.equipeId, 'wor');
+    });
+
+    test('com erro na prévia não importa; sem erro manda modelo-importar com as escolhas', () {
+      final e = EstadoImportacao(enviar, espera: Duration.zero)..abrir('{}', destino: 'casa');
+      e.tratar(previa(padrao, erros: ['equipe: id inválido']));
+      e.importar();
+      expect(enviados, hasLength(1));
+      e.mudar(e.escolhas.comEquipe(id: 'work-3'));
+      e.tratar(previa({...padrao, 'equipe': {'id': 'work-3', 'nome': 'Work 2'}}));
+      e.importar();
+      expect(enviados.last, {
+        'tipo': 'modelo-importar',
+        'conteudo': '{}',
+        'destino': 'casa',
+        'escolhas': {
+          'equipe': {'id': 'work-3', 'nome': 'Work 2'},
+          'personas': {
+            'eva': {'acao': 'criar'},
+          },
+        },
+      });
+      expect([e.importando, e.ocupado, e.podeImportar], [true, true, false]);
+      e.tratar(const ModeloImportado('work-3'));
+      expect([e.importando, e.importado?.equipe], [false, 'work-3']);
+    });
+
+    test('erro do servidor na importação volta para a tela', () {
+      final e = EstadoImportacao(enviar)..abrir('{}');
+      e
+        ..tratar(previa(padrao))
+        ..importar()
+        ..tratar(const Erro('já existe a pasta equipes/work-2'));
+      expect([e.importando, e.erro, e.podeImportar], [false, 'já existe a pasta equipes/work-2', true]);
+    });
+
+    test('reconectar repede a prévia e solta a importação presa', () {
+      final e = EstadoImportacao(enviar)..abrir('{}');
+      e.reconectou();
+      expect(enviados, hasLength(2));
+      e
+        ..tratar(previa(padrao))
+        ..importar();
+      expect(enviados, hasLength(3));
+      e.reconectou();
+      expect([e.importando, e.erro != null, enviados.last['tipo']], [false, true, 'modelo-previa']);
+      e.fechar();
+      expect([e.aberta, e.previa], [false, null]);
+    });
+
+    test('exportar devolve o modelo recebido ou falha com o erro do servidor', () async {
+      final e = EstadoImportacao(enviar);
+      final pedido = e.exportar('work', personas: false);
+      expect(enviados.last, {'tipo': 'modelo-exportar', 'equipe': 'work', 'personas': false, 'rotinas': true});
+      expect(e.ocupado, isTrue);
+      await expectLater(e.exportar('work'), throwsA(isA<FalhaDeExportacao>()));
+      e.tratar(const ModeloRecebido('work.ctmodelo.json', '{}'));
+      expect((await pedido).nome, 'work.ctmodelo.json');
+      expect(e.exportando, isFalse);
+      final falha = e.exportar('casa', workflow: 'revisao');
+      expect(enviados.last, {'tipo': 'modelo-exportar', 'equipe': 'casa', 'workflow': 'revisao'});
+      e.tratar(const Erro('o workflow revisao não existe na equipe Casa'));
+      await expectLater(falha, throwsA(predicate((f) => '$f' == 'o workflow revisao não existe na equipe Casa')));
+      online = false;
+      await expectLater(e.exportar('work'), throwsA(isA<FalhaDeExportacao>()));
     });
   });
 

@@ -11,6 +11,7 @@ import '../nucleo/tarefas.dart';
 import '../nucleo/workflows.dart';
 import 'canvas.dart';
 import 'equipes.dart' show confirmar, pedirTexto, quandoCurto;
+import 'importacao.dart';
 
 Color corDaFicha(String? status, ColorScheme cores) => switch (status) {
       'concluida' => const Color(0xFF4FAE7C),
@@ -108,12 +109,19 @@ class _ListaDeWorkflows extends StatelessWidget {
     return ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 24), children: [
       Row(children: [
         Expanded(child: Text('WORKFLOWS · ${equipe.nome.toUpperCase()}', style: rotulo)),
-        if (editar)
+        if (editar) ...[
+          OutlinedButton.icon(
+            onPressed: () => importarModelo(context, sala, destino: equipe.id),
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('Importar workflow…'),
+          ),
+          const SizedBox(width: 8),
           FilledButton.tonalIcon(
             onPressed: () => _novo(context),
             icon: const Icon(Icons.add),
             label: const Text('Novo workflow'),
           ),
+        ],
         IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: estado.carregar),
       ]),
       if (!estado.carregada)
@@ -194,6 +202,11 @@ class _CartaoDoWorkflow extends StatelessWidget {
                   onPressed: () => sala.editorDeWorkflow.duplicar(w, equipe, estado.daEquipe(equipe.id).map((x) => x.id)),
                   icon: const Icon(Icons.copy_outlined, size: 18),
                   label: const Text('Duplicar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => exportarWorkflowComoModelo(context, sala, equipe.id, w.id),
+                  icon: const Icon(Icons.ios_share, size: 18),
+                  label: const Text('Exportar como modelo…'),
                 ),
               ],
             ]),

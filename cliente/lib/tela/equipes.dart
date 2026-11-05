@@ -13,6 +13,7 @@ import '../nucleo/tarefas.dart';
 import 'canvas.dart';
 import 'comum.dart';
 import 'editor_de_workflow.dart';
+import 'importacao.dart';
 import 'rotinas.dart';
 import 'skills.dart';
 import 'workflows.dart';
@@ -48,7 +49,7 @@ class TelaEquipes extends StatelessWidget {
                 color: cores.surface,
                 child: SafeArea(
                   bottom: false,
-                  child: _Topo(estado: estado, skills: sala.skills, editar: editar, personasVisiveis: personasVisiveis),
+                  child: _Topo(sala: sala, estado: estado, skills: sala.skills, editar: editar, personasVisiveis: personasVisiveis),
                 ),
               ),
               BarraDePausa(estado: estado),
@@ -131,8 +132,15 @@ class TelaEquipes extends StatelessWidget {
 }
 
 class _Topo extends StatelessWidget {
-  const _Topo({required this.estado, required this.skills, required this.editar, required this.personasVisiveis});
+  const _Topo({
+    required this.sala,
+    required this.estado,
+    required this.skills,
+    required this.editar,
+    required this.personasVisiveis,
+  });
 
+  final Sala sala;
   final EstadoEquipes estado;
   final EstadoSkills skills;
   final bool editar;
@@ -247,6 +255,7 @@ class _Topo extends StatelessWidget {
               acao(Icons.extension_outlined, 'Skills', () => estado.alternarAba(AbaDaEquipe.skills),
                   marcado: estado.vendoSkills),
               acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
+              acao(Icons.file_open_outlined, 'Importar modelo…', () => importarModelo(context, sala)),
               if (estado.aba == AbaDaEquipe.organograma) ...[
                 acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
                 acao(Icons.account_tree_outlined, 'Organizar',
@@ -256,6 +265,12 @@ class _Topo extends StatelessWidget {
               acao(Icons.save_outlined, estado.alterada ? 'Salvar' : 'Salvo', estado.alterada && !estado.salvando ? estado.salvar : null,
                   principal: true),
               if (estado.alterada) acao(Icons.undo, 'Descartar', estado.descartar),
+              if (equipe != null && ids.contains(equipe.id))
+                IconButton(
+                  tooltip: 'Exportar como modelo…',
+                  onPressed: () => exportarEquipeComoModelo(context, sala, equipe, alterada: estado.alterada),
+                  icon: const Icon(Icons.ios_share),
+                ),
               if (equipe != null && equipe.id != 'casa')
                 IconButton(tooltip: 'Excluir equipe', onPressed: () => _excluirEquipe(context, equipe), icon: const Icon(Icons.delete_outline)),
                 ],
