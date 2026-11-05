@@ -64,16 +64,33 @@ class _TelaChatState extends State<TelaChat> {
               Expanded(child: _Mensagens(sala: widget.sala, aoCitar: _citar)),
               for (final p in _chat.itens.whereType<Permissao>())
                 if (p.situacao == SituacaoPermissao.pendente) _CartaoPermissao(chat: _chat, permissao: p),
-              _Compositor(
-                sala: widget.sala,
-                entrada: _entrada,
-                foco: _foco,
-                compacto: widget.compacto,
-                aoEnviar: _enviar,
-              ),
+              if (Perfil.todos.any((p) => p.chave == _chat.perfil))
+                _Compositor(
+                  sala: widget.sala,
+                  entrada: _entrada,
+                  foco: _foco,
+                  compacto: widget.compacto,
+                  aoEnviar: _enviar,
+                )
+              else
+                const _SoLeitura(),
             ],
           );
         },
+      );
+}
+
+class _SoLeitura extends StatelessWidget {
+  const _SoLeitura();
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text('Só leitura: a persona desta conversa foi excluída.',
+              textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ),
       );
 }
 
