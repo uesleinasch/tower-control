@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/main.dart' as app;
@@ -7,6 +8,7 @@ import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/sistema/servico_avisos.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ambiente.dart';
@@ -70,34 +72,51 @@ class EscutaDoApp {
   Future<void> parar() => _inscricao.cancel();
 }
 
-Future<(ActiveNotification, Notificacao)> avisoNaBandeja(
+Future<Notificacao?> _avisoDoServidor(bool Function(Notificacao n) qual) async {
+  final cliente = http.Client();
+  try {
+    final resposta = await cliente
+        .send(http.Request('GET', Uri.parse('${ambiente.servidor}/avisos?desde=0')))
+        .timeout(const Duration(seconds: 5));
+    final linhas = resposta.stream.transform(utf8.decoder).transform(const LineSplitter());
+    await for (final linha in linhas.timeout(const Duration(seconds: 2), onTimeout: (fim) => fim.close())) {
+      final aviso = lerLinha(linha);
+      if (aviso is Notificacao && qual(aviso)) return aviso;
+    }
+    return null;
+  } finally {
+    cliente.close();
+  }
+}
+
+Future<Notificacao> avisoNaBandeja(
   WidgetTester t,
   bool Function(Notificacao n) qual, {
   required String descricao,
   Duration prazo = prazoPadrao,
 }) async {
-  late (ActiveNotification, Notificacao) achado;
+  late Notificacao achado;
   await esperarAteAssincrono(t, () async {
+    final aviso = await _avisoDoServidor(qual);
+    if (aviso == null) throw StateError('o servidor ainda não publicou o aviso');
+    // No Android, o getActiveNotifications não devolve a payload: o aviso vem do servidor e a bandeja confere id e título.
     final ativas = await FlutterLocalNotificationsPlugin().getActiveNotifications();
-    for (final ativa in ativas) {
-      final n = Notificacao.daCarga(ativa.payload);
-      if (n != null && qual(n)) {
-        achado = (ativa, n);
-        return true;
-      }
+    if (ativas.any((a) => a.id == idDaNotificacao(aviso.id) && a.title == aviso.titulo)) {
+      achado = aviso;
+      return true;
     }
-    throw StateError('na bandeja: ${[for (final a in ativas) '${a.title} (${a.payload == null ? 'sem carga' : 'com carga'})']}');
+    throw StateError('aviso ${aviso.id} fora da bandeja: ${[for (final a in ativas) '${a.id} ${a.title}']}');
   }, descricao: descricao, prazo: prazo);
   return achado;
 }
 
-Future<void> tocarNoBotaoDoAviso(WidgetTester t, ActiveNotification ativa, String botao) async {
+Future<void> tocarNoBotaoDoAviso(WidgetTester t, Notificacao aviso, String botao) async {
   await agirEmSegundoPlano(
     NotificationResponse(
       notificationResponseType: NotificationResponseType.selectedNotificationAction,
-      id: ativa.id,
+      id: idDaNotificacao(aviso.id),
       actionId: botao,
-      payload: ativa.payload,
+      payload: aviso.paraCarga(),
     ),
   );
   await t.pump();

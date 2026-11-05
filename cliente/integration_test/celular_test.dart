@@ -26,11 +26,13 @@ Finder get _cartaoDePermissao => find.text('Alfred quer rodar um comando');
 Future<void> _abrirNova(WidgetTester t, String nome) async {
   final sala = salaDe(t);
   await tocar(t, find.widgetWithText(FloatingActionButton, 'Nova'), descricao: 'o botão Nova da lista');
-  await tocar(
+  final opcao = find.descendant(of: find.byType(BottomSheet), matching: find.widgetWithText(ListTile, nome));
+  await esperarAte(
     t,
-    find.descendant(of: find.byType(BottomSheet), matching: find.widgetWithText(ListTile, nome)),
-    descricao: '$nome na folha de nova conversa',
+    () => ModalRoute.of(t.element(opcao.first))!.animation!.isCompleted,
+    descricao: 'a folha de nova conversa aberta por inteiro',
   );
+  await tocar(t, opcao, descricao: '$nome na folha de nova conversa');
   await esperarAte(
     t,
     () => sala.tela == Tela.chat && sala.chat.conversaId == null && sala.chat.perfil != null,
@@ -277,7 +279,7 @@ void main() {
     await tocar(t, find.byIcon(Icons.arrow_back), descricao: 'a seta que fecha o chat');
     await esperarAte(t, () => sala.tela == Tela.conversas, descricao: 'a lista no lugar do chat');
 
-    final (ativa, aviso) = await avisoNaBandeja(
+    final aviso = await avisoNaBandeja(
       t,
       (n) => n.tipo == 'aprovacao' && n.conversaId == conversa,
       descricao: 'o aviso de aprovação da conversa na bandeja do celular',
@@ -287,7 +289,7 @@ void main() {
     expect(aviso.acoes, containsAll(['aprovar', 'negar']));
     expect(sala.tela, Tela.conversas);
 
-    await tocarNoBotaoDoAviso(t, ativa, 'aprovar');
+    await tocarNoBotaoDoAviso(t, aviso, 'aprovar');
     await esperarAte(
       t,
       () => escuta.resolvida(aviso.id) != null,
