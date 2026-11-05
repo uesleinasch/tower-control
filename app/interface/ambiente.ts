@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process"
+import { closeSync, openSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { join } from "node:path"
@@ -11,6 +13,7 @@ export interface Ambiente {
   porta: number
   modelo: string
   ticktask: string
+  pidDoServidor: number
   log: { servidor: string }
   encerrar(): Promise<void>
 }
@@ -57,6 +60,30 @@ async function esperarEnderecos(servidor: string, processo: { exitCode: number |
   throw new Error(`servidor de teste não respondeu em 30 s, veja ${log}`)
 }
 
+function grupoVivo(pid: number): boolean {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch (erro) {
+    if ((erro as NodeJS.ErrnoException).code === "ESRCH") return false
+    throw erro
+  }
+}
+
+// O claude do SDK herda o grupo do servidor e sobrevive a um SIGTERM só no bun:
+// o grupo inteiro precisa sumir antes do rm, senão ele recria a pasta.
+export async function encerrarGrupo(pid: number, prazoMs = 10_000): Promise<void> {
+  if (!grupoVivo(pid)) return
+  process.kill(-pid, "SIGTERM")
+  const limite = Date.now() + prazoMs
+  while (Date.now() < limite) {
+    if (!grupoVivo(pid)) return
+    await Bun.sleep(100)
+  }
+  process.kill(-pid, "SIGKILL")
+  while (grupoVivo(pid)) await Bun.sleep(50)
+}
+
 export async function subirAmbiente(pasta: string, aoIniciar?: (encerrar: () => Promise<void>) => void): Promise<Ambiente> {
   const dados = join(pasta, "dados")
   const claude = join(pasta, "claude")
@@ -71,10 +98,11 @@ export async function subirAmbiente(pasta: string, aoIniciar?: (encerrar: () => 
   await writeFile(configTickTask, JSON.stringify({ enabled: true, port: ticktask.porta, token: ticktask.token }))
 
   const logServidor = join(pasta, "servidor.log")
-  const processo = Bun.spawn(["bun", "run", "src/server.ts"], {
+  const descritorDoLog = openSync(logServidor, "a")
+  const processo = spawn("bun", ["run", "src/server.ts"], {
     cwd: RAIZ_DO_APP,
-    stdout: Bun.file(logServidor),
-    stderr: Bun.file(logServidor),
+    detached: true,
+    stdio: ["ignore", descritorDoLog, descritorDoLog],
     env: ambienteDoServidor(process.env, {
       CT_DADOS: dados,
       TOWER_PORTA: String(porta),
@@ -86,14 +114,14 @@ export async function subirAmbiente(pasta: string, aoIniciar?: (encerrar: () => 
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     }),
   })
+  closeSync(descritorDoLog)
 
   const servidor = `http://127.0.0.1:${porta}`
   let encerrado = false
   const encerrar = async () => {
     if (encerrado) return
     encerrado = true
-    processo.kill()
-    await processo.exited
+    await encerrarGrupo(processo.pid!)
     modelo.fechar()
     ticktask.fechar()
     await rm(pasta, { recursive: true, force: true })
@@ -117,6 +145,7 @@ export async function subirAmbiente(pasta: string, aoIniciar?: (encerrar: () => 
     modelo: `http://127.0.0.1:${modelo.porta}`,
     ticktask: `http://127.0.0.1:${ticktask.porta}`,
     log: { servidor: logServidor },
+    pidDoServidor: processo.pid!,
     encerrar,
   }
 }

@@ -28,6 +28,7 @@ await writeFile(
     ticktask: ambiente.ticktask,
     logServidor: ambiente.log.servidor,
     pid: process.pid,
+    pidDoServidor: ambiente.pidDoServidor,
   }),
 )
 
