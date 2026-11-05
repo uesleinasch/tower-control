@@ -224,8 +224,8 @@ recarrega de novo. A falha volta como erro na tela.
 Três tipos de cliente para servidor, todos em "cliente→servidor" e em "cliente→servidor só no
 desktop":
 
-- `modelo-exportar { tipo: "equipe", equipe, personas: bool, rotinas: bool }` ou
-  `{ tipo: "workflow", equipe, workflow }`;
+- `modelo-exportar { equipe, personas: bool, rotinas: bool }` exporta a equipe, e
+  `{ equipe, workflow }` exporta só aquele workflow;
 - `modelo-previa { conteudo, destino?, escolhas? }`, onde `conteudo` é o texto do arquivo e
   `destino` é a equipe, só para o modelo de workflow;
 - `modelo-importar { conteudo, destino?, escolhas }`.
@@ -233,7 +233,7 @@ desktop":
 Três tipos de servidor para cliente, só para o socket que pediu:
 
 - `modelo { nome, conteudo }`, com o nome de arquivo sugerido e o JSON do modelo;
-- `modelo-previa { resumo, escolhas, avisos, erros }`;
+- `modelo-previa { resumo, personasDoModelo, posicoesDoModelo, entra, escolhas, avisos, erros }`;
 - `modelo-importado { equipe, workflow? }`.
 
 O `protocolo.json` ganha a seção `"servidor→cliente só no desktop"`, e o teste da web desconta
@@ -302,3 +302,43 @@ Seguem a regra do projeto: núcleo puro no `bun test`, sem testar UI.
   leem a prévia e serializam as escolhas.
 
 A ida e volta na máquina real é do Ueslei, pelo desktop, no uso que fecha a fase.
+
+## Como ficou na implementação
+
+- **Exportar.** O `modelo-exportar` não tem campo de tipo, porque ele bateria com o `tipo` da
+  mensagem. Com `workflow` na mensagem sai o modelo de workflow; sem ele, sai o da equipe.
+- **Prévia.** Além do que a spec previa, devolve:
+  - `personasDoModelo`, uma lista de `{ id, nome, traz }`. `traz` diz se o modelo tem o perfil;
+    sem ele, `criar` não é possível.
+  - `posicoesDoModelo`, uma lista de `{ id, titulo }`, para a tela mostrar nomes no lugar de ids.
+  - `entra`, com as linhas prontas do que será criado.
+
+  Se o arquivo não for um modelo válido, a prévia volta com `resumo: null` e o motivo em `erros`.
+- **Personas e skills que o modelo não traz.** Uma persona citada numa posição sem ter vindo no
+  modelo (exportado sem personas, ou feito à mão) fica vaga se não existir aqui, e `criar` dá erro.
+  Uma skill que a equipe usa e que não veio no modelo é a daqui, sem pergunta. Se ela não existir
+  aqui, é erro. Só entram as skills da Casa usadas pelas posições e pelas personas criadas.
+- **Versão.** O workflow que vem com a equipe também volta para a versão 1.
+- **Desfazer.** `aplicar` devolve uma função que apaga o que foi criado e devolve a Casa. O
+  servidor chama essa função se a recarga dos workflows ou das rotinas falhar.
+- **Desktop.**
+  - O organograma não tem menu por equipe, então "Exportar como modelo…" virou um ícone na barra
+    de edição, ao lado da lixeira. "Importar modelo…" fica depois de "Nova equipe".
+  - Na lista de workflows, cada cartão ganhou "Exportar como modelo…", e a lista ganhou
+    "Importar workflow…".
+  - Os arquivos Dart são `importacao.dart` (`nucleo/`, `estado/` e `tela/`), porque
+    `nucleo/modelos.dart` já existia com outro conteúdo.
+- **Prévias fora de ordem.** O cliente deixa uma prévia em voo por vez. Uma mudança feita enquanto
+  ela espera vira um pedido novo assim que a resposta chega. Os campos de texto esperam 400 ms.
+- **Escolhas na tela.** O que o usuário escolhe fica nas escolhas locais. A prévia só preenche as
+  chaves que faltam, para não apagar o que está sendo digitado.
+- **Teste de ponta a ponta.** Rodou num servidor isolado, sobre uma cópia da pasta de dados real:
+  - a Casa foi exportada;
+  - a prévia sugeriu `casa-2` com as cinco personas daqui;
+  - o id `casa` foi recusado;
+  - um arquivo inválido foi recusado;
+  - a importação criou `casa-copia` num commit só;
+  - o workflow `initial` foi exportado;
+  - na Serafin, a prévia pediu a ligação da posição;
+  - na cópia, o workflow entrou como `initial-2`, ligado pelo id;
+  - reimportar no mesmo id foi recusado.
