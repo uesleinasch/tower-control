@@ -6,6 +6,15 @@ const POLITICA_ALFRED = `Uma ou duas linhas dizendo o que você fez ou o que enc
 recapitular o pedido, sem oferecer o próximo passo. Saída de comando só quando ela for
 a resposta; se for longa, resuma e diga onde está o resto.`
 
+// O systemPrompt próprio substitui o do Claude Code, e junto vai a orientação de usar skills:
+// sem esta linha o modelo vê a lista e muitas vezes não abre a skill.
+const INSTRUCAO_DE_SKILLS = `## Skills
+
+Quando a ferramenta Skill estiver disponível e o pedido casar com a descrição de uma skill da
+lista, abra essa skill com a ferramenta Skill antes de responder e siga o que ela manda, mesmo
+que o pedido não cite a skill. Naquele ponto, o que a skill diz vale mais que o seu jeito de
+sempre.`
+
 function instrucoesDaCasa(perfil: Perfil, escrita: string): string {
   return `# Instruções da casa (control-tower)
 
@@ -112,10 +121,10 @@ export async function montarSystemPrompt(
 ): Promise<string> {
   const perfilMd = await lerPerfil(raiz, perfil)
   if (comandos) {
-    return [perfilMd, instrucoesDoExecutor(perfil)].filter(Boolean).join("\n\n---\n\n")
+    return [perfilMd, instrucoesDoExecutor(perfil), INSTRUCAO_DE_SKILLS].filter(Boolean).join("\n\n---\n\n")
   }
   const legado = await memoriaLegada(raiz, perfil)
-  return [perfilMd, legado, instrucoesDaCasa(perfil, escrita)].filter(Boolean).join("\n\n---\n\n")
+  return [perfilMd, legado, instrucoesDaCasa(perfil, escrita), INSTRUCAO_DE_SKILLS].filter(Boolean).join("\n\n---\n\n")
 }
 
 export function mensagemDoConselheiro(texto: string, brief: string, lembrete: string): string {
@@ -145,7 +154,7 @@ export async function montarSystemPromptParecer(
   const perfilMd = await lerPerfil(raiz, perfil)
   const charter = await lerArquivo(join(raiz, "board", "charter.md"))
   const legado = await memoriaLegada(raiz, perfil)
-  return [perfilMd, legado, brief, charter, instrucoesParecer(perfil)]
+  return [perfilMd, legado, brief, charter, instrucoesParecer(perfil), INSTRUCAO_DE_SKILLS]
     .filter(Boolean)
     .join("\n\n---\n\n")
 }
