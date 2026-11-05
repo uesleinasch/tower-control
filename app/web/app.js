@@ -30,6 +30,9 @@ const estado = {
   filtroTipo: "",
   equipeDoPainel: "casa",
   rotinas: [],
+  workflows: { definicoes: [], fluxos: [] },
+  grafo: null,
+  caixaVista: null,
   equipes: [],
   equipeVista: "casa",
   equipeDasTarefas: "casa",
@@ -583,6 +586,7 @@ function abrirTarefas() {
   enviar({ tipo: "equipes" })
   enviar({ tipo: "tarefas" })
   enviar({ tipo: "rotinas" })
+  enviar({ tipo: "workflows" })
 }
 
 function tituloDasTarefas() {
@@ -793,6 +797,7 @@ function renderTarefa() {
     tarefa.dependeDe.length ? `Depende de: ${tarefa.dependeDe.map((d) => `#${d}`).join(", ")}` : "",
     tarefa.pai ? `Parte da tarefa #${tarefa.pai}` : "",
     tarefa.criadaPor?.startsWith("rotina:") ? `Criada pela rotina ${nomeDaRotina(tarefa.criadaPor)}` : "",
+    tarefa.fluxo ? linhaDoFluxo(tarefa) : "",
     tarefa.descricao,
   ]
   adicionarMensagem("perfil-msg documento", formatar(linhas.filter(Boolean).join("\n\n")))
@@ -900,6 +905,289 @@ const ALTURA_NO = 78
 const TOPO_DO_ORGANOGRAMA = 30
 const NOMES_CAPACIDADE = { arquivos: "arquivos", comandos: "comandos", ticktask: "TickTask", memoria: "memória", board: "board" }
 
+// ── workflows ──────────────────────────────────────────────────────
+
+const NOMES_DE_CAIXA = {
+  executar: "ação",
+  revisar: "revisão",
+  aprovar: "aprovação",
+  decisao_humana: "decisão",
+  condicao: "condição",
+  paralelo: "paralelo",
+  juncao: "junção",
+  laco: "laço",
+  espera: "espera",
+  board: "board",
+  fim: "fim",
+}
+const NOMES_DE_FLUXO = { esperando: "na fila", rodando: "rodando", concluido: "concluído", falhou: "falhou", cancelado: "cancelado" }
+const LARGURA_CAIXA = 200
+const ALTURA_CAIXA = 64
+
+function nomeDoWorkflow(equipe, id) {
+  return estado.workflows.definicoes.find((d) => d.equipe === equipe && d.id === id)?.nome ?? id
+}
+
+function linhaDoFluxo(tarefa) {
+  const fluxo = estado.workflows.fluxos.find((f) => f.id === tarefa.fluxo)
+  if (!fluxo) return `Faz parte da execução #${tarefa.fluxo} de um workflow`
+  const ficha = fluxo.fichas.find((f) => f.id === tarefa.ficha)
+  const no = fluxo.definicao.nos.find((n) => n.id === ficha?.no)
+  return `Caixa ${no?.titulo ?? no?.id ?? "?"} do workflow ${fluxo.definicao.nome} (execução #${fluxo.id})`
+}
+
+// Níveis: busca em profundidade a partir do início, sem as voltas de laço, e o maior caminho em cada caixa.
+function layoutDoWorkflow(w) {
+  const saida = new Map()
+  for (const a of w.arestas) saida.set(a.de, [...(saida.get(a.de) ?? []), a.para])
+  const avanco = []
+  const pilha = new Set()
+  const visto = new Set()
+  const visitar = (id) => {
+    visto.add(id)
+    pilha.add(id)
+    for (const prox of saida.get(id) ?? []) {
+      if (pilha.has(prox)) continue
+      avanco.push([id, prox])
+      if (!visto.has(prox)) visitar(prox)
+    }
+    pilha.delete(id)
+  }
+  if (w.nos.some((n) => n.id === w.inicio)) visitar(w.inicio)
+  const nivel = new Map([[w.inicio, 0]])
+  for (let mudou = true, voltas = 0; mudou && voltas < w.nos.length + 1; voltas++) {
+    mudou = false
+    for (const [de, para] of avanco) {
+      const n = (nivel.get(de) ?? 0) + 1
+      if (nivel.has(de) && n > (nivel.get(para) ?? -1)) {
+        nivel.set(para, n)
+        mudou = true
+      }
+    }
+  }
+  const extra = Math.max(0, ...nivel.values()) + 1
+  const porNivel = new Map()
+  const pontos = {}
+  for (const n of w.nos) {
+    if (w.layout?.[n.id]) {
+      pontos[n.id] = w.layout[n.id]
+      continue
+    }
+    const k = nivel.get(n.id) ?? extra
+    const i = porNivel.get(k) ?? 0
+    porNivel.set(k, i + 1)
+    pontos[n.id] = { x: k * 260, y: i * 120 }
+  }
+  return pontos
+}
+
+function svgDoWorkflow(w, fichas) {
+  const pontos = layoutDoWorkflow(w)
+  const xs = Object.values(pontos).map((p) => p.x)
+  const ys = Object.values(pontos).map((p) => p.y)
+  const minX = Math.min(...xs)
+  const minY = Math.min(...ys)
+  const ponto = (id) => ({ x: pontos[id].x - minX + 20, y: pontos[id].y - minY + 20 })
+  const largura = Math.max(...xs) - minX + LARGURA_CAIXA + 40
+  const altura = Math.max(...ys) - minY + ALTURA_CAIXA + 40
+  const statusDe = (id) => {
+    const delas = (fichas ?? []).filter((f) => f.no === id)
+    if (delas.some((f) => f.status === "esperando")) return "esperando"
+    if (delas.some((f) => f.status === "concluida")) return "concluida"
+    if (delas.some((f) => f.status === "cancelada")) return "cancelada"
+    return ""
+  }
+  const linhas = w.arestas.map((a) => {
+    const de = ponto(a.de)
+    const para = ponto(a.para)
+    const [x1, y1] = [de.x + LARGURA_CAIXA, de.y + ALTURA_CAIXA / 2]
+    const [x2, y2] = [para.x, para.y + ALTURA_CAIXA / 2]
+    const volta = x2 <= x1
+    const d = volta
+      ? `M${x1} ${y1} C${x1 + 60} ${y1 + 90} ${x2 - 60} ${y2 + 90} ${x2} ${y2}`
+      : `M${x1} ${y1} C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}`
+    const rotulo = a.quando
+      ? `<text class="quando" x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 6 + (volta ? 70 : 0)}">${escapar(a.quando)}</text>`
+      : ""
+    return `<path class="ligacao" d="${d}" />${rotulo}`
+  })
+  const caixas = w.nos.map((n) => {
+    const { x, y } = ponto(n.id)
+    const status = statusDe(n.id)
+    return (
+      `<g class="caixa ${status}${estado.caixaVista === n.id ? " escolhido" : ""}" data-caixa="${escapar(n.id)}" tabindex="0">` +
+      `<rect x="${x}" y="${y}" width="${LARGURA_CAIXA}" height="${ALTURA_CAIXA}" rx="10" />` +
+      `<text class="persona-no" x="${x + 12}" y="${y + 22}">${escapar(NOMES_DE_CAIXA[n.tipo] ?? n.tipo)}${n.id === w.inicio ? " · início" : ""}</text>` +
+      `<text class="titulo-no" x="${x + 12}" y="${y + 44}">${escapar((n.titulo ?? n.id).slice(0, 24))}</text>` +
+      `</g>`
+    )
+  })
+  return (
+    `<svg class="organograma grafo" viewBox="0 0 ${largura} ${altura}" width="${largura}" height="${altura}" role="img" aria-label="grafo do workflow ${escapar(w.nome)}">` +
+    linhas.join("") +
+    caixas.join("") +
+    `</svg>`
+  )
+}
+
+function abrirGrafo(alvo) {
+  estado.grafo = alvo
+  estado.caixaVista = null
+  renderEquipes()
+  renderPainel()
+}
+
+function secaoDoGrafo() {
+  if (!estado.grafo) return []
+  const fluxo = estado.grafo.fluxo ? estado.workflows.fluxos.find((f) => f.id === estado.grafo.fluxo) : null
+  const w = fluxo?.definicao ?? estado.workflows.definicoes.find((d) => d.equipe === estado.grafo.equipe && d.id === estado.grafo.id)
+  if (!w) return []
+  const secao = document.createElement("section")
+  const titulo = tituloDeSecao(fluxo ? `${w.nome} · execução #${fluxo.id} · ${NOMES_DE_FLUXO[fluxo.status] ?? fluxo.status}` : `${w.nome} · versão ${w.versao}`)
+  const fechar = document.createElement("button")
+  fechar.className = "link-grafo"
+  fechar.textContent = "fechar"
+  fechar.onclick = () => abrirGrafo(null)
+  titulo.appendChild(fechar)
+  secao.appendChild(titulo)
+  const rolagem = document.createElement("div")
+  rolagem.className = "organograma-rolagem"
+  rolagem.innerHTML = svgDoWorkflow(w, fluxo?.fichas)
+  rolagem.onclick = (ev) => {
+    const caixa = ev.target.closest("[data-caixa]")
+    if (!caixa) return
+    estado.caixaVista = estado.caixaVista === caixa.dataset.caixa ? null : caixa.dataset.caixa
+    renderEquipes()
+    renderPainel()
+  }
+  secao.appendChild(rolagem)
+  if (fluxo?.erro || fluxo?.resultado) secao.appendChild(vazio(fluxo.erro ?? fluxo.resultado))
+  const no = w.nos.find((n) => n.id === estado.caixaVista)
+  if (no) {
+    const fichas = (fluxo?.fichas ?? []).filter((f) => f.no === no.id)
+    const linhas = [`<strong>${escapar(no.titulo ?? no.id)}</strong> <small>${escapar(NOMES_DE_CAIXA[no.tipo] ?? no.tipo)}</small>`]
+    for (const f of fichas) {
+      const saidas = Object.entries(f.saidas ?? {}).map(([k, v]) => `${k}: ${typeof v === "boolean" ? (v ? "sim" : "não") : v}`)
+      linhas.push(`#${f.id} ${escapar(f.status)}${f.tarefa ? ` · tarefa #${f.tarefa}` : ""}${saidas.length ? `<br>${escapar(saidas.join(" · ")).slice(0, 600)}` : ""}`)
+    }
+    if (!fichas.length && fluxo) linhas.push("<small>ainda não passou por aqui</small>")
+    const div = document.createElement("div")
+    div.className = "msg perfil-msg documento"
+    div.innerHTML = linhas.join("<br>")
+    secao.appendChild(div)
+  }
+  return [secao]
+}
+
+function formularioDeEntrada(w, equipe) {
+  const form = document.createElement("form")
+  form.className = "nova-tarefa"
+  const campos = Object.entries(w.entrada ?? {})
+  form.innerHTML =
+    campos
+      .map(([campo, tipo]) => {
+        const nome = escapar(campo)
+        if (tipo === "booleano") return `<label><input type="checkbox" name="${nome}" /> ${nome}</label>`
+        if (tipo === "numero") return `<input name="${nome}" type="number" step="any" placeholder="${nome}" required />`
+        if (typeof tipo === "object") {
+          return `<select name="${nome}" aria-label="${nome}">${tipo.escolha.map((o) => `<option>${escapar(o)}</option>`).join("")}</select>`
+        }
+        return `<input name="${nome}" placeholder="${nome}" required />`
+      })
+      .join("") + `<button type="submit">Iniciar ${escapar(w.nome)}</button>`
+  form.onsubmit = (ev) => {
+    ev.preventDefault()
+    const entrada = {}
+    for (const [campo, tipo] of campos) {
+      const elemento = form.elements.namedItem(campo)
+      entrada[campo] = tipo === "booleano" ? elemento.checked : tipo === "numero" ? Number(elemento.value) : elemento.value
+    }
+    enviar({ tipo: "workflow-iniciar", equipe, id: w.id, entrada })
+    estado.iniciando = null
+    renderEquipes()
+  }
+  return form
+}
+
+function secaoDeWorkflows(equipe) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao("Workflows"))
+  const lista = estado.workflows.definicoes.filter((d) => d.equipe === equipe.id)
+  if (!lista.length) {
+    secao.appendChild(vazio("Nenhum workflow nesta equipe."))
+    return secao
+  }
+  const ul = document.createElement("ul")
+  ul.className = "lista-decisoes"
+  for (const w of lista) {
+    const abertos = estado.workflows.fluxos.filter((f) => f.equipe === equipe.id && f.workflow === w.id && (f.status === "rodando" || f.status === "esperando"))
+    const li = document.createElement("li")
+    li.innerHTML =
+      `<span class="status a_fazer">v${w.versao}</span>${escapar(w.nome)}` +
+      `<small>${w.nos.length} caixas${abertos.length ? ` · ${abertos.length} rodando` : ""}</small>`
+    const acoes = document.createElement("div")
+    acoes.className = "acoes-tarefa"
+    const iniciar = document.createElement("button")
+    iniciar.textContent = "Iniciar"
+    iniciar.onclick = () => {
+      if (!Object.keys(w.entrada ?? {}).length) {
+        enviar({ tipo: "workflow-iniciar", equipe: equipe.id, id: w.id, entrada: {} })
+        return
+      }
+      estado.iniciando = estado.iniciando === w.id ? null : w.id
+      renderEquipes()
+    }
+    const ver = document.createElement("button")
+    ver.textContent = "Ver"
+    ver.onclick = () => abrirGrafo({ equipe: equipe.id, id: w.id })
+    acoes.append(iniciar, ver)
+    for (const f of abertos) {
+      const fluxo = document.createElement("button")
+      fluxo.textContent = `#${f.id}`
+      fluxo.onclick = () => abrirGrafo({ fluxo: f.id })
+      acoes.appendChild(fluxo)
+    }
+    li.appendChild(acoes)
+    if (estado.iniciando === w.id) li.appendChild(formularioDeEntrada(w, equipe.id))
+    ul.appendChild(li)
+  }
+  secao.appendChild(ul)
+  return secao
+}
+
+function secaoDeFluxosDoPainel(fluxos) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao("Workflows"))
+  if (!fluxos.length) {
+    secao.appendChild(vazio("Nenhum workflow rodando."))
+    return secao
+  }
+  const ul = document.createElement("ul")
+  ul.className = "lista-decisoes"
+  for (const f of fluxos) {
+    const li = document.createElement("li")
+    const ativas = f.ativas.map((a) => `${a.titulo} (${NOMES_DE_CAIXA[a.tipo] ?? a.tipo})`).join(", ")
+    li.innerHTML = `<span class="status em_andamento">#${f.fluxo}</span>${escapar(f.nome)}<small>desde ${quando(f.desde)}${ativas ? ` · em ${escapar(ativas)}` : ""}</small>`
+    const acoes = document.createElement("div")
+    acoes.className = "acoes-tarefa"
+    const ver = document.createElement("button")
+    ver.textContent = "Ver"
+    ver.onclick = () => abrirGrafo({ fluxo: f.fluxo })
+    const cancelar = document.createElement("button")
+    cancelar.textContent = "Cancelar"
+    cancelar.onclick = () => {
+      if (confirm(`Cancelar a execução #${f.fluxo} de ${f.nome}? As tarefas abertas dela são canceladas.`)) {
+        enviar({ tipo: "workflow-cancelar", execucao: f.fluxo })
+      }
+    }
+    acoes.append(ver, cancelar)
+    li.appendChild(acoes)
+    ul.appendChild(li)
+  }
+  secao.appendChild(ul)
+  return secao
+}
+
 // ── painel ─────────────────────────────────────────────────────────
 
 const NOMES_ESTADO_PERSONA = { rodando: "rodando", na_fila: "na fila", ocioso: "ociosa", pausada: "pausada", sem_orcamento: "sem orçamento" }
@@ -921,6 +1209,7 @@ const ROTULO_ACAO = {
   concluir: "Concluir",
   liberar: "Liberar",
   abrir: "Abrir",
+  sinalizar: "Sinalizar",
 }
 
 function abrirPainel() {
@@ -935,6 +1224,7 @@ function abrirPainel() {
   informarVisivel()
   enviar({ tipo: "equipes" })
   enviar({ tipo: "personas" })
+  enviar({ tipo: "workflows" })
   renderPainel()
 }
 
@@ -967,8 +1257,12 @@ function agirNoPainel(item, acao) {
     case "liberar":
       enviar({ tipo: "tarefa-status", id: item.tarefaId, status: "a_fazer" })
       return
+    case "sinalizar":
+      enviar({ tipo: "workflow-sinal", execucao: item.fluxo, ficha: item.ficha })
+      return
     case "abrir":
       if (item.tarefaId) abrirTarefaDoPainel(item.tarefaId, item.equipe)
+      else if (item.fluxo) abrirGrafo({ fluxo: item.fluxo })
       else {
         if (item.equipe) estado.equipeVista = item.equipe
         abrirEquipes()
@@ -998,6 +1292,19 @@ function secaoDeAtencao(itens) {
     const acoes = document.createElement("div")
     acoes.className = "acoes-tarefa"
     for (const acao of item.acoes) {
+      if (acao === "decidir") {
+        for (const opcao of item.opcoes ?? []) {
+          const botao = document.createElement("button")
+          botao.textContent = opcao
+          botao.onclick = () => {
+            const comentario = prompt(`Comentário para "${opcao}" (opcional)`) ?? null
+            if (comentario === null) return
+            enviar({ tipo: "workflow-decidir", execucao: item.fluxo, ficha: item.ficha, opcao, comentario: comentario.trim() })
+          }
+          acoes.appendChild(botao)
+        }
+        continue
+      }
       const botao = document.createElement("button")
       botao.textContent = ROTULO_ACAO[acao] ?? acao
       if (acao === "aprovar" || acao === "aprovar-plano") botao.className = "aprovar-plano"
@@ -1164,6 +1471,8 @@ function renderPainel() {
   const gasto = `Mês ${r.gasto.mes}: ${dinheiro(r.gasto.tarefasUSD)} em tarefas · ${dinheiro(r.gasto.totalUSD)} no total · ${formatarTokens(r.gasto.tokensTotal)}`
   el.mensagens.append(
     secaoDeAtencao(r.atencao),
+    ...secaoDoGrafo(),
+    secaoDeFluxosDoPainel(r.workflows ?? []),
     secaoAgora(r.agora),
     secaoDeCartoes(r.personas),
     Object.assign(document.createElement("small"), { className: "painel-vazio", textContent: gasto }),
@@ -1187,6 +1496,7 @@ function abrirEquipes() {
   enviar({ tipo: "personas" })
   enviar({ tipo: "tarefas" })
   enviar({ tipo: "rotinas" })
+  enviar({ tipo: "workflows" })
   renderEquipes()
 }
 
@@ -1400,7 +1710,8 @@ function secaoDeRotinas(equipe) {
   ul.className = "lista-decisoes lista-rotinas"
   for (const r of lista) {
     const li = document.createElement("li")
-    const gatilhos = [r.cron ? `cron ${r.cron}` : "", r.webhook ? "webhook" : ""].filter(Boolean).join(" · ") || "só manual"
+    const destino = r.workflow ? `inicia ${nomeDoWorkflow(r.equipe, r.workflow)} · ` : ""
+    const gatilhos = destino + ([r.cron ? `cron ${r.cron}` : "", r.webhook ? "webhook" : ""].filter(Boolean).join(" · ") || "só manual")
     const proximo = r.ativa && r.proximo ? ` · próximo ${quando(r.proximo)}` : ""
     li.innerHTML =
       `<span class="status ${r.ativa ? "a_fazer" : "cancelada"}">${r.ativa ? "ativa" : "parada"}</span>${escapar(r.nome)}` +
@@ -1453,6 +1764,8 @@ function renderEquipes() {
     const vista = equipe.posicoes.find((p) => p.id === estado.posicaoVista)
     if (vista) el.mensagens.appendChild(detalheDaPosicao(equipe, vista))
     el.mensagens.appendChild(secaoDeRotinas(equipe))
+    el.mensagens.appendChild(secaoDeWorkflows(equipe))
+    for (const no of secaoDoGrafo()) el.mensagens.appendChild(no)
   }
   el.mensagens.appendChild(secaoDePersonas())
 }
@@ -1700,6 +2013,13 @@ function tratar(msg) {
     case "painel": {
       estado.painel = msg.retrato
       renderPainel()
+      break
+    }
+    case "workflows": {
+      estado.workflows = { definicoes: msg.definicoes ?? [], fluxos: msg.fluxos ?? [] }
+      renderEquipes()
+      renderPainel()
+      if (estado.modo === "tarefas" && estado.detalhe) renderTarefa()
       break
     }
     case "rotinas": {

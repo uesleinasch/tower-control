@@ -33,7 +33,14 @@
     "rotina-salvar",
     "rotina-excluir",
     "rotina-token",
-    "painel"
+    "painel",
+    "workflows",
+    "workflow-iniciar",
+    "workflow-decidir",
+    "workflow-sinal",
+    "workflow-cancelar",
+    "workflow-salvar",
+    "workflow-excluir"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -60,13 +67,16 @@
     "personas",
     "orquestra",
     "rotinas",
-    "painel"
+    "painel",
+    "workflows"
   ],
   "cliente→servidor só no desktop": [
     "equipe-salvar",
     "equipe-excluir",
     "rotina-salvar",
     "rotina-excluir",
-    "rotina-token"
+    "rotina-token",
+    "workflow-salvar",
+    "workflow-excluir"
   ]
 }
