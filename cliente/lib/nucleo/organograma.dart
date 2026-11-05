@@ -338,6 +338,18 @@ Vista ajustarVista(EquipeResumo e, double largura, double altura) {
     if (c.x + larguraDoCartao > maxX) maxX = c.x + larguraDoCartao;
     if (c.y + alturaDoCartao + 20 > maxY) maxY = c.y + alturaDoCartao + 20;
   }
+  return vistaQueMostra(minX: minX, minY: minY, maxX: maxX, maxY: maxY, largura: largura, altura: altura);
+}
+
+Vista vistaQueMostra({
+  required double minX,
+  required double minY,
+  required double maxX,
+  required double maxY,
+  required double largura,
+  required double altura,
+}) {
+  if (largura <= 0 || altura <= 0 || maxX <= minX || maxY <= minY) return (dx: 0, dy: 0, escala: 1);
   const folga = 32.0;
   final escala = [
     (largura - 2 * folga) / (maxX - minX),

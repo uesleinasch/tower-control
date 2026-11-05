@@ -21,7 +21,7 @@ class PainelDeRotinas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: sala.rotinas,
+        listenable: Listenable.merge([sala.rotinas, sala.workflows]),
         builder: (context, _) {
           final estado = sala.rotinas;
           final lista = _ListaDeRotinas(sala: sala, equipe: equipe, editar: editar);
@@ -151,7 +151,12 @@ class _CartaoDaRotina extends StatelessWidget {
             ]),
             Text(
               [
-                if (posicao != null) posicao.rotulo else if (!r.sistema) '${r.posicao} (sumiu)',
+                if (r.iniciaWorkflow)
+                  'inicia ${sala.workflows.nomeDoWorkflow(equipe.id, r.workflow)}'
+                else if (posicao != null)
+                  posicao.rotulo
+                else if (!r.sistema)
+                  '${r.posicao} (sumiu)',
                 descricaoDoGatilho(r),
               ].join(' · '),
               style: pequeno,
@@ -323,7 +328,11 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
     final pequeno = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
     final rotina = r;
     final salva = estado.salva(equipe.id, rotina.id);
-    final erros = estado.errosDoRascunho(equipe);
+    final definicoes = widget.sala.workflows.definicoes;
+    final erros = estado.errosDoRascunho(equipe, workflows: definicoes);
+    final possiveis = workflowsParaRotina(definicoes, equipe.id);
+    final porWorkflow = rotina.iniciaWorkflow;
+    final escolhido = definicoes.where((w) => w.equipe == equipe.id && w.id == rotina.workflow).firstOrNull;
     final proximos = rotina.cron.trim().isEmpty ? const <DateTime>[] : proximosDoCron(rotina.cron, DateTime.now());
     final previa = tituloDaTarefa(rotina.titulo, proximos.firstOrNull ?? DateTime.now());
     final posicaoValida = equipe.posicao(rotina.posicao) != null;
@@ -342,39 +351,77 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
         decoration: InputDecoration(labelText: 'Nome', helperText: 'id: ${rotina.id}${estado.nova ? ' (fixo depois de salvar)' : ''}'),
         onChanged: (v) => estado.mudar((x) => x.copiar(nome: v)),
       ),
-      const SizedBox(height: 12),
-      DropdownButtonFormField<String>(
-        initialValue: posicaoValida ? rotina.posicao : null,
-        isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Posição que recebe a tarefa'),
-        items: [for (final p in equipe.posicoes) DropdownMenuItem(value: p.id, child: Text(p.rotulo, overflow: TextOverflow.ellipsis))],
-        onChanged: (v) => v == null ? null : estado.mudar((x) => x.copiar(posicao: v)),
+      secao('Destino'),
+      SegmentedButton<bool>(
+        segments: [
+          const ButtonSegment(value: false, label: Text('Criar tarefa'), icon: Icon(Icons.task_alt)),
+          ButtonSegment(
+            value: true,
+            label: const Text('Iniciar workflow'),
+            icon: const Icon(Icons.alt_route),
+            enabled: porWorkflow || possiveis.isNotEmpty,
+          ),
+        ],
+        selected: {porWorkflow},
+        onSelectionChanged: (v) => estado.mudar((x) => x.copiar(workflow: v.first ? possiveis.first.id : '')),
       ),
-      secao('Tarefa'),
-      TextField(
-        controller: _titulo,
-        maxLength: 200,
-        decoration: InputDecoration(
-          labelText: 'Título',
-          helperText: rotina.titulo.trim().isEmpty ? 'aceita {data} e {hora}' : 'prévia: $previa',
-          counterText: '',
+      if (!porWorkflow && possiveis.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('Nenhum workflow desta equipe pode ser iniciado por rotina (a entrada precisa ser vazia ou só "dados" em texto).',
+              style: pequeno),
         ),
-        onChanged: (v) => estado.mudar((x) => x.copiar(titulo: v)),
-      ),
-      const SizedBox(height: 8),
-      TextField(
-        controller: _descricao,
-        minLines: 2,
-        maxLines: 8,
-        decoration: const InputDecoration(labelText: 'Descrição'),
-        onChanged: (v) => estado.mudar((x) => x.copiar(descricao: v)),
-      ),
-      const SizedBox(height: 8),
-      TextField(
-        controller: _porque,
-        decoration: const InputDecoration(labelText: 'Por quê'),
-        onChanged: (v) => estado.mudar((x) => x.copiar(porque: v)),
-      ),
+      const SizedBox(height: 12),
+      if (porWorkflow)
+        DropdownButtonFormField<String>(
+          initialValue: escolhido?.id,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: 'Workflow',
+            helperText: escolhido != null && escolhido.entrada.containsKey('dados')
+                ? 'o corpo do webhook vai em entrada.dados'
+                : null,
+          ),
+          items: [
+            for (final w in [...possiveis, if (escolhido != null && !possiveis.contains(escolhido)) escolhido])
+              DropdownMenuItem(value: w.id, child: Text(w.nome, overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) => v == null ? null : estado.mudar((x) => x.copiar(workflow: v)),
+        )
+      else ...[
+        DropdownButtonFormField<String>(
+          initialValue: posicaoValida ? rotina.posicao : null,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Posição que recebe a tarefa'),
+          items: [for (final p in equipe.posicoes) DropdownMenuItem(value: p.id, child: Text(p.rotulo, overflow: TextOverflow.ellipsis))],
+          onChanged: (v) => v == null ? null : estado.mudar((x) => x.copiar(posicao: v)),
+        ),
+        secao('Tarefa'),
+        TextField(
+          controller: _titulo,
+          maxLength: 200,
+          decoration: InputDecoration(
+            labelText: 'Título',
+            helperText: rotina.titulo.trim().isEmpty ? 'aceita {data} e {hora}' : 'prévia: $previa',
+            counterText: '',
+          ),
+          onChanged: (v) => estado.mudar((x) => x.copiar(titulo: v)),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _descricao,
+          minLines: 2,
+          maxLines: 8,
+          decoration: const InputDecoration(labelText: 'Descrição'),
+          onChanged: (v) => estado.mudar((x) => x.copiar(descricao: v)),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _porque,
+          decoration: const InputDecoration(labelText: 'Por quê'),
+          onChanged: (v) => estado.mudar((x) => x.copiar(porque: v)),
+        ),
+      ],
       secao('Gatilho'),
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         SizedBox(
@@ -447,7 +494,9 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
       DropdownButtonFormField<String>(
         initialValue: concorrencias.containsKey(rotina.concorrencia) ? rotina.concorrencia : 'pular',
         isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Com a tarefa anterior ainda aberta'),
+        decoration: InputDecoration(
+          labelText: porWorkflow ? 'Com o workflow anterior ainda aberto' : 'Com a tarefa anterior ainda aberta',
+        ),
         items: [for (final MapEntry(:key, :value) in concorrencias.entries) DropdownMenuItem(value: key, child: Text(value))],
         onChanged: (v) => v == null ? null : estado.mudar((x) => x.copiar(concorrencia: v)),
       ),
@@ -479,7 +528,7 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [
         FilledButton.icon(
-          onPressed: erros.isEmpty && !estado.salvando ? () => estado.salvar(equipe) : null,
+          onPressed: erros.isEmpty && !estado.salvando ? () => estado.salvar(equipe, workflows: definicoes) : null,
           icon: const Icon(Icons.save_outlined),
           label: Text(estado.salvando ? 'Salvando…' : 'Salvar'),
         ),

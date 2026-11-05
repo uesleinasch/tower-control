@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../nucleo/protocolo.dart';
 import '../nucleo/rotinas.dart';
 import '../nucleo/tarefas.dart';
+import '../nucleo/workflows.dart';
 import 'chat.dart';
 
 class EstadoRotinas extends ChangeNotifier {
@@ -78,15 +79,15 @@ class EstadoRotinas extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<String> errosDoRascunho(EquipeResumo equipe) {
+  List<String> errosDoRascunho(EquipeResumo equipe, {List<Workflow> workflows = const []}) {
     final r = rascunho;
-    return r == null ? const [] : errosDaRotina(r, equipe);
+    return r == null ? const [] : errosDaRotina(r, equipe, workflows: workflows);
   }
 
-  void salvar(EquipeResumo equipe) {
+  void salvar(EquipeResumo equipe, {List<Workflow> workflows = const []}) {
     final r = rascunho;
     if (r == null || salvando || equipe.id != equipeDoRascunho) return;
-    final erros = errosDaRotina(r, equipe);
+    final erros = errosDaRotina(r, equipe, workflows: workflows);
     if (erros.isNotEmpty) {
       erro = erros.join('\n');
       notifyListeners();

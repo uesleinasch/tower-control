@@ -36,8 +36,8 @@ class EstadoPainel extends ChangeNotifier {
     if (_enviar(AssinarPainel(ativo: aberto))) _informado = aberto;
   }
 
-  EfeitoDaAcao? agir(ItemDeAtencao item, String acao, {String? texto}) {
-    final efeito = efeitoDaAcao(item, acao, texto: texto);
+  EfeitoDaAcao? agir(ItemDeAtencao item, String acao, {String? texto, String? opcao}) {
+    final efeito = efeitoDaAcao(item, acao, texto: texto, opcao: opcao);
     if (efeito is MandarSaida) _enviar(efeito.saida);
     return efeito;
   }

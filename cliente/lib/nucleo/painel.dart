@@ -27,6 +27,9 @@ class ItemDeAtencao {
     this.persona,
     this.equipe,
     this.rotina,
+    this.fluxo,
+    this.ficha,
+    this.opcoes = const [],
   });
 
   final String tipo;
@@ -40,6 +43,9 @@ class ItemDeAtencao {
   final String? persona;
   final String? equipe;
   final String? rotina;
+  final int? fluxo;
+  final int? ficha;
+  final List<String> opcoes;
 
   factory ItemDeAtencao.deJson(Map<String, dynamic> j) => ItemDeAtencao(
     tipo: _texto(j['tipo']),
@@ -56,7 +62,54 @@ class ItemDeAtencao {
     persona: _textoOuNulo(j['persona']),
     equipe: _textoOuNulo(j['equipe']),
     rotina: _textoOuNulo(j['rotina']),
+    fluxo: _inteiroOuNulo(j['fluxo']),
+    ficha: _inteiroOuNulo(j['ficha']),
+    opcoes: [
+      for (final o in (j['opcoes'] is List ? j['opcoes'] as List : const []))
+        if (o is String) o,
+    ],
   );
+}
+
+typedef CaixaAtiva = ({int ficha, String no, String titulo, String tipo, int? tarefaId});
+
+class FluxoNoPainel {
+  const FluxoNoPainel({
+    required this.fluxo,
+    this.equipe = '',
+    this.workflow = '',
+    this.nome = '',
+    this.desde,
+    this.ativas = const [],
+  });
+
+  final int fluxo;
+  final String equipe;
+  final String workflow;
+  final String nome;
+  final DateTime? desde;
+  final List<CaixaAtiva> ativas;
+
+  factory FluxoNoPainel.deJson(Map<String, dynamic> j) {
+    final workflow = _texto(j['workflow']);
+    return FluxoNoPainel(
+      fluxo: _inteiro(j['fluxo']),
+      equipe: _texto(j['equipe']),
+      workflow: workflow,
+      nome: _textoOuNulo(j['nome']) ?? workflow,
+      desde: _data(j['desde']),
+      ativas: _lista(
+        j['ativas'],
+        (a) => (
+          ficha: _inteiro(a['ficha']),
+          no: _texto(a['no']),
+          titulo: _textoOuNulo(a['titulo']) ?? _texto(a['no']),
+          tipo: _texto(a['tipo']),
+          tarefaId: _inteiroOuNulo(a['tarefaId']),
+        ),
+      ),
+    );
+  }
 }
 
 typedef UltimoEvento = ({String tipo, String conteudo, DateTime? em});
@@ -235,6 +288,7 @@ class Retrato {
     this.gasto = const GastoDoMes(),
     this.proximasRotinas = const [],
     this.atividade = const [],
+    this.workflows = const [],
   });
 
   final DateTime? em;
@@ -247,6 +301,7 @@ class Retrato {
   final GastoDoMes gasto;
   final List<ProximaRotina> proximasRotinas;
   final List<ItemDeAtividade> atividade;
+  final List<FluxoNoPainel> workflows;
 
   CartaoDePersona? persona(String id) => personas.where((p) => p.id == id).firstOrNull;
 
@@ -273,6 +328,7 @@ class Retrato {
             (equipe: _texto(r['equipe']), id: _texto(r['id']), nome: _texto(r['nome']), proximo: _data(r['proximo'])),
       ),
       atividade: _lista(j['atividade'], ItemDeAtividade.deJson),
+      workflows: _lista(j['workflows'], FluxoNoPainel.deJson),
     );
   }
 }
@@ -280,9 +336,12 @@ class Retrato {
 const rotulosDeAtencao = {
   'comando': 'comando',
   'aprovacao': 'aprovação',
+  'decisao': 'decisão',
   'plano': 'plano',
   'entrega': 'entrega',
+  'sinal': 'sinal',
   'bloqueada': 'bloqueada',
+  'atrasada': 'atrasada',
   'backlog': 'backlog',
   'orcamento': 'orçamento',
   'rotina': 'rotina',
@@ -297,6 +356,8 @@ const rotulosDeAcao = {
   'concluir': 'Concluir',
   'liberar': 'Liberar',
   'abrir': 'Abrir',
+  'decidir': 'Decidir',
+  'sinalizar': 'Sinalizar',
 };
 
 const rotulosDeEstado = {
@@ -338,15 +399,28 @@ class IrParaEquipe extends EfeitoDaAcao {
   final String? equipe;
 }
 
+class IrParaFluxo extends EfeitoDaAcao {
+  const IrParaFluxo(this.fluxo, this.equipe);
+  final int fluxo;
+  final String? equipe;
+}
+
 class IrParaRotinas extends EfeitoDaAcao {
   const IrParaRotinas(this.equipe);
   final String? equipe;
 }
 
-EfeitoDaAcao? efeitoDaAcao(ItemDeAtencao item, String acao, {String? texto}) {
+EfeitoDaAcao? efeitoDaAcao(ItemDeAtencao item, String acao, {String? texto, String? opcao}) {
   final tarefa = item.tarefaId;
   final permissao = item.permissaoId;
+  final fluxo = item.fluxo;
+  final ficha = item.ficha;
+  final comentario = texto?.trim() ?? '';
   return switch (acao) {
+    'decidir' when fluxo != null && ficha != null && opcao != null && item.opcoes.contains(opcao) => MandarSaida(
+      DecidirWorkflow(fluxo, ficha, opcao, comentario: comentario.isEmpty ? null : comentario),
+    ),
+    'sinalizar' when fluxo != null && ficha != null => MandarSaida(SinalizarWorkflow(fluxo, ficha)),
     'aprovar' when item.tipo == 'comando' && permissao != null => MandarSaida(
       RespostaDePermissao(permissao, permitido: true),
     ),
@@ -362,6 +436,7 @@ EfeitoDaAcao? efeitoDaAcao(ItemDeAtencao item, String acao, {String? texto}) {
     'liberar' when tarefa != null => MandarSaida(MudarStatusTarefa(tarefa, 'a_fazer')),
     'abrir' when item.tipo == 'rotina' => IrParaRotinas(item.equipe),
     'abrir' when tarefa != null => IrParaTarefa(tarefa),
+    'abrir' when fluxo != null => IrParaFluxo(fluxo, item.equipe),
     'abrir' when item.tipo == 'orcamento' || item.tipo == 'vaga' => IrParaEquipe(item.equipe),
     _ => null,
   };

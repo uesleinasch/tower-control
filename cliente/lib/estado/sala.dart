@@ -14,6 +14,7 @@ import 'presenca.dart';
 import 'rotinas.dart';
 import 'servidor.dart';
 import 'tarefas.dart';
+import 'workflows.dart';
 
 enum Tela { conversas, chat, board, decisoes, painel, tarefas, equipes, configuracao }
 
@@ -27,6 +28,7 @@ class Sala extends ChangeNotifier {
     equipes = EstadoEquipes(canal.enviar);
     rotinas = EstadoRotinas(canal.enviar);
     painel = EstadoPainel(canal.enviar);
+    workflows = EstadoWorkflows(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -45,6 +47,7 @@ class Sala extends ChangeNotifier {
   late final EstadoEquipes equipes;
   late final EstadoRotinas rotinas;
   late final EstadoPainel painel;
+  late final EstadoWorkflows workflows;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -67,6 +70,9 @@ class Sala extends ChangeNotifier {
     if (nova == Tela.tarefas && !tarefas.carregada) tarefas.carregar();
     if ((nova == Tela.equipes || nova == Tela.painel) && !equipes.carregada) equipes.carregar();
     if ((nova == Tela.equipes || nova == Tela.tarefas) && !rotinas.carregada) rotinas.carregar();
+    if ((nova == Tela.equipes || nova == Tela.painel || nova == Tela.tarefas) && !workflows.carregada) {
+      workflows.carregar();
+    }
     painel.definirAberto(nova == Tela.painel);
     notifyListeners();
     _atualizarPresenca();
@@ -115,10 +121,24 @@ class Sala extends ChangeNotifier {
     equipes.verRotinas(rotinas);
   }
 
-  void agirNoPainel(ItemDeAtencao item, String acao, {String? texto}) {
-    switch (painel.agir(item, acao, texto: texto)) {
+  void abrirFluxo(int id, {String? equipe}) {
+    final f = workflows.fluxo(id);
+    abrirEquipe(f?.equipe ?? equipe);
+    equipes.verAba(AbaDaEquipe.workflows);
+    workflows.verFluxo(id, equipe: equipe);
+  }
+
+  void abrirWorkflows(String? equipe) {
+    abrirEquipe(equipe);
+    equipes.verAba(AbaDaEquipe.workflows);
+  }
+
+  void agirNoPainel(ItemDeAtencao item, String acao, {String? texto, String? opcao}) {
+    switch (painel.agir(item, acao, texto: texto, opcao: opcao)) {
       case IrParaTarefa(:final id):
         abrirTarefa(id);
+      case IrParaFluxo(:final fluxo, :final equipe):
+        abrirFluxo(fluxo, equipe: equipe);
       case IrParaEquipe(:final equipe):
         abrirEquipe(equipe);
       case IrParaRotinas(:final equipe):
@@ -142,6 +162,7 @@ class Sala extends ChangeNotifier {
     if (tarefas.carregada) tarefas.carregar();
     if (equipes.carregada) equipes.carregar();
     if (rotinas.carregada) rotinas.carregar();
+    if (workflows.carregada) workflows.carregar();
   }
 
   void _tratar(Entrada e) {
@@ -186,6 +207,7 @@ class Sala extends ChangeNotifier {
         equipes.tratar(e);
         rotinas.tratar(e);
         painel.tratar(e);
+        workflows.tratar(e);
     }
   }
 
@@ -205,6 +227,7 @@ class Sala extends ChangeNotifier {
     equipes.dispose();
     rotinas.dispose();
     painel.dispose();
+    workflows.dispose();
     canal.dispose();
     super.dispose();
   }

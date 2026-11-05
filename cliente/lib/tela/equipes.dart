@@ -10,6 +10,7 @@ import '../nucleo/organograma.dart';
 import '../nucleo/tarefas.dart';
 import 'comum.dart';
 import 'rotinas.dart';
+import 'workflows.dart';
 
 bool get edicaoDisponivel =>
     defaultTargetPlatform == TargetPlatform.linux ||
@@ -71,6 +72,7 @@ class TelaEquipes extends StatelessWidget {
     required bool personasVisiveis,
   }) {
     if (estado.vendoRotinas) return PainelDeRotinas(sala: sala, equipe: equipe, editar: editar, largo: largo);
+    if (estado.vendoWorkflows) return PainelDeWorkflows(sala: sala, equipe: equipe, desenhar: editar);
     final selecionada = estado.selecionada == null ? null : equipe.posicao(estado.selecionada!);
     final canvas = CanvasDoOrganograma(estado: estado, equipe: equipe, editar: editar);
     if (!editar) {
@@ -172,14 +174,21 @@ class _Topo extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(children: [
           const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 32),
-          if (!editar)
+          if (!editar) ...[
             IconButton(
               tooltip: estado.vendoRotinas ? 'Organograma' : 'Rotinas',
               isSelected: estado.vendoRotinas,
               icon: const Icon(Icons.schedule),
-              onPressed: () => estado.verRotinas(!estado.vendoRotinas),
+              onPressed: () => estado.alternarAba(AbaDaEquipe.rotinas),
             ),
-          if (!editar && !estado.vendoRotinas)
+            IconButton(
+              tooltip: estado.vendoWorkflows ? 'Organograma' : 'Workflows',
+              isSelected: estado.vendoWorkflows,
+              icon: const Icon(Icons.alt_route),
+              onPressed: () => estado.alternarAba(AbaDaEquipe.workflows),
+            ),
+          ],
+          if (!editar && estado.aba == AbaDaEquipe.organograma)
             IconButton(
               tooltip: 'Personas',
               icon: const Icon(Icons.people_alt_outlined),
@@ -222,9 +231,11 @@ class _Topo extends StatelessWidget {
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-              acao(Icons.schedule, 'Rotinas', () => estado.verRotinas(!estado.vendoRotinas), marcado: estado.vendoRotinas),
+              acao(Icons.schedule, 'Rotinas', () => estado.alternarAba(AbaDaEquipe.rotinas), marcado: estado.vendoRotinas),
+              acao(Icons.alt_route, 'Workflows', () => estado.alternarAba(AbaDaEquipe.workflows),
+                  marcado: estado.vendoWorkflows),
               acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
-              if (!estado.vendoRotinas) ...[
+              if (estado.aba == AbaDaEquipe.organograma) ...[
                 acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
                 acao(Icons.account_tree_outlined, 'Organizar',
                     equipe == null || equipe.posicoes.isEmpty ? null : () => estado.aplicar(organizar)),
@@ -528,7 +539,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
                 Positioned(
                   right: 12,
                   bottom: 12,
-                  child: _ControlesDeZoom(
+                  child: ControlesDeZoom(
                     escala: v.escala,
                     aoAproximar: () => _zoom(1.2),
                     aoAfastar: () => _zoom(1 / 1.2),
@@ -609,8 +620,9 @@ class _Area extends StatelessWidget {
   }
 }
 
-class _ControlesDeZoom extends StatelessWidget {
-  const _ControlesDeZoom({
+class ControlesDeZoom extends StatelessWidget {
+  const ControlesDeZoom({
+    super.key,
     required this.escala,
     required this.aoAproximar,
     required this.aoAfastar,

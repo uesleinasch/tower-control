@@ -5,9 +5,11 @@ import '../nucleo/modelos.dart';
 import '../nucleo/painel.dart';
 import '../nucleo/rotinas.dart' show horarioCurto;
 import '../nucleo/tarefas.dart';
+import '../nucleo/workflows.dart' show nomesDeCaixa;
 import 'comum.dart';
 import 'equipes.dart' show BarraDePausa, pedirTexto, quandoCurto;
 import 'tarefas.dart' show corDoStatus;
+import 'workflows.dart' show cancelarFluxo, corDoFluxo;
 
 class TelaPainel extends StatelessWidget {
   const TelaPainel({super.key, required this.sala});
@@ -37,7 +39,7 @@ class TelaPainel extends StatelessWidget {
         BarraDePausa(estado: sala.equipes),
         Expanded(
           child: ListenableBuilder(
-            listenable: sala.painel,
+            listenable: Listenable.merge([sala.painel, sala.workflows]),
             builder: (context, _) {
               final retrato = sala.painel.retrato;
               if (retrato == null) return const Center(child: CircularProgressIndicator());
@@ -47,6 +49,7 @@ class TelaPainel extends StatelessWidget {
                 children: [
                   _PrecisaDeVoce(sala: sala, retrato: retrato, agora: agora),
                   _Agora(sala: sala, retrato: retrato, agora: agora),
+                  _Workflows(sala: sala, retrato: retrato, agora: agora),
                   _Personas(sala: sala, retrato: retrato),
                   _Tarefas(sala: sala, retrato: retrato),
                   _ProximasRotinas(sala: sala, retrato: retrato),
@@ -151,7 +154,9 @@ class _PrecisaDeVoce extends StatelessWidget {
                       style: TextStyle(fontSize: 13, fontFamily: item.tipo == 'comando' ? 'monospace' : null),
                     ),
                   ],
-                  if (item.acoes.isNotEmpty) ...[
+                  if (item.tipo == 'decisao')
+                    _Decisao(key: ValueKey('decisao-${item.fluxo}-${item.ficha}'), sala: sala, item: item)
+                  else if (item.acoes.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
@@ -171,6 +176,132 @@ class _PrecisaDeVoce extends StatelessWidget {
                       ],
                     ),
                   ],
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _Decisao extends StatefulWidget {
+  const _Decisao({super.key, required this.sala, required this.item});
+
+  final Sala sala;
+  final ItemDeAtencao item;
+
+  @override
+  State<_Decisao> createState() => _DecisaoState();
+}
+
+class _DecisaoState extends State<_Decisao> {
+  final _comentario = TextEditingController();
+
+  @override
+  void dispose() {
+    _comentario.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 8),
+        TextField(
+          controller: _comentario,
+          minLines: 1,
+          maxLines: 4,
+          decoration: const InputDecoration(labelText: 'Comentário (opcional)', isDense: true),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (i, opcao) in item.opcoes.indexed)
+              if (i == 0)
+                FilledButton(
+                  onPressed: () => widget.sala.agirNoPainel(item, 'decidir', opcao: opcao, texto: _comentario.text),
+                  child: Text(opcao),
+                )
+              else
+                OutlinedButton(
+                  onPressed: () => widget.sala.agirNoPainel(item, 'decidir', opcao: opcao, texto: _comentario.text),
+                  child: Text(opcao),
+                ),
+            if (item.fluxo case final fluxo?)
+              TextButton(
+                onPressed: () => widget.sala.abrirFluxo(fluxo, equipe: item.equipe),
+                child: const Text('Ver workflow'),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _Workflows extends StatelessWidget {
+  const _Workflows({required this.sala, required this.retrato, required this.agora});
+
+  final Sala sala;
+  final Retrato retrato;
+  final DateTime agora;
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = Theme.of(context).colorScheme;
+    final secundario = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
+    return _Secao(
+      titulo: 'Workflows',
+      vazio: 'Nenhum workflow rodando.',
+      filhos: [
+        for (final f in retrato.workflows)
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: corDoFluxo(f.ativas.isEmpty ? 'esperando' : 'rodando', cores),
+                        radius: 6,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(f.nome, style: const TextStyle(fontWeight: FontWeight.w600))),
+                      Text(_juntar(['#${f.fluxo}', f.equipe, haQuanto(f.desde, agora)]), style: secundario),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    f.ativas.isEmpty
+                        ? 'na fila, esperando o anterior'
+                        : 'em: ${f.ativas.map((a) => '${a.titulo} (${nomesDeCaixa[a.tipo] ?? a.tipo}${a.tarefaId == null ? '' : ' #${a.tarefaId}'})').join(', ')}',
+                    style: secundario,
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => sala.abrirFluxo(f.fluxo, equipe: f.equipe),
+                        icon: const Icon(Icons.alt_route, size: 18),
+                        label: const Text('Ver'),
+                      ),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(foregroundColor: cores.error),
+                        onPressed: () => cancelarFluxo(context, sala.workflows, f.fluxo, f.nome),
+                        icon: const Icon(Icons.cancel_outlined, size: 18),
+                        label: const Text('Cancelar'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

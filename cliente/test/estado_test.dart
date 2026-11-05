@@ -7,11 +7,13 @@ import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/painel.dart';
 import 'package:control_tower/estado/rotinas.dart';
 import 'package:control_tower/estado/tarefas.dart';
+import 'package:control_tower/estado/workflows.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/painel.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/rotinas.dart';
+import 'package:control_tower/nucleo/workflows.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _meta = MetaConversa(id: 'c1', perfil: 'poe', titulo: 'oi', criadaEm: null);
@@ -441,6 +443,109 @@ void main() {
     test('retrato do painel atualiza a pausa geral de Equipes', () {
       final e = EstadoEquipes(enviar)..tratar(const PainelRecebido(Retrato(pausadoTudo: true)));
       expect(e.pausadoTudo, isTrue);
+    });
+  });
+
+  group('EstadoWorkflows', () {
+    const pedido = Workflow(id: 'mudanca', nome: 'Mudança', equipe: 'casa', entrada: {'pedido': TipoDeValor.texto(), 'vezes': TipoDeValor('numero')});
+    const livre = Workflow(id: 'livre', nome: 'Livre', equipe: 'casa');
+    const outra = Workflow(id: 'x', nome: 'X', equipe: 'codigo');
+    const aberto = Fluxo(id: 9, equipe: 'casa', workflow: 'mudanca', definicao: pedido, fichas: [Ficha(id: 1, no: 'a')]);
+    const fechado = Fluxo(id: 8, equipe: 'casa', workflow: 'livre', definicao: livre, status: 'concluido');
+
+    test('carrega, separa por equipe e guarda abertos e encerrados', () {
+      final estado = EstadoWorkflows(enviar)..carregar();
+      expect(enviados.single, {'tipo': 'workflows'});
+      estado.tratar(const WorkflowsRecebidos([pedido, livre, outra], [aberto, fechado]));
+      expect(estado.carregada, isTrue);
+      expect(estado.daEquipe('casa').map((w) => w.id), ['mudanca', 'livre']);
+      expect(estado.abertos('casa').map((f) => f.id), [9]);
+      expect(estado.abertos('casa', 'livre'), isEmpty);
+      expect(estado.encerrados('casa').map((f) => f.id), [8]);
+      expect(estado.nomeDoWorkflow('casa', 'livre'), 'Livre');
+      expect(estado.nomeDoWorkflow('casa', 'sumiu'), 'sumiu');
+    });
+
+    test('iniciar converte a entrada e só manda sem erro', () {
+      final estado = EstadoWorkflows(enviar);
+      expect(estado.iniciar(pedido, {'pedido': 'oi', 'vezes': 'muitas'}), ['vezes precisa ser um número']);
+      expect(enviados, isEmpty);
+      expect(estado.iniciar(pedido, {'pedido': ' oi ', 'vezes': '2'}), isEmpty);
+      expect(enviados.single, {
+        'tipo': 'workflow-iniciar',
+        'equipe': 'casa',
+        'id': 'mudanca',
+        'entrada': {'pedido': 'oi', 'vezes': 2},
+      });
+    });
+
+    test('decidir, sinalizar e cancelar mandam as mensagens do fluxo', () {
+      EstadoWorkflows(enviar)
+        ..decidir(9, 3, 'seguir', '  ')
+        ..decidir(9, 3, 'parar', 'arriscado')
+        ..sinalizar(9, 4)
+        ..cancelar(9);
+      expect(enviados, [
+        {'tipo': 'workflow-decidir', 'execucao': 9, 'ficha': 3, 'opcao': 'seguir'},
+        {'tipo': 'workflow-decidir', 'execucao': 9, 'ficha': 3, 'opcao': 'parar', 'comentario': 'arriscado'},
+        {'tipo': 'workflow-sinal', 'execucao': 9, 'ficha': 4},
+        {'tipo': 'workflow-cancelar', 'execucao': 9},
+      ]);
+    });
+
+    test('ver um fluxo usa a definição em que ele rodou, e o fluxo pedido antes da lista se completa', () {
+      final estado = EstadoWorkflows(enviar)..verFluxo(9, equipe: 'casa');
+      expect([estado.vendo?.fluxo, estado.vendo?.workflow, estado.definicaoVista], [9, '', null]);
+      estado.tratar(const WorkflowsRecebidos([livre], [aberto]));
+      expect(estado.vendo, (equipe: 'casa', workflow: 'mudanca', fluxo: 9));
+      expect(estado.definicaoVista?.nome, 'Mudança');
+      estado.selecionarCaixa('a');
+      expect(estado.caixa, 'a');
+      estado.selecionarCaixa('a');
+      expect(estado.caixa, isNull);
+      estado
+        ..selecionarCaixa('a')
+        ..verDefinicao(livre);
+      expect([estado.vendo?.fluxo, estado.definicaoVista?.id, estado.caixa], [null, 'livre', null]);
+      estado.fecharGrafo();
+      expect(estado.vendo, isNull);
+    });
+
+    test('rotina com workflow salva sem tarefa e valida contra os workflows da equipe', () {
+      const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor')]);
+      final rotinas = EstadoRotinas(enviar)..novaRotina(casa);
+      rotinas.mudar((r) => r.copiar(nome: 'Semanal', workflow: 'livre'));
+      expect(rotinas.errosDoRascunho(casa), ['rotina semanal: workflow inexistente (livre)']);
+      expect(rotinas.errosDoRascunho(casa, workflows: [livre]), isEmpty);
+      rotinas.salvar(casa, workflows: [livre]);
+      expect(enviados.single['rotina'], {
+        'id': 'semanal',
+        'nome': 'Semanal',
+        'ativa': true,
+        'workflow': 'livre',
+        'concorrencia': 'pular',
+        'perdidos': 'um',
+      });
+    });
+
+    test('decidir pelo painel manda a opção e o comentário', () {
+      const item = ItemDeAtencao(tipo: 'decisao', acoes: ['decidir'], fluxo: 9, ficha: 3, opcoes: ['seguir', 'parar']);
+      final efeito = EstadoPainel(enviar).agir(item, 'decidir', opcao: 'seguir', texto: 'ok');
+      expect(efeito, isA<MandarSaida>());
+      expect(enviados.single, {'tipo': 'workflow-decidir', 'execucao': 9, 'ficha': 3, 'opcao': 'seguir', 'comentario': 'ok'});
+    });
+
+    test('a aba de workflows da equipe alterna com o organograma e com as rotinas', () {
+      final e = EstadoEquipes(enviar)..selecionar('executor');
+      e.alternarAba(AbaDaEquipe.workflows);
+      expect([e.vendoWorkflows, e.vendoRotinas, e.selecionada], [true, false, null]);
+      e.verRotinas(true);
+      expect([e.vendoWorkflows, e.vendoRotinas], [false, true]);
+      e
+        ..alternarAba(AbaDaEquipe.rotinas)
+        ..alternarAba(AbaDaEquipe.workflows)
+        ..alternarAba(AbaDaEquipe.workflows);
+      expect(e.aba, AbaDaEquipe.organograma);
     });
   });
 }

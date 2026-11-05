@@ -4,6 +4,7 @@ import 'modelos.dart';
 import 'painel.dart';
 import 'rotinas.dart';
 import 'tarefas.dart';
+import 'workflows.dart';
 
 sealed class Entrada {
   const Entrada();
@@ -65,6 +66,10 @@ sealed class Entrada {
         ),
       'tarefas' => TarefasRecebidas(listaDeJson(json['lista'], Tarefa.deJson)),
       'rotinas' => RotinasRecebidas(listaDeJson(json['lista'], Rotina.deJson)),
+      'workflows' => WorkflowsRecebidos(
+          listaDeJson(json['definicoes'] is List ? json['definicoes'] : null, Workflow.deJson),
+          listaDeJson(json['fluxos'] is List ? json['fluxos'] : null, Fluxo.deJson),
+        ),
       _ => Desconhecida(tipo, bruto),
     };
   }
@@ -158,6 +163,12 @@ class TarefasRecebidas extends Entrada {
 class RotinasRecebidas extends Entrada {
   const RotinasRecebidas(this.lista);
   final List<Rotina> lista;
+}
+
+class WorkflowsRecebidos extends Entrada {
+  const WorkflowsRecebidos(this.definicoes, this.fluxos);
+  final List<Workflow> definicoes;
+  final List<Fluxo> fluxos;
 }
 
 class TarefaRecebida extends Entrada {
@@ -624,6 +635,81 @@ class TrocarTokenDaRotina extends Saida {
 
   @override
   String get tipo => 'rotina-token';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'id': id};
+}
+
+class PedirWorkflows extends Saida {
+  const PedirWorkflows();
+
+  @override
+  String get tipo => 'workflows';
+}
+
+class IniciarWorkflow extends Saida {
+  const IniciarWorkflow(this.equipe, this.id, this.entrada);
+  final String equipe;
+  final String id;
+  final Map<String, Object> entrada;
+
+  @override
+  String get tipo => 'workflow-iniciar';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'id': id, 'entrada': entrada};
+}
+
+class DecidirWorkflow extends Saida {
+  const DecidirWorkflow(this.execucao, this.ficha, this.opcao, {this.comentario});
+  final int execucao;
+  final int ficha;
+  final String opcao;
+  final String? comentario;
+
+  @override
+  String get tipo => 'workflow-decidir';
+  @override
+  Map<String, Object?> get campos => {'execucao': execucao, 'ficha': ficha, 'opcao': opcao, 'comentario': comentario};
+}
+
+class SinalizarWorkflow extends Saida {
+  const SinalizarWorkflow(this.execucao, this.ficha);
+  final int execucao;
+  final int ficha;
+
+  @override
+  String get tipo => 'workflow-sinal';
+  @override
+  Map<String, Object?> get campos => {'execucao': execucao, 'ficha': ficha};
+}
+
+class CancelarWorkflow extends Saida {
+  const CancelarWorkflow(this.execucao);
+  final int execucao;
+
+  @override
+  String get tipo => 'workflow-cancelar';
+  @override
+  Map<String, Object?> get campos => {'execucao': execucao};
+}
+
+class SalvarWorkflow extends Saida {
+  const SalvarWorkflow(this.equipe, this.workflow);
+  final String equipe;
+  final Map<String, Object?> workflow;
+
+  @override
+  String get tipo => 'workflow-salvar';
+  @override
+  Map<String, Object?> get campos => {'equipe': equipe, 'workflow': workflow};
+}
+
+class ExcluirWorkflow extends Saida {
+  const ExcluirWorkflow(this.equipe, this.id);
+  final String equipe;
+  final String id;
+
+  @override
+  String get tipo => 'workflow-excluir';
   @override
   Map<String, Object?> get campos => {'equipe': equipe, 'id': id};
 }

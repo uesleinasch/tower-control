@@ -6,6 +6,7 @@ import '../nucleo/formato.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
+import '../nucleo/workflows.dart';
 import 'chat.dart';
 import 'comum.dart';
 import 'equipes.dart';
@@ -17,7 +18,7 @@ class TelaTarefas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Listenable.merge([sala.tarefas, sala.rotinas]),
+        listenable: Listenable.merge([sala.tarefas, sala.rotinas, sala.workflows]),
         builder: (context, _) {
           final aberta = sala.tarefas.aberta;
           return aberta == null
@@ -251,6 +252,7 @@ class _DetalheState extends State<_Detalhe> {
       if (t.dependeDe.isNotEmpty) 'Depende de: ${t.dependeDe.map((d) => '#$d').join(', ')}',
       if (t.pai != null) 'Parte da tarefa #${t.pai}',
       ?widget.sala.rotinas.criadaPelaRotina(t.criadaPor),
+      if (t.fluxo != null) descricaoDaCaixaDaTarefa(t, widget.sala.workflows.fluxos),
       if (t.descricao.isNotEmpty) t.descricao,
     ].join('\n\n');
     return PopScope(
@@ -276,6 +278,15 @@ class _DetalheState extends State<_Detalhe> {
             padding: const EdgeInsets.all(16),
             children: [
               SelectionArea(child: TextoMarkdown(ficha)),
+              if (t.fluxo case final fluxo?)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => widget.sala.abrirFluxo(fluxo, equipe: t.equipe),
+                    icon: const Icon(Icons.alt_route, size: 18),
+                    label: const Text('Ver o workflow'),
+                  ),
+                ),
               if (t.politica.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 _Trilha(

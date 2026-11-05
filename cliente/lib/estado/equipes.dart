@@ -6,6 +6,8 @@ import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
 import 'chat.dart';
 
+enum AbaDaEquipe { organograma, rotinas, workflows }
+
 class EstadoEquipes extends ChangeNotifier {
   EstadoEquipes(this._enviar);
 
@@ -20,14 +22,22 @@ class EstadoEquipes extends ChangeNotifier {
   bool salvando = false;
   bool? mostrarPersonas;
   bool pausadoTudo = false;
-  bool vendoRotinas = false;
+  AbaDaEquipe aba = AbaDaEquipe.organograma;
 
-  void verRotinas(bool sim) {
-    if (vendoRotinas == sim) return;
-    vendoRotinas = sim;
-    if (sim) selecionada = null;
+  bool get vendoRotinas => aba == AbaDaEquipe.rotinas;
+
+  bool get vendoWorkflows => aba == AbaDaEquipe.workflows;
+
+  void verAba(AbaDaEquipe nova) {
+    if (aba == nova) return;
+    aba = nova;
+    if (nova != AbaDaEquipe.organograma) selecionada = null;
     notifyListeners();
   }
+
+  void alternarAba(AbaDaEquipe nova) => verAba(aba == nova ? AbaDaEquipe.organograma : nova);
+
+  void verRotinas(bool sim) => verAba(sim ? AbaDaEquipe.rotinas : AbaDaEquipe.organograma);
 
   void pausar(String alvo) => _enviar(Pausar(alvo));
 

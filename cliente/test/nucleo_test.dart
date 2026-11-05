@@ -11,6 +11,7 @@ import 'package:control_tower/nucleo/organograma.dart';
 import 'package:control_tower/nucleo/painel.dart';
 import 'package:control_tower/nucleo/rotinas.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
+import 'package:control_tower/nucleo/workflows.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _execucao = {
@@ -110,6 +111,97 @@ const _retrato = {
     {'em': '2026-11-05T08:59:00.000Z', 'tipo': 'entrega', 'quem': 'nati', 'texto': 'feito', 'tarefaId': 14, 'equipe': 'casa'},
     {'em': '2026-11-05T08:00:00.000Z', 'tipo': 'auditoria', 'quem': 'ueslei', 'texto': 'pausou tudo'},
     {'em': '2026-11-05T07:30:00.000Z', 'tipo': 'disparo', 'quem': 'Plano do dia', 'texto': 'criou a #13', 'tarefaId': 13},
+  ],
+};
+
+const _mudancaComPlano = {
+  'id': 'mudanca-com-plano',
+  'nome': 'Mudança com plano',
+  'versao': 3,
+  'entrada': {'pedido': 'texto'},
+  'inicio': 'plano',
+  'nos': [
+    {
+      'id': 'plano',
+      'tipo': 'executar',
+      'posicao': 'conselho-nati',
+      'instrucao': 'Escreva um plano para: {{entrada.pedido}}',
+      'criterio': 'Passos numerados e os riscos.',
+      'saidas': {
+        'plano': 'texto',
+        'risco': {'escolha': ['baixo', 'alto']},
+      },
+    },
+    {
+      'id': 'risco',
+      'tipo': 'condicao',
+      'regras': [
+        {'campo': 'plano.risco', 'op': 'igual', 'valor': 'alto', 'saida': 'alto'},
+      ],
+    },
+    {'id': 'ok', 'tipo': 'decisao_humana', 'pergunta': 'Risco alto. Seguir?', 'opcoes': ['seguir', 'parar']},
+    {'id': 'frente', 'tipo': 'paralelo'},
+    {'id': 'executa', 'tipo': 'executar', 'posicao': 'executor', 'instrucao': 'Execute: {{plano.plano}}'},
+    {'id': 'revisa', 'tipo': 'revisar', 'de': 'executa', 'por': {'posicao': 'conselho-nati'}},
+    {'id': 'nota', 'tipo': 'executar', 'posicao': 'conselho-pami', 'instrucao': 'Escreva a nota de mudança de: {{plano.plano}}'},
+    {'id': 'junta', 'tipo': 'juncao'},
+    {'id': 'fim', 'tipo': 'fim'},
+    {'id': 'parou', 'tipo': 'fim', 'resultado': 'cancelado pelo Ueslei'},
+  ],
+  'arestas': [
+    {'de': 'plano', 'para': 'risco'},
+    {'de': 'risco', 'para': 'ok', 'quando': 'alto'},
+    {'de': 'risco', 'para': 'frente', 'quando': 'senao'},
+    {'de': 'ok', 'para': 'frente', 'quando': 'seguir'},
+    {'de': 'ok', 'para': 'parou', 'quando': 'parar'},
+    {'de': 'frente', 'para': 'executa'},
+    {'de': 'frente', 'para': 'nota'},
+    {'de': 'executa', 'para': 'revisa'},
+    {'de': 'revisa', 'para': 'junta', 'quando': 'aprovado'},
+    {'de': 'nota', 'para': 'junta'},
+    {'de': 'junta', 'para': 'fim'},
+  ],
+  'layout': {},
+};
+
+Map<String, Object?> _ficha(int id, String no, String status, {int? veioDe, int? tarefa, Map<String, Object?> saidas = const {}}) => {
+      'id': id,
+      'fluxo': 9,
+      'no': no,
+      'status': status,
+      'tarefa': tarefa,
+      'veioDe': veioDe,
+      'chegadas': <String>[],
+      'saidas': saidas,
+      'acordaEm': null,
+      'prazoEm': null,
+      'avisada': false,
+      'criadaEm': '2026-11-05T09:00:00.000Z',
+      'concluidaEm': status == 'esperando' ? null : '2026-11-05T09:10:00.000Z',
+    };
+
+final _fluxo = <String, Object?>{
+  'id': 9,
+  'equipe': 'casa',
+  'workflow': 'mudanca-com-plano',
+  'versao': 3,
+  'definicao': _mudancaComPlano,
+  'entrada': {'pedido': 'trocar o disco'},
+  'status': 'rodando',
+  'resultado': null,
+  'criadoPor': 'ueslei',
+  'depoisDe': null,
+  'criadoEm': '2026-11-05T09:00:00.000Z',
+  'atualizadoEm': '2026-11-05T09:10:00.000Z',
+  'erro': null,
+  'fichas': [
+    _ficha(1, 'plano', 'concluida', tarefa: 20, saidas: {'devolutiva': 'feito', 'plano': '1. backup\n2. troca', 'risco': 'alto'}),
+    _ficha(2, 'risco', 'concluida', veioDe: 1),
+    _ficha(3, 'ok', 'concluida', veioDe: 2, saidas: {'opcao': 'seguir', 'comentario': ''}),
+    _ficha(4, 'frente', 'concluida', veioDe: 3),
+    _ficha(5, 'executa', 'esperando', veioDe: 4, tarefa: 21),
+    _ficha(6, 'nota', 'concluida', veioDe: 4, tarefa: 22, saidas: {'devolutiva': 'nota pronta'}),
+    _ficha(7, 'junta', 'esperando', veioDe: 6),
   ],
 };
 
@@ -218,6 +310,12 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
       {'id': 'memoria', 'nome': 'Agenda da memória', 'cron': '*/5 * * * *', 'equipe': null, 'sistema': true, 'proximo': null, 'ultimoDisparo': null, 'disparos': []},
     ],
   },
+  'workflows': {
+    'definicoes': [
+      {..._mudancaComPlano, 'equipe': 'casa'},
+    ],
+    'fluxos': [_fluxo],
+  },
   'tarefas': {
     'lista': [
       _tarefa,
@@ -273,6 +371,13 @@ final _saidas = <Saida>[
   const SalvarRotina('casa', Rotina(id: 'plano-do-dia', nome: 'Plano do dia', posicao: 'executor', titulo: 't')),
   const ExcluirRotina('casa', 'plano-do-dia'),
   const TrocarTokenDaRotina('casa', 'plano-do-dia'),
+  const PedirWorkflows(),
+  const IniciarWorkflow('casa', 'mudanca-com-plano', {'pedido': 'x'}),
+  const DecidirWorkflow(9, 3, 'seguir'),
+  const SinalizarWorkflow(9, 4),
+  const CancelarWorkflow(9),
+  const SalvarWorkflow('casa', _mudancaComPlano),
+  const ExcluirWorkflow('casa', 'mudanca-com-plano'),
 ];
 
 void main() {
@@ -1139,6 +1244,251 @@ void main() {
       expect(haQuanto(agora.subtract(const Duration(hours: 3)), agora), 'há 3 h');
       expect(haQuanto(agora.subtract(const Duration(days: 2)), agora), 'há 2 d');
       expect(haQuanto(null, agora), '');
+    });
+  });
+
+  group('workflows', () {
+    WorkflowsRecebidos recebidos() =>
+        Entrada.decodificar(jsonEncode({'tipo': 'workflows', ..._fixturasEntrada['workflows']!})) as WorkflowsRecebidos;
+
+    test('decodifica definições e fluxos com as fichas', () {
+      final e = recebidos();
+      final w = e.definicoes.single;
+      expect([w.id, w.nome, w.versao, w.equipe, w.inicio], ['mudanca-com-plano', 'Mudança com plano', 3, 'casa', 'plano']);
+      expect(w.entrada, {'pedido': const TipoDeValor.texto()});
+      expect(w.nos, hasLength(10));
+      expect(w.caixa('ok')!.opcoes, ['seguir', 'parar']);
+      expect(w.caixa('plano')!.detalhe, 'conselho-nati');
+      expect(w.caixa('ok')!.nomeDoTipo, 'decisão humana');
+      expect(w.arestas[1].quando, 'alto');
+      final f = e.fluxos.single;
+      expect([f.id, f.aberto, f.nome, f.workflow, f.entrada['pedido']], [9, true, 'Mudança com plano', 'mudanca-com-plano', 'trocar o disco']);
+      expect(f.fichas, hasLength(7));
+      expect(f.ficha(5)!.tarefa, 21);
+      expect(f.ficha(1)!.saidas['risco'], 'alto');
+      expect(f.ficha(7)!.esperando, isTrue);
+    });
+
+    test('campos ausentes caem em padrões seguros', () {
+      final vazia = Entrada.decodificar('{"tipo":"workflows"}') as WorkflowsRecebidos;
+      expect([vazia.definicoes, vazia.fluxos], [isEmpty, isEmpty]);
+      final w = Workflow.deJson({
+        'id': 'x',
+        'entrada': {
+          'a': 'estranho',
+          'b': {'escolha': []},
+          'c': {
+            'escolha': ['s', 'n'],
+          },
+          'd': 'numero',
+          'e': 'booleano',
+        },
+        'nos': [
+          {'tipo': 'fim'},
+          'lixo',
+          {'id': 'f', 'tipo': 'fim'},
+        ],
+        'arestas': [
+          {'de': 'f'},
+        ],
+        'layout': {
+          'f': {'x': 1},
+        },
+      });
+      expect([w.nome, w.versao, w.equipe, w.inicio], ['x', 0, '', '']);
+      expect(w.entrada.values.map((t) => t.nome), ['texto', 'texto', 'escolha', 'numero', 'booleano']);
+      expect(w.entrada['c']!.escolhas, ['s', 'n']);
+      expect(w.nos.map((n) => n.id), ['f']);
+      expect([w.arestas.single.para, w.arestas.single.quando], ['', null]);
+      expect(w.layout, isEmpty);
+      final f = Fluxo.deJson({'id': 2});
+      expect([f.status, f.aberto, f.fichas, f.erro, f.definicao.nos], ['rodando', true, isEmpty, null, isEmpty]);
+      final ficha = Ficha.deJson({
+        'id': 1,
+        'no': 'a',
+        'saidas': {
+          'x': [1],
+          'y': 2,
+          'z': true,
+        },
+      });
+      expect([ficha.status, ficha.tarefa, ficha.saidas], ['esperando', null, {'y': 2, 'z': true}]);
+      expect(Tarefa.deJson({..._tarefa, 'fluxo': 9, 'ficha': 5}).ficha, 5);
+      expect(Tarefa.deJson(_tarefa).fluxo, isNull);
+    });
+
+    test('layout calculado do exemplo da spec: nível pelo maior caminho, empilhado na ordem das caixas', () {
+      final w = recebidos().definicoes.single;
+      expect(layoutCalculado(w), {
+        'plano': (x: 0.0, y: 0.0),
+        'risco': (x: 260.0, y: 0.0),
+        'ok': (x: 520.0, y: 0.0),
+        'frente': (x: 780.0, y: 0.0),
+        'executa': (x: 1040.0, y: 0.0),
+        'revisa': (x: 1300.0, y: 0.0),
+        'nota': (x: 1040.0, y: 120.0),
+        'junta': (x: 1560.0, y: 0.0),
+        'fim': (x: 1820.0, y: 0.0),
+        'parou': (x: 780.0, y: 120.0),
+      });
+      final comLayout = Workflow.deJson({
+        ..._mudancaComPlano,
+        'layout': {
+          'plano': {'x': 5, 'y': 7},
+        },
+      });
+      final layout = layoutDoGrafo(comLayout);
+      expect([layout['plano'], layout['risco']], [(x: 5.0, y: 7.0), (x: 260.0, y: 0.0)]);
+      expect(caixaEm(layout, 260 + margemDoGrafo + 10, margemDoGrafo + 10), 'risco');
+      expect(caixaEm(layout, -50, -50), isNull);
+    });
+
+    test('a volta do laço não empurra o nível, e caixa inalcançável vai para um nível extra', () {
+      final w = Workflow.deJson({
+        'id': 'l',
+        'inicio': 'a',
+        'nos': [
+          {'id': 'solta', 'tipo': 'fim'},
+          {'id': 'a', 'tipo': 'executar'},
+          {'id': 'volta', 'tipo': 'laco'},
+          {'id': 'fim', 'tipo': 'fim'},
+        ],
+        'arestas': [
+          {'de': 'a', 'para': 'volta'},
+          {'de': 'volta', 'para': 'a', 'quando': 'repetir'},
+          {'de': 'volta', 'para': 'fim', 'quando': 'sair'},
+        ],
+      });
+      expect(layoutCalculado(w), {
+        'solta': (x: 780.0, y: 0.0),
+        'a': (x: 0.0, y: 0.0),
+        'volta': (x: 260.0, y: 0.0),
+        'fim': (x: 520.0, y: 0.0),
+      });
+      expect(caixasEmOrdem(w).map((c) => c.id), ['a', 'volta', 'fim', 'solta']);
+    });
+
+    test('ordem do caminho: esperando no topo, depois por criação, com o resumo das saídas', () {
+      final f = recebidos().fluxos.single;
+      final passos = ordemDoCaminho(f);
+      expect(passos.map((p) => p.ficha), [5, 7, 1, 2, 3, 4, 6]);
+      expect(passos.map((p) => p.destacado), [true, true, false, false, false, false, false]);
+      expect([passos.first.no, passos.first.tipo, passos.first.tarefa], ['executa', 'executar', 21]);
+      expect(passos[2].resumo, 'devolutiva: feito · plano: 1. backup 2. troca · risco: alto');
+      expect(resumoDasSaidas({'x': 'a' * 100, 'ok': false}, limite: 3), 'x: aaa… · ok: não');
+      expect(estadoDasCaixas(f), containsPair('executa', 'esperando'));
+      expect(estadoDasCaixas(f)['plano'], 'concluida');
+      expect(estadoDasCaixas(f).containsKey('revisa'), isFalse);
+      expect(arestasPercorridas(f), {'plano>risco', 'risco>ok', 'ok>frente', 'frente>executa', 'frente>nota', 'nota>junta'});
+    });
+
+    test('formulário de entrada converte cada tipo e aponta o que falta', () {
+      const entrada = {
+        'pedido': TipoDeValor.texto(),
+        'vezes': TipoDeValor('numero'),
+        'urgente': TipoDeValor('booleano'),
+        'risco': TipoDeValor('escolha', ['baixo', 'alto']),
+      };
+      final ok = converterEntrada(entrada, {'pedido': '  trocar o disco ', 'vezes': '3,5', 'urgente': true, 'risco': 'alto'});
+      expect(ok.erros, isEmpty);
+      expect(ok.valores, {'pedido': 'trocar o disco', 'vezes': 3.5, 'urgente': true, 'risco': 'alto'});
+      expect(converterEntrada(entrada, {'vezes': '4', 'risco': 'baixo'}).valores, {'pedido': '', 'vezes': 4, 'urgente': false, 'risco': 'baixo'});
+      expect(converterEntrada(entrada, {'vezes': '4', 'risco': 'baixo'}).valores['vezes'], isA<int>());
+      final ruim = converterEntrada(entrada, {'vezes': 'três', 'risco': 'médio'});
+      expect(ruim.erros, ['vezes precisa ser um número', 'risco: escolha uma das opções']);
+      expect(jsonDecode(IniciarWorkflow('casa', 'w', ok.valores).codificar()), {
+        'tipo': 'workflow-iniciar',
+        'equipe': 'casa',
+        'id': 'w',
+        'entrada': {'pedido': 'trocar o disco', 'vezes': 3.5, 'urgente': true, 'risco': 'alto'},
+      });
+    });
+
+    test('rotina pode iniciar workflow com entrada vazia ou só dados em texto', () {
+      const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor')]);
+      const livre = Workflow(id: 'livre', nome: 'Livre', equipe: 'casa');
+      const comDados = Workflow(id: 'dados', nome: 'Dados', equipe: 'casa', entrada: {'dados': TipoDeValor.texto()});
+      final comPedido = recebidos().definicoes.single;
+      expect([aceitaRotina(livre), aceitaRotina(comDados), aceitaRotina(comPedido)], [true, true, false]);
+      expect(workflowsParaRotina([livre, comDados, comPedido], 'casa').map((w) => w.id), ['livre', 'dados']);
+      const r = Rotina(id: 'r', nome: 'R', workflow: 'livre');
+      expect(errosDaRotina(r, casa, workflows: [livre]), isEmpty);
+      expect(errosDaRotina(r, casa), ['rotina r: workflow inexistente (livre)']);
+      expect(errosDaRotina(r.copiar(workflow: 'mudanca-com-plano'), casa, workflows: [comPedido]), [
+        'rotina r: o workflow mudanca-com-plano pede entrada que a rotina não dá (só "dados" em texto)',
+      ]);
+      expect(r.paraJson(), {'id': 'r', 'nome': 'R', 'ativa': true, 'workflow': 'livre', 'concorrencia': 'pular', 'perdidos': 'um'});
+      expect(r.copiar(workflow: '', titulo: 't').paraJson()['tarefa'], {'titulo': 't'});
+      expect(Rotina.deJson({'id': 'r', 'nome': 'R', 'workflow': 'livre'}).iniciaWorkflow, isTrue);
+      expect(Rotina.deJson({'id': 'r', 'nome': 'R'}).workflow, '');
+      final disparo = Disparo.deJson({..._disparo, 'tarefa': null, 'motivo': 'iniciou o workflow (execução #9)'});
+      expect(disparo.resumo, 'horário · iniciou o workflow (execução #9)');
+    });
+
+    test('tarefa de fluxo diz a caixa e o workflow', () {
+      final f = recebidos().fluxos.single;
+      Tarefa t(int? fluxo, int? ficha) => Tarefa.deJson({..._tarefa, 'fluxo': fluxo, 'ficha': ficha});
+      expect(descricaoDaCaixaDaTarefa(t(9, 5), [f]), 'caixa executa do workflow Mudança com plano');
+      expect(descricaoDaCaixaDaTarefa(t(9, 99), [f]), 'parte do workflow Mudança com plano');
+      expect(descricaoDaCaixaDaTarefa(t(8, 1), [f]), 'parte do workflow #8');
+      expect(descricaoDaCaixaDaTarefa(t(null, null), [f]), '');
+    });
+
+    test('retrato traz os workflows e os itens novos de atenção', () {
+      final retrato = Retrato.deJson({
+        'workflows': [
+          {
+            'fluxo': 9,
+            'equipe': 'casa',
+            'workflow': 'mudanca-com-plano',
+            'nome': 'Mudança com plano',
+            'desde': '2026-11-05T09:00:00.000Z',
+            'ativas': [
+              {'ficha': 5, 'no': 'executa', 'titulo': 'executa', 'tipo': 'executar', 'tarefaId': 21},
+              {'ficha': 7, 'no': 'junta'},
+            ],
+          },
+          {'fluxo': 10},
+        ],
+        'atencao': [
+          {'tipo': 'decisao', 'acoes': ['decidir'], 'fluxo': 9, 'ficha': 3, 'opcoes': ['seguir', 'parar', 3]},
+        ],
+      });
+      final f = retrato.workflows.first;
+      expect([f.fluxo, f.nome, f.ativas.length, f.ativas.first.tarefaId], [9, 'Mudança com plano', 2, 21]);
+      expect([f.ativas.last.titulo, f.ativas.last.tipo, f.ativas.last.tarefaId], ['junta', '', null]);
+      expect([retrato.workflows.last.nome, retrato.workflows.last.ativas], ['', isEmpty]);
+      final item = retrato.atencao.single;
+      expect([item.fluxo, item.ficha, item.opcoes], [9, 3, ['seguir', 'parar']]);
+      expect(const Retrato().workflows, isEmpty);
+    });
+
+    test('ações decidir, sinalizar e abrir dos itens de workflow', () {
+      const decisao = ItemDeAtencao(tipo: 'decisao', acoes: ['decidir'], fluxo: 9, ficha: 3, opcoes: ['seguir', 'parar'], equipe: 'casa');
+      Map<String, dynamic>? saida(EfeitoDaAcao? e) =>
+          e is MandarSaida ? jsonDecode(e.saida.codificar()) as Map<String, dynamic> : null;
+      expect(saida(efeitoDaAcao(decisao, 'decidir', opcao: 'seguir', texto: '  vai  ')), {
+        'tipo': 'workflow-decidir',
+        'execucao': 9,
+        'ficha': 3,
+        'opcao': 'seguir',
+        'comentario': 'vai',
+      });
+      expect(saida(efeitoDaAcao(decisao, 'decidir', opcao: 'parar', texto: ' ')),
+          {'tipo': 'workflow-decidir', 'execucao': 9, 'ficha': 3, 'opcao': 'parar'});
+      expect(efeitoDaAcao(decisao, 'decidir', opcao: 'talvez'), isNull);
+      expect(efeitoDaAcao(decisao, 'decidir'), isNull);
+      const sinal = ItemDeAtencao(tipo: 'sinal', acoes: ['sinalizar'], fluxo: 9, ficha: 4);
+      expect(saida(efeitoDaAcao(sinal, 'sinalizar')), {'tipo': 'workflow-sinal', 'execucao': 9, 'ficha': 4});
+      expect(efeitoDaAcao(const ItemDeAtencao(tipo: 'sinal', fluxo: 9), 'sinalizar'), isNull);
+      const atrasada = ItemDeAtencao(tipo: 'atrasada', acoes: ['abrir'], fluxo: 9, ficha: 5, equipe: 'casa');
+      final irFluxo = efeitoDaAcao(atrasada, 'abrir');
+      expect(irFluxo, isA<IrParaFluxo>());
+      expect([(irFluxo as IrParaFluxo).fluxo, irFluxo.equipe], [9, 'casa']);
+      const comTarefa = ItemDeAtencao(tipo: 'atrasada', acoes: ['abrir'], fluxo: 9, ficha: 5, tarefaId: 21);
+      expect((efeitoDaAcao(comTarefa, 'abrir') as IrParaTarefa).id, 21);
+      expect(rotulosDeAcao['sinalizar'], 'Sinalizar');
+      expect([rotulosDeAtencao['decisao'], rotulosDeAtencao['sinal'], rotulosDeAtencao['atrasada']], ['decisão', 'sinal', 'atrasada']);
     });
   });
 }

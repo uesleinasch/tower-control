@@ -1,5 +1,6 @@
 import 'organograma.dart';
 import 'tarefas.dart';
+import 'workflows.dart';
 
 class ErroDeCron implements Exception {
   const ErroDeCron(this.mensagem);
@@ -192,7 +193,7 @@ class Disparo {
 
   String get resumo => [
         nomesDeOrigem[origem] ?? origem,
-        nomesDeResultado[resultado] ?? resultado,
+        if (resultado != 'criada' || tarefa != null || motivo.isEmpty) nomesDeResultado[resultado] ?? resultado,
         if (tarefa != null) '#$tarefa',
         if (motivo.isNotEmpty) motivo,
       ].join(' · ');
@@ -219,6 +220,7 @@ class Rotina {
     this.titulo = '',
     this.descricao = '',
     this.porque = '',
+    this.workflow = '',
     this.cron = '',
     this.webhook = false,
     this.concorrencia = 'pular',
@@ -239,6 +241,7 @@ class Rotina {
   final String titulo;
   final String descricao;
   final String porque;
+  final String workflow;
   final String cron;
   final bool webhook;
   final String concorrencia;
@@ -259,6 +262,7 @@ class Rotina {
     String? titulo,
     String? descricao,
     String? porque,
+    String? workflow,
     String? cron,
     bool? webhook,
     String? concorrencia,
@@ -272,6 +276,7 @@ class Rotina {
         titulo: titulo ?? this.titulo,
         descricao: descricao ?? this.descricao,
         porque: porque ?? this.porque,
+        workflow: workflow ?? this.workflow,
         cron: cron ?? this.cron,
         webhook: webhook ?? this.webhook,
         concorrencia: concorrencia ?? this.concorrencia,
@@ -285,15 +290,21 @@ class Rotina {
         url: url,
       );
 
+  bool get iniciaWorkflow => workflow.isNotEmpty;
+
   Map<String, Object?> paraJson() => {
         'id': id,
         'nome': nome.trim(),
         'ativa': ativa,
-        'posicao': posicao,
-        'tarefa': {
-          'titulo': titulo.trim(),
-          if (descricao.trim().isNotEmpty) 'descricao': descricao.trim(),
-          if (porque.trim().isNotEmpty) 'porque': porque.trim(),
+        if (iniciaWorkflow)
+          'workflow': workflow
+        else ...{
+          'posicao': posicao,
+          'tarefa': {
+            'titulo': titulo.trim(),
+            if (descricao.trim().isNotEmpty) 'descricao': descricao.trim(),
+            if (porque.trim().isNotEmpty) 'porque': porque.trim(),
+          },
         },
         if (cron.trim().isNotEmpty) 'cron': cron.trim(),
         if (webhook) 'webhook': true,
@@ -312,6 +323,7 @@ class Rotina {
       titulo: texto(tarefa['titulo']),
       descricao: texto(tarefa['descricao']),
       porque: texto(tarefa['porque']),
+      workflow: texto(j['workflow']),
       cron: texto(j['cron']),
       webhook: j['webhook'] == true,
       concorrencia: j['concorrencia'] is String ? j['concorrencia'] as String : 'pular',
@@ -332,14 +344,26 @@ class Rotina {
 
 final _slugDaRotina = RegExp(r'^[a-z][a-z0-9-]{0,47}$');
 
-List<String> errosDaRotina(Rotina r, EquipeResumo equipe) {
+List<Workflow> workflowsParaRotina(List<Workflow> workflows, String equipe) =>
+    [for (final w in workflows) if (w.equipe == equipe && aceitaRotina(w)) w];
+
+List<String> errosDaRotina(Rotina r, EquipeResumo equipe, {List<Workflow> workflows = const []}) {
   if (!_slugDaRotina.hasMatch(r.id)) return ['rotina: id inválido (${r.id})'];
   final onde = 'rotina ${r.id}';
   final erros = <String>[];
   if (r.nome.trim().isEmpty) erros.add('$onde: nome obrigatório');
-  if (r.titulo.trim().isEmpty) erros.add('$onde: título da tarefa obrigatório');
-  final posicao = r.posicao.trim();
-  if (equipe.posicao(posicao) == null) erros.add('$onde: posição inexistente ($posicao)');
+  if (r.iniciaWorkflow) {
+    final w = workflows.where((w) => w.equipe == equipe.id && w.id == r.workflow).firstOrNull;
+    if (w == null) {
+      erros.add('$onde: workflow inexistente (${r.workflow})');
+    } else if (!aceitaRotina(w)) {
+      erros.add('$onde: o workflow ${r.workflow} pede entrada que a rotina não dá (só "dados" em texto)');
+    }
+  } else {
+    if (r.titulo.trim().isEmpty) erros.add('$onde: título da tarefa obrigatório');
+    final posicao = r.posicao.trim();
+    if (equipe.posicao(posicao) == null) erros.add('$onde: posição inexistente ($posicao)');
+  }
   if (!concorrencias.containsKey(r.concorrencia)) erros.add('$onde: concorrência inválida');
   if (!perdidosDaRotina.containsKey(r.perdidos)) erros.add('$onde: perdidos inválido');
   final cron = r.cron.trim();
@@ -383,6 +407,7 @@ String idDaNovaRotina(String nome, Iterable<String> usados) =>
 
 bool webhookArriscado(Rotina r, EquipeResumo equipe) {
   if (!r.webhook) return false;
+  if (r.iniciaWorkflow) return false;
   final p = equipe.posicao(r.posicao);
   return p != null && p.capacidades.contains('comandos') && p.aprovacao == 'auto';
 }
