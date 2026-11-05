@@ -177,3 +177,17 @@ projeto de teste.
 Nomes internos, o texto exato da descrição e das notas, o desenho da seção na Configuração e a
 ordem dos commits. A ordem sugerida é: núcleo puro (chaves, ações, a volta); tabela e adaptador
 MCP; ligação com o painel e o relógio; configuração e protocolo; tela do desktop.
+
+## Como ficou na implementação
+
+- **Teste com o TickTask real.** Rodado em 05/11/2026 num projeto de teste: a entrega e a
+  decisão subiram, finalizar a entrega lá concluiu a tarefa aqui, finalizar a subtarefa "seguir"
+  fez o workflow seguir, e uma entrega resolvida aqui foi finalizada lá com a nota. A resposta de
+  criação do TickTask traz o objeto em `created`, e o cliente aceita esse formato e os outros.
+- **Nome da decisão.** Leva a pergunta: "[CT] <workflow> pergunta: <a pergunta>".
+- **Teste isolado.** `CT_TICKTASK_CONFIG` aponta outro `mcp-config.json`, o que permite rodar o
+  servidor contra um TickTask falso.
+- **Web.** O contrato do protocolo obriga a web a tratar `espelho`, então o painel da web ganhou
+  uma linha de estado ("TickTask: N item(ns) espelhado(s)") quando o espelho está ligado.
+- **Desktop.** Ligar e desligar fica no rascunho e só vale ao salvar. Antes da primeira volta, o
+  estado diz "esperando a primeira volta" em vez de "fora do ar".
