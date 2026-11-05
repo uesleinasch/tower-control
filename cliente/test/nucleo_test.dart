@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:control_tower/nucleo/avisos.dart';
 import 'package:control_tower/nucleo/baloes.dart';
 import 'package:control_tower/nucleo/enderecos.dart';
+import 'package:control_tower/nucleo/espelho.dart';
 import 'package:control_tower/nucleo/formato.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
@@ -256,6 +257,10 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
     ],
   },
   'erro': {'mensagem': 'falhou'},
+  'espelho': {
+    'config': {'ativo': true, 'projeto': 'Control Tower', 'tag': 'control-tower', 'tipos': ['aprovacao', 'decisao']},
+    'estado': {'conectado': true, 'ultimaVolta': '2026-11-05T13:04:00.000Z', 'erro': null, 'abertos': 3, 'pendentes': 1},
+  },
   'execucao': {
     'execucao': _execucao,
     'eventos': [
@@ -407,6 +412,9 @@ final _saidas = <Saida>[
   const SalvarSkill(RascunhoDeSkill(dono: 'casa', id: 'relatorio-semanal', descricao: 'd', corpo: 'c')),
   const ExcluirSkill('casa', 'relatorio-semanal'),
   const SalvarSkillsDaPersona('poe', ['relatorio-semanal']),
+  const PedirEspelho(),
+  const SalvarEspelho(ConfigDoEspelho()),
+  const SincronizarEspelho(),
 ];
 
 void main() {
@@ -1623,6 +1631,70 @@ void main() {
       expect(daPersona.map((s) => s.descricao).take(2), ['só do poe', 'da casa']);
       const posicao = PosicaoResumo(id: 'executor', titulo: 'executor', skills: ['a']);
       expect(skillsDaPosicao(biblioteca, posicao).map((s) => (s.id, s.descricao, s.propria)), [('a', 'da casa', false)]);
+    });
+  });
+  group('espelho', () {
+    test('espelho decodifica a config e o estado, com a volta em hora local', () {
+      final e = Entrada.decodificar(jsonEncode({'tipo': 'espelho', ..._fixturasEntrada['espelho']!})) as EspelhoRecebido;
+      expect([e.config.ativo, e.config.projeto, e.config.tag, e.config.tipos], [true, 'Control Tower', 'control-tower', ['aprovacao', 'decisao']]);
+      expect([e.estado.conectado, e.estado.erro, e.estado.abertos, e.estado.pendentes], [true, null, 3, 1]);
+      expect(e.estado.ultimaVolta, DateTime.utc(2026, 11, 5, 13, 4).toLocal());
+      expect(e.estado.ultimaVolta!.isUtc, isFalse);
+      final vazio = Entrada.decodificar('{"tipo":"espelho"}') as EspelhoRecebido;
+      expect([vazio.config.ativo, vazio.config.tipos, vazio.estado.ultimaVolta, vazio.estado.abertos], [false, isEmpty, null, 0]);
+    });
+
+    test('as saídas do espelho: pedir, salvar com a config aparada e na ordem, sincronizar', () {
+      expect(jsonDecode(const PedirEspelho().codificar()), {'tipo': 'espelho'});
+      expect(jsonDecode(const SincronizarEspelho().codificar()), {'tipo': 'espelho-sincronizar'});
+      const config = ConfigDoEspelho(ativo: true, projeto: ' Casa ', tag: 'ct ', tipos: ['vaga', 'aprovacao']);
+      expect(jsonDecode(const SalvarEspelho(config).codificar()), {
+        'tipo': 'espelho-salvar',
+        'config': {'ativo': true, 'projeto': 'Casa', 'tag': 'ct', 'tipos': ['aprovacao', 'vaga']},
+      });
+    });
+
+    test('os tipos seguem a ordem do servidor, e marcar e desmarcar mantém essa ordem', () {
+      expect(tiposDoEspelho, ['aprovacao', 'plano', 'entrega', 'decisao', 'sinal', 'bloqueada', 'backlog', 'atrasada', 'orcamento', 'rotina', 'vaga']);
+      expect(rotulosDoEspelho['orcamento'], 'orçamento estourado');
+      const c = ConfigDoEspelho(tipos: ['decisao']);
+      expect(c.comTipo('vaga', true).comTipo('aprovacao', true).tipos, ['aprovacao', 'decisao', 'vaga']);
+      expect(c.comTipo('decisao', false).tipos, isEmpty);
+      expect(c.comTipo('decisao', true).tipos, ['decisao']);
+    });
+
+    test('validação: projeto e tag obrigatórios e só tipos conhecidos', () {
+      expect(errosDaConfigDoEspelho(const ConfigDoEspelho()), isEmpty);
+      expect(errosDaConfigDoEspelho(const ConfigDoEspelho(projeto: '  ', tag: '', tipos: ['aprovacao', 'qualquer'])), [
+        'o projeto do TickTask é obrigatório',
+        'a tag é obrigatória',
+        'tipo desconhecido (qualquer)',
+      ]);
+    });
+
+    test('mesmaQue compara a config aparada e sem olhar a ordem dos tipos', () {
+      const a = ConfigDoEspelho(ativo: true, projeto: 'Casa', tag: 'ct', tipos: ['aprovacao', 'vaga']);
+      expect(a.mesmaQue(const ConfigDoEspelho(ativo: true, projeto: 'Casa ', tag: ' ct', tipos: ['vaga', 'aprovacao'])), isTrue);
+      expect(a.mesmaQue(a.copiar(ativo: false)), isFalse);
+      expect(a.mesmaQue(a.comTipo('plano', true)), isFalse);
+      expect(a.mesmaQue(null), isFalse);
+    });
+
+    test('texto do estado: conectado com contagens, fora do ar com o erro, desligado', () {
+      const ligado = ConfigDoEspelho(ativo: true);
+      expect(resumoDoEspelho(ligado, const EstadoDoEspelho(conectado: true, abertos: 3, pendentes: 1)), 'conectado · 3 no TickTask · 1 esperando');
+      expect(resumoDoEspelho(ligado, const EstadoDoEspelho(conectado: true, abertos: 2)), 'conectado · 2 no TickTask');
+      expect(resumoDoEspelho(ligado, const EstadoDoEspelho(erro: 'TickTask fora do ar')), 'fora do ar: TickTask fora do ar');
+      expect(resumoDoEspelho(ligado, const EstadoDoEspelho()), 'esperando a primeira volta');
+      expect(resumoDoEspelho(const ConfigDoEspelho(), const EstadoDoEspelho(conectado: true, abertos: 3)), 'desligado');
+    });
+
+    test('última volta: hora quando é hoje, dia e hora quando não é', () {
+      final agora = DateTime(2026, 11, 5, 18);
+      expect(ultimaVoltaDoEspelho(const EstadoDoEspelho(), agora: agora), 'nenhuma volta ainda');
+      expect(ultimaVoltaDoEspelho(EstadoDoEspelho(ultimaVolta: DateTime(2026, 11, 5, 9, 7)), agora: agora), 'última volta às 09:07');
+      expect(ultimaVoltaDoEspelho(EstadoDoEspelho(ultimaVolta: DateTime(2026, 11, 4, 22, 30)), agora: agora), 'última volta ontem, às 22:30');
+      expect(ultimaVoltaDoEspelho(EstadoDoEspelho(ultimaVolta: DateTime(2026, 11, 1, 8)), agora: agora), 'última volta 1/nov, às 08:00');
     });
   });
 }

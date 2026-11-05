@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../conexao/http.dart';
+import '../estado/espelho.dart';
 import '../estado/sala.dart';
 import '../estado/servidor.dart';
 import '../nucleo/acoes.dart';
 import '../nucleo/enderecos.dart';
+import '../nucleo/espelho.dart';
 import '../sistema/desktop.dart';
 import '../sistema/executor.dart';
 import '../sistema/servico_avisos.dart';
@@ -35,6 +37,7 @@ class TelaConfiguracao extends StatelessWidget {
             children: [
               _BlocoServidor(sala: sala, servidor: servidor),
               _BlocoInicializacao(autostart: autostart),
+              _BlocoEspelho(espelho: sala.espelho),
               _BlocoRede(servidor: servidor),
               _BlocoCelular(servidor: servidor),
               const _BlocoLogs(),
@@ -382,6 +385,155 @@ class _BlocoInicializacaoState extends State<_BlocoInicializacao> {
           ),
           if (_erro != null) _Saida(_erro!, erro: true),
         ],
+      );
+}
+
+class _BlocoEspelho extends StatefulWidget {
+  const _BlocoEspelho({required this.espelho});
+
+  final EstadoEspelho espelho;
+
+  @override
+  State<_BlocoEspelho> createState() => _BlocoEspelhoState();
+}
+
+class _BlocoEspelhoState extends State<_BlocoEspelho> {
+  final _projeto = TextEditingController();
+  final _tag = TextEditingController();
+
+  EstadoEspelho get _e => widget.espelho;
+
+  @override
+  void initState() {
+    super.initState();
+    _e.addListener(_sincronizarCampos);
+    _sincronizarCampos();
+    _e.definirAberto(true);
+  }
+
+  @override
+  void dispose() {
+    _e.removeListener(_sincronizarCampos);
+    _e.definirAberto(false);
+    _projeto.dispose();
+    _tag.dispose();
+    super.dispose();
+  }
+
+  void _sincronizarCampos() {
+    if (_e.rascunho != null) return;
+    final c = _e.vista;
+    if (_projeto.text != c.projeto) _projeto.text = c.projeto;
+    if (_tag.text != c.tag) _tag.text = c.tag;
+  }
+
+  Color _corDoResumo() {
+    final c = _e.config;
+    if (c == null || !c.ativo) return Colors.grey;
+    if (_e.estado.conectado) return _verde;
+    return _e.estado.erro == null ? _ambar : _vermelho;
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: _e,
+        builder: (context, _) {
+          final cores = Theme.of(context).colorScheme;
+          final vista = _e.vista;
+          final estado = _e.estado;
+          final editavel = _e.carregado && !_e.salvando;
+          final ligadoSalvo = _e.config?.ativo ?? false;
+          return _Bloco(
+            titulo: 'Espelho no TickTask',
+            icone: Icons.sync_alt,
+            acao: _Etiqueta(_e.resumo, _corDoResumo()),
+            filhos: [
+              Text(
+                'Os itens de "Precisa de você" sobem como tarefas no TickTask. Finalizar lá faz a ação '
+                'aqui (aprovar, concluir, liberar ou escolher a opção). Pedir mudança continua só no control-tower.',
+                style: TextStyle(color: cores.onSurfaceVariant, fontSize: 13),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: vista.ativo,
+                onChanged: editavel ? (v) => _e.mudar(ativo: v) : null,
+                title: const Text('Espelhar no TickTask'),
+              ),
+              Wrap(spacing: 12, runSpacing: 8, children: [
+                SizedBox(
+                  width: 280,
+                  child: TextField(
+                    controller: _projeto,
+                    enabled: editavel,
+                    onChanged: (v) => _e.mudar(projeto: v),
+                    decoration: const InputDecoration(labelText: 'Projeto do TickTask'),
+                  ),
+                ),
+                SizedBox(
+                  width: 220,
+                  child: TextField(
+                    controller: _tag,
+                    enabled: editavel,
+                    onChanged: (v) => _e.mudar(tag: v),
+                    decoration: const InputDecoration(labelText: 'Tag'),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 16),
+              Text('O que sobe', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 4),
+              Wrap(children: [
+                for (final MapEntry(key: tipo, value: rotulo) in rotulosDoEspelho.entries)
+                  SizedBox(
+                    width: 260,
+                    child: CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: vista.tipos.contains(tipo),
+                      onChanged: editavel ? (v) => _e.marcarTipo(tipo, v ?? false) : null,
+                      title: Text(rotulo),
+                    ),
+                  ),
+              ]),
+              if (_e.alterado || _e.salvando) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  FilledButton(onPressed: _e.podeSalvar ? _e.salvar : null, child: const Text('Salvar')),
+                  TextButton(onPressed: _e.salvando ? null : _e.descartar, child: const Text('Descartar')),
+                  if (_e.salvando)
+                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                ]),
+              ],
+              if (_e.erro != null) _Saida(_e.erro!, erro: true),
+              const Divider(height: 32),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                _Etiqueta(
+                  estado.conectado ? 'conectado' : 'fora do ar',
+                  estado.conectado ? _verde : (ligadoSalvo ? _vermelho : Colors.grey),
+                ),
+                _Etiqueta('${estado.abertos} no TickTask', cores.primary),
+                _Etiqueta('${estado.pendentes} esperando para subir ou fechar',
+                    estado.pendentes > 0 ? _ambar : Colors.grey),
+              ]),
+              const SizedBox(height: 8),
+              Text(ultimaVoltaDoEspelho(estado), style: TextStyle(color: cores.onSurfaceVariant, fontSize: 13)),
+              if (estado.erro != null) _Saida('Último erro: ${estado.erro}', erro: true),
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                FilledButton.tonalIcon(
+                  onPressed: ligadoSalvo && !_e.sincronizando ? _e.sincronizar : null,
+                  icon: const Icon(Icons.sync),
+                  label: const Text('Sincronizar agora'),
+                ),
+                if (_e.sincronizando)
+                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                if (!ligadoSalvo && _e.carregado)
+                  Text('Ligue e salve para sincronizar.', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+              ]),
+            ],
+          );
+        },
       );
 }
 

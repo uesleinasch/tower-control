@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'espelho.dart';
 import 'modelos.dart';
 import 'painel.dart';
 import 'rotinas.dart';
@@ -39,6 +40,7 @@ sealed class Entrada {
       'decisoes' => Decisoes(listaDeJson(json['lista'], Decisao.deJson)),
       'equipes' => EquipesRecebidas(listaDeJson(json['lista'], EquipeResumo.deJson)),
       'erro' => Erro(texto('mensagem')),
+      'espelho' => EspelhoRecebido(ConfigDoEspelho.deJson(json['config']), EstadoDoEspelho.deJson(json['estado'])),
       'excluida' => Excluida(texto('id')),
       'fim' => Fim(texto('conversaId')),
       'execucao' => ExecucaoRecebida(
@@ -135,6 +137,12 @@ class DecisaoAberta extends Entrada {
 class Decisoes extends Entrada {
   const Decisoes(this.lista);
   final List<Decisao> lista;
+}
+
+class EspelhoRecebido extends Entrada {
+  const EspelhoRecebido(this.config, this.estado);
+  final ConfigDoEspelho config;
+  final EstadoDoEspelho estado;
 }
 
 class EquipesRecebidas extends Entrada {
@@ -760,4 +768,28 @@ class SalvarSkillsDaPersona extends Saida {
   Map<String, Object?> get campos => {
         'persona': {'id': id, 'skills': skills},
       };
+}
+
+class PedirEspelho extends Saida {
+  const PedirEspelho();
+
+  @override
+  String get tipo => 'espelho';
+}
+
+class SalvarEspelho extends Saida {
+  const SalvarEspelho(this.config);
+  final ConfigDoEspelho config;
+
+  @override
+  String get tipo => 'espelho-salvar';
+  @override
+  Map<String, Object?> get campos => {'config': config.paraJson()};
+}
+
+class SincronizarEspelho extends Saida {
+  const SincronizarEspelho();
+
+  @override
+  String get tipo => 'espelho-sincronizar';
 }

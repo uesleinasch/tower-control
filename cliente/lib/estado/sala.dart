@@ -10,6 +10,7 @@ import 'areas.dart';
 import 'chat.dart';
 import 'editor_de_workflow.dart';
 import 'equipes.dart';
+import 'espelho.dart';
 import 'painel.dart';
 import 'presenca.dart';
 import 'rotinas.dart';
@@ -33,6 +34,7 @@ class Sala extends ChangeNotifier {
     workflows = EstadoWorkflows(canal.enviar);
     editorDeWorkflow = EstadoEditorDeWorkflow(canal.enviar);
     skills = EstadoSkills(canal.enviar);
+    espelho = EstadoEspelho(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -54,6 +56,7 @@ class Sala extends ChangeNotifier {
   late final EstadoWorkflows workflows;
   late final EstadoEditorDeWorkflow editorDeWorkflow;
   late final EstadoSkills skills;
+  late final EstadoEspelho espelho;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -160,6 +163,7 @@ class Sala extends ChangeNotifier {
     conversas.listar();
     presenca.reconectou();
     painel.reconectou();
+    espelho.reconectou();
     if (_primeiraConexao) {
       _primeiraConexao = false;
       return;
@@ -193,6 +197,9 @@ class Sala extends ChangeNotifier {
       case Erro() when skills.salvando:
         skills.tratar(e);
         return;
+      case Erro() when espelho.ocupado:
+        espelho.tratar(e);
+        return;
       case Aviso(:final texto) when tela != Tela.chat:
         _avisos.add(texto);
         return;
@@ -225,6 +232,7 @@ class Sala extends ChangeNotifier {
         workflows.tratar(e);
         editorDeWorkflow.tratar(e);
         skills.tratar(e);
+        espelho.tratar(e);
     }
   }
 
@@ -247,6 +255,7 @@ class Sala extends ChangeNotifier {
     workflows.dispose();
     editorDeWorkflow.dispose();
     skills.dispose();
+    espelho.dispose();
     canal.dispose();
     super.dispose();
   }

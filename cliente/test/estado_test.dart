@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
 import 'package:control_tower/estado/editor_de_workflow.dart';
+import 'package:control_tower/estado/espelho.dart';
 import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/painel.dart';
@@ -11,6 +12,7 @@ import 'package:control_tower/estado/skills.dart';
 import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/estado/workflows.dart';
 import 'package:control_tower/nucleo/editor_de_workflow.dart';
+import 'package:control_tower/nucleo/espelho.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/painel.dart';
@@ -167,6 +169,75 @@ void main() {
       equipes.salvar();
       final posicoes = (enviados.last['equipe'] as Map)['posicoes'] as List;
       expect((posicoes.single as Map)['skills'], ['relatorio-semanal']);
+    });
+  });
+
+  group('EstadoEspelho', () {
+    const salva = ConfigDoEspelho(ativo: false, projeto: 'Control Tower', tag: 'control-tower', tipos: ['aprovacao']);
+    const estado = EstadoDoEspelho(conectado: true, abertos: 2);
+
+    test('abrir a tela pede o estado, e reconectar só pede de novo com a tela aberta', () {
+      final e = EstadoEspelho(enviar)..reconectou();
+      expect(enviados, isEmpty);
+      e.definirAberto(true);
+      expect(enviados.map((m) => m['tipo']), ['espelho']);
+      e
+        ..reconectou()
+        ..definirAberto(false)
+        ..reconectou();
+      expect(enviados.map((m) => m['tipo']), ['espelho', 'espelho']);
+    });
+
+    test('salvar manda espelho-salvar com a config, e a config igual à enviada tira do rascunho', () {
+      final e = EstadoEspelho(enviar)..tratar(const EspelhoRecebido(salva, estado));
+      expect([e.alterado, e.podeSalvar], [false, false]);
+      e
+        ..mudar(ativo: true, projeto: 'Casa ')
+        ..marcarTipo('vaga', true)
+        ..salvar();
+      expect(enviados.last, {
+        'tipo': 'espelho-salvar',
+        'config': {'ativo': true, 'projeto': 'Casa', 'tag': 'control-tower', 'tipos': ['aprovacao', 'vaga']},
+      });
+      expect([e.salvando, e.podeSalvar], [true, false]);
+      e.tratar(const EspelhoRecebido(salva, EstadoDoEspelho(abertos: 5)));
+      expect([e.salvando, e.rascunho?.projeto, e.estado.abertos], [true, 'Casa ', 5]);
+      e.tratar(const EspelhoRecebido(
+          ConfigDoEspelho(ativo: true, projeto: 'Casa', tag: 'control-tower', tipos: ['aprovacao', 'vaga']), estado));
+      expect([e.salvando, e.rascunho, e.erro, e.config?.ativo], [false, null, null, true]);
+    });
+
+    test('o erro do servidor mantém o rascunho, e descartar volta para a config salva', () {
+      final e = EstadoEspelho(enviar)
+        ..tratar(const EspelhoRecebido(salva, estado))
+        ..mudar(projeto: 'Inexistente')
+        ..salvar();
+      e.tratar(const Erro('espelho: projeto do TickTask obrigatório'));
+      expect([e.salvando, e.erro, e.rascunho?.projeto, e.vista.projeto],
+          [false, 'espelho: projeto do TickTask obrigatório', 'Inexistente', 'Inexistente']);
+      e.descartar();
+      expect([e.rascunho, e.erro, e.vista.projeto], [null, null, 'Control Tower']);
+    });
+
+    test('rascunho inválido nem envia', () {
+      final e = EstadoEspelho(enviar)
+        ..tratar(const EspelhoRecebido(salva, estado))
+        ..mudar(tag: '  ')
+        ..salvar();
+      expect(enviados, isEmpty);
+      expect([e.podeSalvar, e.erro], [false, 'a tag é obrigatória']);
+    });
+
+    test('sincronizar manda espelho-sincronizar e espera o próximo espelho', () {
+      final e = EstadoEspelho(enviar)
+        ..tratar(const EspelhoRecebido(salva, estado))
+        ..sincronizar();
+      expect(enviados.last, {'tipo': 'espelho-sincronizar'});
+      expect(e.sincronizando, isTrue);
+      e.sincronizar();
+      expect(enviados, hasLength(1));
+      e.tratar(const EspelhoRecebido(salva, EstadoDoEspelho(conectado: true, abertos: 3, pendentes: 1)));
+      expect([e.sincronizando, e.resumo], [false, 'desligado']);
     });
   });
 
