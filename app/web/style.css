@@ -802,7 +802,6 @@ body {
 .orcamento-persona.tokens { width: 120px; }
 .orcamento-persona { width: 96px; background: var(--painel-2); color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 4px 6px; }
 .perfil-msg.plano { border-left: 3px solid #9a6ee8; }
-.link-atividade { margin-left: 8px; background: none; border: none; color: var(--acento); cursor: pointer; font-size: 12px; text-transform: none; }
 .lista-atividade { list-style: none; padding: 0; margin: 0 0 12px; font-size: 13px; color: var(--texto-2); }
 .lista-atividade li { padding: 4px 0; border-bottom: 1px solid var(--borda); overflow-wrap: anywhere; }
 .lista-atividade strong { color: var(--texto); }
@@ -811,3 +810,13 @@ body {
 .trilha-politica { margin: 6px 0; font-size: 13px; color: var(--texto-2); }
 .trilha-politica .atual { color: #9a6ee8; font-weight: 600; }
 .trilha-politica .passada { color: #4fae7c; }
+.avatar.painel { background: var(--acento); }
+.painel-vazio { display: block; color: var(--texto-2); margin: 2px 0 8px; }
+.item-atencao { border-left: 3px solid #d9774b; }
+.item-atencao.comando, .item-atencao.aprovacao { border-left-color: #e06a8a; }
+.item-atencao.plano { border-left-color: #9a6ee8; }
+.item-atencao.entrega { border-left-color: #4fae7c; }
+.cartoes-persona { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.cartao-persona { padding: 8px 10px; border: 1px solid var(--borda); border-left: 4px solid var(--borda); border-radius: 10px; background: var(--painel-2); font-size: 13px; overflow-wrap: anywhere; }
+.cartao-persona.pausada, .cartao-persona.sem_orcamento { opacity: 0.7; }
+.cartao-persona.rodando { cursor: pointer; }

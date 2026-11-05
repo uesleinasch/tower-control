@@ -24,7 +24,11 @@ const estado = {
   foco: null,
   personas: [],
   pausadoTudo: false,
-  auditoria: null,
+  painel: null,
+  assinandoPainel: false,
+  filtroPersona: "",
+  filtroTipo: "",
+  equipeDoPainel: "casa",
   rotinas: [],
   equipes: [],
   equipeVista: "casa",
@@ -155,7 +159,15 @@ function refletirFoco() {
   }
 }
 
+function sincronizarPainel() {
+  const quer = estado.modo === "painel"
+  if (quer === estado.assinandoPainel) return
+  estado.assinandoPainel = quer
+  enviar({ tipo: "painel", ativo: quer })
+}
+
 function ajustarAoModo() {
+  sincronizarPainel()
   const executor = estado.modo === "chat" && ehExecutor(estado.perfil)
   el.clipe.hidden = estado.modo !== "chat"
   el.auto.hidden = !executor
@@ -354,6 +366,8 @@ function conectar() {
     enviar({ tipo: "listar" })
     visivelInformado = undefined
     informarVisivel()
+    estado.assinandoPainel = false
+    sincronizarPainel()
   }
   ws.onclose = () => {
     el.conexao.classList.remove("ok")
@@ -546,12 +560,13 @@ function rotuloDaPosicao(id, equipe = estado.equipeDasTarefas) {
 }
 
 function refletirComposerDeTarefas() {
-  const listando = (estado.modo === "tarefas" && !estado.tarefaId) || estado.modo === "equipes"
+  const listando = (estado.modo === "tarefas" && !estado.tarefaId) || estado.modo === "equipes" || estado.modo === "painel"
   el.entrada.disabled = listando
   if (estado.modo === "tarefas") {
     el.entrada.placeholder = listando ? "Abra uma tarefa para comentar" : "Comentar na tarefa…"
   }
   if (estado.modo === "equipes") el.entrada.placeholder = "Edite as equipes no app desktop"
+  if (estado.modo === "painel") el.entrada.placeholder = "Use os botões do painel"
 }
 
 function abrirTarefas() {
@@ -885,6 +900,279 @@ const ALTURA_NO = 78
 const TOPO_DO_ORGANOGRAMA = 30
 const NOMES_CAPACIDADE = { arquivos: "arquivos", comandos: "comandos", ticktask: "TickTask", memoria: "memória", board: "board" }
 
+// ── painel ─────────────────────────────────────────────────────────
+
+const NOMES_ESTADO_PERSONA = { rodando: "rodando", na_fila: "na fila", ocioso: "ociosa", pausada: "pausada", sem_orcamento: "sem orçamento" }
+const NOMES_PAPEL = { executa: "executa", revisa: "revisa", board: "board" }
+const NOMES_TIPO_ATIVIDADE = {
+  entrega: "entregas",
+  plano: "planos",
+  ajuda: "pedidos de ajuda",
+  decisao: "decisões",
+  comentario: "comentários",
+  auditoria: "auditoria",
+  disparo: "rotinas",
+}
+const ROTULO_ACAO = {
+  aprovar: "Aprovar",
+  negar: "Negar",
+  "pedir-mudanca": "Pedir mudança",
+  "aprovar-plano": "Aprovar plano",
+  concluir: "Concluir",
+  liberar: "Liberar",
+  abrir: "Abrir",
+}
+
+function abrirPainel() {
+  estado.modo = "painel"
+  estado.perfil = null
+  estado.conversaId = null
+  estado.tarefaId = null
+  ajustarAoModo()
+  selecionarBotao("#botao-painel")
+  definirCabecalho("painel", "Painel")
+  irParaConversa()
+  informarVisivel()
+  enviar({ tipo: "equipes" })
+  enviar({ tipo: "personas" })
+  renderPainel()
+}
+
+function abrirTarefaDoPainel(id, equipe) {
+  if (equipe) estado.equipeDasTarefas = equipe
+  abrirTarefas()
+  enviar({ tipo: "tarefa", id })
+}
+
+function agirNoPainel(item, acao) {
+  switch (acao) {
+    case "aprovar":
+      if (item.tipo === "comando") enviar({ tipo: "permissao-resposta", id: item.permissaoId, permitido: true })
+      else enviar({ tipo: "tarefa-decidir", id: item.tarefaId, decisao: "aprovar" })
+      return
+    case "negar":
+      enviar({ tipo: "permissao-resposta", id: item.permissaoId, permitido: false })
+      return
+    case "pedir-mudanca": {
+      const texto = prompt("O que precisa mudar?")?.trim()
+      if (texto) enviar({ tipo: "tarefa-decidir", id: item.tarefaId, decisao: "mudanca", texto })
+      return
+    }
+    case "aprovar-plano":
+      enviar({ tipo: "tarefa-aprovar-plano", id: item.tarefaId })
+      return
+    case "concluir":
+      enviar({ tipo: "tarefa-status", id: item.tarefaId, status: "concluida" })
+      return
+    case "liberar":
+      enviar({ tipo: "tarefa-status", id: item.tarefaId, status: "a_fazer" })
+      return
+    case "abrir":
+      if (item.tarefaId) abrirTarefaDoPainel(item.tarefaId, item.equipe)
+      else {
+        if (item.equipe) estado.equipeVista = item.equipe
+        abrirEquipes()
+      }
+  }
+}
+
+function tituloDeSecao(texto) {
+  const h = document.createElement("h3")
+  h.className = "grupo-tarefas"
+  h.textContent = texto
+  return h
+}
+
+function vazio(texto) {
+  return Object.assign(document.createElement("small"), { className: "painel-vazio", textContent: texto })
+}
+
+function secaoDeAtencao(itens) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao(itens.length ? `Precisa de você · ${itens.length}` : "Precisa de você"))
+  if (!itens.length) secao.appendChild(vazio("Nada esperando você."))
+  for (const item of itens) {
+    const div = document.createElement("div")
+    div.className = `msg perfil-msg item-atencao ${item.tipo}`
+    div.innerHTML = `<strong>${escapar(item.titulo)}</strong> <small>${quando(item.desde)}</small><br>${escapar(item.detalhe)}`
+    const acoes = document.createElement("div")
+    acoes.className = "acoes-tarefa"
+    for (const acao of item.acoes) {
+      const botao = document.createElement("button")
+      botao.textContent = ROTULO_ACAO[acao] ?? acao
+      if (acao === "aprovar" || acao === "aprovar-plano") botao.className = "aprovar-plano"
+      botao.onclick = () => agirNoPainel(item, acao)
+      acoes.appendChild(botao)
+    }
+    div.appendChild(acoes)
+    secao.appendChild(div)
+  }
+  return secao
+}
+
+function secaoAgora({ rodando, naFila }) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao("Agora"))
+  if (!rodando.length && !naFila.length) secao.appendChild(vazio("Nenhuma persona trabalhando."))
+  const ul = document.createElement("ul")
+  ul.className = "lista-decisoes"
+  for (const e of rodando) {
+    const li = document.createElement("li")
+    const evento = e.ultimoEvento ? `<br>${escapar(e.ultimoEvento.conteudo)}` : ""
+    li.innerHTML =
+      `<span class="status em_andamento">#${e.tarefaId}</span>${escapar(e.titulo)} <span class="rodando">● ${escapar(NOMES_PAPEL[e.papel] ?? e.papel)}</span>` +
+      `<small>${escapar(e.persona ?? "board")} · desde ${quando(e.inicio)}${evento}</small>`
+    li.onclick = () => abrirTarefaDoPainel(e.tarefaId, e.equipe)
+    ul.appendChild(li)
+  }
+  for (const e of naFila) {
+    const li = document.createElement("li")
+    li.innerHTML =
+      `<span class="status a_fazer">#${e.tarefaId}</span>${escapar(e.titulo)}` +
+      `<small>${escapar(e.persona ?? "sem persona")} · na fila: ${escapar(e.motivo)}</small>`
+    li.onclick = () => abrirTarefaDoPainel(e.tarefaId)
+    ul.appendChild(li)
+  }
+  if (ul.children.length) secao.appendChild(ul)
+  return secao
+}
+
+function secaoDeCartoes(personas) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao("Personas"))
+  const grade = document.createElement("div")
+  grade.className = "cartoes-persona"
+  for (const p of personas) {
+    const limite = [
+      p.limiteUSD != null ? `${dinheiro(p.gastoMesUSD)} de ${dinheiro(p.limiteUSD)}` : dinheiro(p.gastoMesUSD),
+      p.limiteTokens != null ? `${formatarTokens(p.tokensMes)} de ${formatarTokens(p.limiteTokens)}` : formatarTokens(p.tokensMes),
+    ].join(" · ")
+    const cartao = document.createElement("div")
+    cartao.className = `cartao-persona ${p.estado}`
+    cartao.style.borderLeftColor = p.cor
+    cartao.innerHTML =
+      `<strong>${escapar(p.nome)}</strong> <small>${NOMES_ESTADO_PERSONA[p.estado] ?? p.estado}${p.tarefaId ? ` · #${p.tarefaId}` : ""}</small>` +
+      `<br><small>${escapar(limite)} · ${p.abertas} aberta(s)</small>`
+    if (p.tarefaId) cartao.onclick = () => abrirTarefaDoPainel(p.tarefaId)
+    grade.appendChild(cartao)
+  }
+  secao.appendChild(grade)
+  return secao
+}
+
+function secaoDeContagem(tarefas) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao("Tarefas"))
+  if (estado.equipes.length > 1) {
+    secao.appendChild(
+      seletorDeEquipe(estado.equipeDoPainel, (id) => {
+        estado.equipeDoPainel = id
+        renderPainel()
+      }),
+    )
+  }
+  const contagem = tarefas[estado.equipeDoPainel] ?? {}
+  const linha = document.createElement("div")
+  linha.className = "acoes-tarefa"
+  for (const status of ORDEM_STATUS) {
+    if (!contagem[status]) continue
+    const botao = document.createElement("button")
+    botao.textContent = `${NOMES_STATUS[status]} · ${contagem[status]}`
+    botao.onclick = () => {
+      estado.equipeDasTarefas = estado.equipeDoPainel
+      abrirTarefas()
+    }
+    linha.appendChild(botao)
+  }
+  secao.appendChild(linha.children.length ? linha : vazio("Nenhuma tarefa nesta equipe."))
+  return secao
+}
+
+function secaoDeProximas(rotinas) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao("Próximas rotinas"))
+  if (!rotinas.length) secao.appendChild(vazio("Nenhuma rotina agendada."))
+  const ul = document.createElement("ul")
+  ul.className = "lista-atividade"
+  for (const r of rotinas) {
+    const li = document.createElement("li")
+    li.innerHTML = `<time>${quando(r.proximo)}</time> <strong>${escapar(r.nome)}</strong> · ${escapar(equipeDe(r.equipe)?.nome ?? r.equipe)}`
+    ul.appendChild(li)
+  }
+  if (rotinas.length) secao.appendChild(ul)
+  return secao
+}
+
+function secaoDeAtividadeDoPainel(itens) {
+  const secao = document.createElement("section")
+  secao.appendChild(tituloDeSecao("Atividade"))
+  const filtros = document.createElement("div")
+  filtros.className = "acoes-tarefa"
+  const quem = document.createElement("select")
+  quem.setAttribute("aria-label", "filtrar por persona")
+  quem.innerHTML =
+    `<option value="">todas as personas</option><option value="ueslei">Ueslei</option>` +
+    estado.personas.map((p) => `<option value="${escapar(p.id)}">${escapar(p.nome)}</option>`).join("")
+  quem.value = estado.filtroPersona
+  quem.onchange = () => {
+    estado.filtroPersona = quem.value
+    renderPainel()
+  }
+  const tipo = document.createElement("select")
+  tipo.setAttribute("aria-label", "filtrar por tipo")
+  tipo.innerHTML =
+    `<option value="">tudo</option>` +
+    Object.entries(NOMES_TIPO_ATIVIDADE).map(([v, n]) => `<option value="${v}">${n}</option>`).join("")
+  tipo.value = estado.filtroTipo
+  tipo.onchange = () => {
+    estado.filtroTipo = tipo.value
+    renderPainel()
+  }
+  filtros.append(quem, tipo)
+  secao.appendChild(filtros)
+  const filtrados = itens.filter(
+    (a) => (!estado.filtroPersona || a.quem === estado.filtroPersona) && (!estado.filtroTipo || a.tipo === estado.filtroTipo),
+  )
+  if (!filtrados.length) secao.appendChild(vazio("Nada por aqui."))
+  const ul = document.createElement("ul")
+  ul.className = "lista-atividade"
+  for (const a of filtrados) {
+    const li = document.createElement("li")
+    const nome = estado.personas.find((p) => p.id === a.quem)?.nome ?? (a.quem === "ueslei" ? "Ueslei" : a.quem)
+    li.innerHTML =
+      `<time>${quando(a.em)}</time> <strong>${escapar(nome)}</strong>${a.tarefaId ? ` · #${a.tarefaId}` : ""} · ${escapar(a.texto)}`
+    if (a.tarefaId) {
+      li.style.cursor = "pointer"
+      li.onclick = () => abrirTarefaDoPainel(a.tarefaId, a.equipe)
+    }
+    ul.appendChild(li)
+  }
+  if (filtrados.length) secao.appendChild(ul)
+  return secao
+}
+
+function renderPainel() {
+  if (estado.modo !== "painel") return
+  limparTela()
+  definirCabecalho("painel", "Painel")
+  el.mensagens.appendChild(barraDePausa())
+  const r = estado.painel
+  if (!r) {
+    adicionarMensagem("aviso", "Carregando o painel…")
+    return
+  }
+  const gasto = `Mês ${r.gasto.mes}: ${dinheiro(r.gasto.tarefasUSD)} em tarefas · ${dinheiro(r.gasto.totalUSD)} no total · ${formatarTokens(r.gasto.tokensTotal)}`
+  el.mensagens.append(
+    secaoDeAtencao(r.atencao),
+    secaoAgora(r.agora),
+    secaoDeCartoes(r.personas),
+    Object.assign(document.createElement("small"), { className: "painel-vazio", textContent: gasto }),
+    secaoDeContagem(r.tarefas),
+    secaoDeProximas(r.proximasRotinas),
+    secaoDeAtividadeDoPainel(r.atividade),
+  )
+}
+
 function abrirEquipes() {
   estado.modo = "equipes"
   estado.perfil = null
@@ -1089,36 +1377,6 @@ function secaoDePersonas() {
   return secao
 }
 
-function secaoDeAtividade() {
-  const secao = document.createElement("section")
-  const titulo = document.createElement("h3")
-  titulo.className = "grupo-tarefas"
-  titulo.textContent = "Atividade"
-  const alternar = document.createElement("button")
-  alternar.className = "link-atividade"
-  alternar.textContent = estado.auditoria ? "ocultar" : "mostrar"
-  alternar.onclick = () => {
-    if (estado.auditoria) {
-      estado.auditoria = null
-      renderEquipes()
-    } else enviar({ tipo: "auditoria" })
-  }
-  titulo.appendChild(alternar)
-  secao.appendChild(titulo)
-  if (estado.auditoria) {
-    const ul = document.createElement("ul")
-    ul.className = "lista-atividade"
-    if (!estado.auditoria.length) ul.innerHTML = "<li>Nada registrado ainda.</li>"
-    for (const a of estado.auditoria) {
-      const li = document.createElement("li")
-      li.innerHTML = `<time>${quando(a.em)}</time> <strong>${escapar(a.quem)}</strong> ${escapar(a.acao)} · ${escapar(a.alvo)}${a.detalhe ? ` · <small>${escapar(a.detalhe)}</small>` : ""}`
-      ul.appendChild(li)
-    }
-    secao.appendChild(ul)
-  }
-  return secao
-}
-
 const NOMES_RESULTADO = { criada: "criou a tarefa", pulada: "pulou", falhou: "falhou" }
 
 function linhaDoDisparo(d) {
@@ -1197,7 +1455,6 @@ function renderEquipes() {
     el.mensagens.appendChild(secaoDeRotinas(equipe))
   }
   el.mensagens.appendChild(secaoDePersonas())
-  el.mensagens.appendChild(secaoDeAtividade())
 }
 
 // ── envio ──────────────────────────────────────────────────────────
@@ -1209,7 +1466,7 @@ function submeter() {
   if (estado.respostaEmCurso) return
   if (!texto && !(noChat && anexos.length)) return
   if (estado.modo === "tarefas" && !estado.tarefaId) return
-  if (estado.modo === "equipes") return
+  if (estado.modo === "equipes" || estado.modo === "painel") return
   el.entrada.value = ""
   ajustarEntrada()
 
@@ -1440,9 +1697,9 @@ function tratar(msg) {
       renderTarefas()
       break
     }
-    case "auditoria": {
-      estado.auditoria = msg.lista
-      renderEquipes()
+    case "painel": {
+      estado.painel = msg.retrato
+      renderPainel()
       break
     }
     case "rotinas": {
@@ -1521,6 +1778,7 @@ el.ticktask.onclick = () => {
 }
 document.getElementById("botao-board").onclick = abrirBoard
 document.getElementById("botao-decisoes").onclick = abrirDecisoes
+document.getElementById("botao-painel").onclick = abrirPainel
 document.getElementById("botao-tarefas").onclick = abrirTarefas
 document.getElementById("botao-equipes").onclick = abrirEquipes
 document.getElementById("citacao-fechar").onclick = limparCitacao

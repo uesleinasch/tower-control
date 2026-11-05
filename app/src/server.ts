@@ -21,6 +21,7 @@ import { carregarAtalhos } from "./atalhos"
 import { conversar, trabalhar } from "./sessions"
 import { convocarBoard, revisarComBoard } from "./board"
 import { comQuem } from "./orquestra/politica"
+import { AssinaturaDoPainel, TIPOS_DA_ATIVIDADE, montarRetrato } from "./orquestra/painel"
 import type { Tarefa } from "./orquestra/tarefa"
 import { enderecos, respostaEnderecos } from "./rede"
 import { lerDecisoes, lerDecisao } from "./decisions"
@@ -266,6 +267,7 @@ function personasParaCliente() {
 function publicarElenco(): void {
   mandarATodos({ tipo: "personas", lista: personasParaCliente() })
   mandarATodos({ tipo: "equipes", lista: equipesParaCliente() })
+  agendarPainel()
 }
 
 const equipePorId = (id: string) => elenco().equipe(id)
@@ -322,6 +324,7 @@ function rotinaExistente(equipe: string, bruto: unknown) {
 
 function publicarRotinas(): void {
   mandarATodos({ tipo: "rotinas", lista: AGENDADOR.paraCliente() })
+  agendarPainel()
 }
 
 async function salvarRotina(equipeId: unknown, bruto: unknown): Promise<void> {
@@ -421,14 +424,69 @@ function detalheDaTarefa(id: number) {
 
 function publicarTarefa(id: number): void {
   mandarATodos({ tipo: "tarefa", ...detalheDaTarefa(id) })
+  agendarPainel()
 }
 
 function publicarExecucao(execucao: Execucao): void {
   mandarATodos({ tipo: "execucao", execucao })
+  agendarPainel()
 }
 
 function publicarEvento(evento: Evento, tarefaId: number): void {
   mandarATodos({ tipo: "execucao-evento", execucaoId: evento.execucao, tarefaId, evento })
+  agendarPainel()
+}
+
+// ── painel ─────────────────────────────────────────────────────────
+
+function retratoDoPainel() {
+  const agora = new Date()
+  const execucoes = (status: "rodando" | "na_fila") => TAREFAS.comStatus(status)
+  return montarRetrato(
+    {
+      agora,
+      mes: mesDe(agora),
+      teto: tetoDeExecucoes(),
+      pausas: TAREFAS.pausas(),
+      bloqueio: bloqueioDe,
+      equipes: elenco().equipes(),
+      personas: elenco()
+        .personas()
+        .map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          cor: corDaPersona(p),
+          limiteUSD: p.orcamentoMensalUSD ?? null,
+          limiteTokens: p.orcamentoMensalTokens ?? null,
+          gasto: CONTAS.gasto(p.id, agora),
+        })),
+      tarefas: TAREFAS.listar(),
+      registros: (id) => TAREFAS.registros(id),
+      rodando: execucoes("rodando"),
+      naFila: execucoes("na_fila"),
+      personaDaFila: (e) => ORQUESTRA.personaDaFila(e),
+      ultimoEvento: (id) => TAREFAS.ultimoEvento(id),
+      comandos: [...pendentes].map(([id, p]) => ({
+        id,
+        comando: p.comando,
+        quem: p.quem,
+        desde: p.desde.toISOString(),
+        ...(p.tarefaId !== undefined ? { tarefaId: p.tarefaId } : {}),
+        ...(p.conversaId !== undefined ? { conversaId: p.conversaId } : {}),
+      })),
+      rotinas: AGENDADOR.paraCliente() as never,
+      registrosRecentes: TAREFAS.registrosRecentes(TIPOS_DA_ATIVIDADE),
+      auditoria: TAREFAS.auditoria(100),
+      disparos: TAREFAS.disparosRecentes(100),
+    },
+    (id) => TAREFAS.execucao(id)?.persona ?? null,
+  )
+}
+
+const PAINEL = new AssinaturaDoPainel<Cliente>(retratoDoPainel, (ws, retrato) => mandar(ws, { tipo: "painel", retrato }))
+
+function agendarPainel(): void {
+  PAINEL.mudou()
 }
 
 const abertoOuNada = (ws?: Cliente) => (ws?.readyState === WebSocket.OPEN ? ws : undefined)
@@ -443,6 +501,8 @@ interface Pendente {
   conversaId?: string
   tarefaId?: number
   comando: string
+  quem: string
+  desde: Date
   expiraEm: Date
   avisado: boolean
   resolver: (permitido: boolean) => void
@@ -459,6 +519,7 @@ function soltarPermissao(id: string, permitido: boolean, como: Como = permitido 
   clearTimeout(pendente.prazo)
   pendentes.delete(id)
   pendente.resolver(permitido)
+  agendarPainel()
   if (pendente.tarefaId !== undefined) {
     TAREFAS.auditar("ueslei", `comando ${como}`, `tarefa:${pendente.tarefaId}`, pendente.comando)
     mandarATodos({ tipo: "permissao-resolvida", id, como, tarefaId: pendente.tarefaId })
@@ -492,7 +553,7 @@ function aplicarPresenca({ mostrada, deixadas }: Mudanca): void {
 
 // Em modo auto o comando não é barrado, mas aparece no chat: senão o auto seria caixa
 // preta e o Ueslei descobriria o que rodou pelo efeito colateral.
-function tratarComando(ws: Cliente | undefined, conversaId: string, comando: string, aprovar: boolean): Promise<boolean> {
+function tratarComando(ws: Cliente | undefined, conversaId: string, quem: string, comando: string, aprovar: boolean): Promise<boolean> {
   const aberto = abertoOuNada(ws)
   // Sem ninguém do outro lado (chat ou stream de avisos), nem o auto roda: o comando
   // ficaria sem testemunha.
@@ -506,8 +567,9 @@ function tratarComando(ws: Cliente | undefined, conversaId: string, comando: str
     // Sem prazo, uma aba fechada deixaria o executor esperando para sempre.
     const prazo = setTimeout(() => resolverPermissao(id, false, "expirado"), PRAZO_PERMISSAO)
     const expiraEm = new Date(Date.now() + PRAZO_PERMISSAO)
-    const pendente: Pendente = { ws: aberto, conversaId, comando, expiraEm, avisado: false, resolver, prazo }
+    const pendente: Pendente = { ws: aberto, conversaId, comando, quem, desde: new Date(), expiraEm, avisado: false, resolver, prazo }
     pendentes.set(id, pendente)
+    agendarPainel()
     if (aberto) mandar(aberto, { tipo: "permissao", id, comando })
     if (!PRESENCA.estaVisivel(conversaId)) avisarAprovacao(id, pendente)
   })
@@ -521,7 +583,8 @@ function tratarComandoDeTarefa(tarefaId: number, persona: string, comando: strin
   return new Promise((resolver) => {
     const prazo = setTimeout(() => resolverPermissao(id, false, "expirado"), PRAZO_PERMISSAO_EM_TAREFA)
     const expiraEm = new Date(Date.now() + PRAZO_PERMISSAO_EM_TAREFA)
-    pendentes.set(id, { tarefaId, comando, expiraEm, avisado: true, resolver, prazo })
+    pendentes.set(id, { tarefaId, comando, quem: nomeDe(persona), desde: new Date(), expiraEm, avisado: true, resolver, prazo })
+    agendarPainel()
     mandarATodos({ tipo: "permissao", id, comando, tarefaId })
     avisar(AVISOS.criar(avisoDeAprovacaoEmTarefa(id, tarefaId, nomeDe(persona), comando, expiraEm)))
   })
@@ -645,7 +708,7 @@ async function responderNaConversa(
     onChunk: (pedaco) => {
       if (ws) mandar(ws, { tipo: "chunk", conversaId: id, perfil: meta.perfil, texto: pedaco })
     },
-    onComando: (comando, aprovar) => tratarComando(ws, id, comando, aprovar),
+    onComando: (comando, aprovar) => tratarComando(ws, id, nomeDe(meta.perfil), comando, aprovar),
     onSessao: (sessionId) => atualizarMeta(RAIZ, id, { sessionId }),
     agendarLembrete: (pedido) => LEMBRETES.agendar(pedido),
   })
@@ -790,12 +853,14 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     case "pausar": {
       ORQUESTRA.pausar(alvoDaPausa(msg.alvo))
       mandarATodos(estadoDaOrquestra())
+      agendarPainel()
       mandarATodos({ tipo: "personas", lista: personasParaCliente() })
       return
     }
     case "retomar": {
       ORQUESTRA.retomar(alvoDaPausa(msg.alvo))
       mandarATodos(estadoDaOrquestra())
+      agendarPainel()
       mandarATodos({ tipo: "personas", lista: personasParaCliente() })
       return
     }
@@ -843,8 +908,9 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       publicarRotinas()
       return
     }
-    case "auditoria": {
-      mandar(ws, { tipo: "auditoria", lista: TAREFAS.auditoria() })
+    case "painel": {
+      if (msg.ativo === true) PAINEL.assinar(ws)
+      else PAINEL.sair(ws)
       return
     }
     case "persona-criar": {
@@ -1002,6 +1068,7 @@ const servidor = Bun.serve({
     },
     close(ws: Cliente) {
       CLIENTES.delete(ws)
+      PAINEL.sair(ws)
       aplicarPresenca(PRESENCA.remover(ws))
       for (const [id, pendente] of pendentes) {
         if (pendente.ws !== ws) continue
@@ -1020,6 +1087,7 @@ void espelharNaSubida()
 LEMBRETES.iniciar()
 ORQUESTRA.iniciar()
 AGENDADOR.iniciar()
+setInterval(agendarPainel, 30_000)
 
 const rede = enderecos()
 console.log(`control-tower de pé (dados: ${RAIZ}, código: ${CODIGO})`)
