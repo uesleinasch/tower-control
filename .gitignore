@@ -6,3 +6,6 @@ conversations/*
 conversas/
 scripts/saida-sonda/
 dist/
+app/interface/web/node_modules/
+app/interface/web/test-results/
+app/interface/web/playwright-report/

@@ -1,0 +1,11 @@
+{
+  "name": "control-tower-cenas-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "cenas": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}
