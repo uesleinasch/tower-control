@@ -40,7 +40,7 @@ class Sala extends ChangeNotifier {
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
-      canal.eventos.listen(_tratar),
+      canal.eventos.listen(tratar),
       canal.conexoes.listen((_) => _aoConectar()),
     ];
   }
@@ -190,7 +190,7 @@ class Sala extends ChangeNotifier {
     if (skills.carregada) skills.carregar();
   }
 
-  void _tratar(Entrada e) {
+  void tratar(Entrada e) {
     switch (e) {
       case PersonasRecebidas(:final lista):
         Perfil.registrar(lista);

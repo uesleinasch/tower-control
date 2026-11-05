@@ -9,6 +9,8 @@ import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/painel.dart';
 import 'package:control_tower/estado/rotinas.dart';
+import 'package:control_tower/estado/sala.dart';
+import 'package:control_tower/estado/servidor.dart';
 import 'package:control_tower/estado/skills.dart';
 import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/estado/workflows.dart';
@@ -25,6 +27,11 @@ import 'package:control_tower/nucleo/workflows.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _meta = MetaConversa(id: 'c1', perfil: 'poe', titulo: 'oi', criadaEm: null);
+
+class _SemServidor implements Servidor {
+  @override
+  Future<String?> resolver() async => null;
+}
 
 void main() {
   late List<Map<String, dynamic>> enviados;
@@ -972,6 +979,23 @@ void main() {
       expect(e.sobreposto, 10);
       e.aplicar((w) => definirCampo(w, 'executar', 'titulo', 'Fazer'));
       expect(e.sobreposto, isNull);
+    });
+  });
+
+  group('Sala', () {
+    test('conversa reaberta pela reconexão não tira a tela de onde está', () {
+      final sala = Sala(_SemServidor())..ir(Tela.equipes);
+      sala.tratar(const ConversaAberta(_meta, []));
+      expect(sala.tela, Tela.equipes);
+      expect(sala.chat.conversaId, 'c1');
+      sala.dispose();
+    });
+
+    test('abrir conversa pelo toque vai para o chat', () {
+      final sala = Sala(_SemServidor())..ir(Tela.equipes);
+      sala.abrirConversa('c1');
+      expect(sala.tela, Tela.chat);
+      sala.dispose();
     });
   });
 }
