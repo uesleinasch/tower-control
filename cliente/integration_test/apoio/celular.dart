@@ -4,8 +4,6 @@ import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/main.dart' as app;
 import 'package:control_tower/nucleo/avisos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
-import 'package:control_tower/sistema/aviso_na_tela.dart';
-import 'package:control_tower/sistema/notificador.dart';
 import 'package:control_tower/sistema/servico_avisos.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,17 +87,13 @@ Future<(ActiveNotification, Notificacao)> avisoNaBandeja(
 }
 
 Future<void> tocarNoBotaoDoAviso(WidgetTester t, ActiveNotification ativa, String botao) async {
-  final sala = salaDe(t);
-  await responderAoAviso(
+  await agirEmSegundoPlano(
     NotificationResponse(
       notificationResponseType: NotificationResponseType.selectedNotificationAction,
       id: ativa.id,
       actionId: botao,
       payload: ativa.payload,
     ),
-    sala,
-    Notificador(aparelho: aparelhoCelular),
-    () async => sala.canal.endereco ?? await sala.servidor.resolver(),
   );
   await t.pump();
 }
