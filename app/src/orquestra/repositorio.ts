@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { NOMES_DE_STATUS, exigirMudanca, type NovaTarefa, type Registro, type StatusTarefa, type Tarefa } from "./tarefa"
 import type { Etapa } from "./equipe"
+import type { Disparo } from "./rotinas"
 import {
   exigirMudancaDeExecucao,
   truncar,
@@ -13,7 +14,7 @@ import {
   type TipoDeEvento,
 } from "./execucao"
 
-const VERSAO = 4
+const VERSAO = 5
 
 const ESQUEMA = `
 CREATE TABLE tarefas (
@@ -109,6 +110,28 @@ ALTER TABLE tarefas ADD COLUMN etapa INTEGER;
 ALTER TABLE tarefas ADD COLUMN retorno INTEGER;
 ALTER TABLE tarefas ADD COLUMN voltas INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE execucoes ADD COLUMN etapa INTEGER;
+`
+
+const ESQUEMA_5 = `
+CREATE TABLE rotinas_estado (
+  equipe TEXT NOT NULL,
+  rotina TEXT NOT NULL,
+  marca TEXT NOT NULL,
+  token TEXT,
+  PRIMARY KEY (equipe, rotina)
+);
+CREATE TABLE disparos (
+  id INTEGER PRIMARY KEY,
+  equipe TEXT NOT NULL,
+  rotina TEXT NOT NULL,
+  origem TEXT NOT NULL,
+  horario TEXT,
+  em TEXT NOT NULL,
+  resultado TEXT NOT NULL,
+  motivo TEXT NOT NULL DEFAULT '',
+  tarefa INTEGER
+);
+CREATE INDEX disparos_por_rotina ON disparos(equipe, rotina, id);
 `
 
 export interface LinhaDeAuditoria {
@@ -218,6 +241,7 @@ export class Repositorio {
         if (user_version < 2) this.db.exec(ESQUEMA_2)
         if (user_version < 3) this.db.exec(ESQUEMA_3)
         if (user_version < 4) this.db.exec(ESQUEMA_4)
+        if (user_version < 5) this.db.exec(ESQUEMA_5)
         this.db.exec(`PRAGMA user_version = ${VERSAO}`)
       })()
     }
@@ -381,6 +405,57 @@ export class Repositorio {
   marcarRetorno(id: number, retorno: number | null, voltas: number): Tarefa {
     this.db.query("UPDATE tarefas SET retorno = ?, voltas = ? WHERE id = ?").run(retorno, voltas, id)
     return this.exigir(id)
+  }
+
+  estadoDaRotina(equipe: string, rotina: string): { marca: string; token: string | null } | undefined {
+    return (this.db.query("SELECT marca, token FROM rotinas_estado WHERE equipe = ? AND rotina = ?").get(equipe, rotina) ?? undefined) as
+      | { marca: string; token: string | null }
+      | undefined
+  }
+
+  marcarRotina(equipe: string, rotina: string, marca: Date): void {
+    this.db
+      .query(
+        `INSERT INTO rotinas_estado (equipe, rotina, marca) VALUES (?, ?, ?)
+         ON CONFLICT (equipe, rotina) DO UPDATE SET marca = excluded.marca`,
+      )
+      .run(equipe, rotina, marca.toISOString())
+  }
+
+  trocarToken(equipe: string, rotina: string, token: string | null, agora = new Date()): void {
+    this.db
+      .query(
+        `INSERT INTO rotinas_estado (equipe, rotina, marca, token) VALUES (?, ?, ?, ?)
+         ON CONFLICT (equipe, rotina) DO UPDATE SET token = excluded.token`,
+      )
+      .run(equipe, rotina, agora.toISOString(), token)
+  }
+
+  esquecerRotina(equipe: string, rotina: string): void {
+    this.db.query("DELETE FROM rotinas_estado WHERE equipe = ? AND rotina = ?").run(equipe, rotina)
+  }
+
+  registrarDisparo(d: Omit<Disparo, "id">): Disparo {
+    const { id } = this.db
+      .query(
+        `INSERT INTO disparos (equipe, rotina, origem, horario, em, resultado, motivo, tarefa)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      )
+      .get(d.equipe, d.rotina, d.origem, d.horario, d.em, d.resultado, d.motivo, d.tarefa) as { id: number }
+    return { ...d, id }
+  }
+
+  disparos(equipe: string, rotina: string, limite = 10): Disparo[] {
+    return this.db
+      .query("SELECT * FROM disparos WHERE equipe = ? AND rotina = ? ORDER BY id DESC LIMIT ?")
+      .all(equipe, rotina, limite) as Disparo[]
+  }
+
+  tarefaAbertaDe(criadaPor: string): number | null {
+    const linha = this.db
+      .query("SELECT id FROM tarefas WHERE criada_por = ? AND status NOT IN ('concluida', 'cancelada') ORDER BY id DESC LIMIT 1")
+      .get(criadaPor) as { id: number } | null
+    return linha?.id ?? null
   }
 
   comentar(id: number, autor: string, texto: string, agora = new Date(), tipo: Registro["tipo"] = "comentario"): Registro {

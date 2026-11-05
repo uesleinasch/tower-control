@@ -13,6 +13,8 @@ import {
   type Equipe,
   type Persona,
 } from "./equipe"
+import { validarRotina, type Rotina } from "./rotinas"
+import type { RotinaDaEquipe } from "./agendador"
 
 let atual = elencoLegado()
 
@@ -102,6 +104,42 @@ export async function gravarEquipe(raiz: string, equipe: Equipe): Promise<Equipe
 export async function apagarEquipe(raiz: string, id: string): Promise<void> {
   if (id === CASA) throw new Error("a Casa não pode ser excluída")
   await rm(join(raiz, "equipes", id), { recursive: true, force: true })
+}
+
+export function caminhoDaRotina(raiz: string, equipe: string, id: string): string {
+  return join(raiz, "equipes", equipe, "rotinas", `${id}.json`)
+}
+
+export async function lerRotinas(raiz: string, equipes: Equipe[]): Promise<RotinaDaEquipe[]> {
+  const lidas: RotinaDaEquipe[] = []
+  for (const equipe of equipes) {
+    let nomes: string[]
+    try {
+      nomes = (await readdir(join(raiz, "equipes", equipe.id, "rotinas"))).filter((n) => n.endsWith(".json")).sort()
+    } catch {
+      continue
+    }
+    for (const nome of nomes) {
+      const caminho = join(raiz, "equipes", equipe.id, "rotinas", nome)
+      let rotina: Rotina
+      try {
+        rotina = validarRotina(await Bun.file(caminho).json(), equipe)
+      } catch (erro) {
+        throw new Error(`${caminho}: ${(erro as Error).message}`)
+      }
+      if (`${rotina.id}.json` !== nome) throw new Error(`${caminho}: o id ${rotina.id} não bate com o nome do arquivo`)
+      lidas.push({ equipe: equipe.id, rotina })
+    }
+  }
+  return lidas
+}
+
+export async function gravarRotina(raiz: string, equipe: string, rotina: Rotina): Promise<void> {
+  await gravarJson(caminhoDaRotina(raiz, equipe, rotina.id), rotina)
+}
+
+export async function apagarRotina(raiz: string, equipe: string, id: string): Promise<void> {
+  await rm(caminhoDaRotina(raiz, equipe, id), { force: true })
 }
 
 export async function gravarPersona(raiz: string, persona: Persona): Promise<void> {

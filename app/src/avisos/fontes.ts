@@ -100,3 +100,7 @@ export const avisoDeVoltas = (tarefaId: number, revisora: string, executora: str
 
 export const avisoDeAutorrevisao = (tarefaId: number, nome: string) =>
   avisoDeTarefa(tarefaId, `#${tarefaId} parada: ${nome} revisaria o próprio trabalho`, "Troque a persona da etapa ou a política e comente na tarefa para seguir.")
+
+export function avisoDeRotinaQueFalhou(nome: string, motivo: string): NovoAviso {
+  return { tipo: "tarefa", titulo: `A rotina ${nome} não criou a tarefa`, corpo: resumir(motivo) || "(sem motivo)", alvo: {}, acoes: [] }
+}

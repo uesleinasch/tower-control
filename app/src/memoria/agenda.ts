@@ -4,7 +4,6 @@ import { conselheiros, ehConselheiro, type Conselheiro, type Mensagem, type Meta
 
 export const OCIOSIDADE_MS = 30 * 60_000
 export const HORARIO_SONHO = process.env.CT_HORARIO_SONHO ?? "07:30"
-const ATRASO_NA_SUBIDA_MS = 5 * 60_000
 const INTERVALO_MS = 5 * 60_000
 
 export interface EstadoMemoria {
@@ -130,22 +129,4 @@ export async function rodarUmaVez(
     if (!sonhoDevido(estado.sonhos[persona], estado.atividade[persona], agora)) continue
     await tentar(espera, `sonho de ${persona}`, agora, () => trabalhos.sonhar(persona))
   }
-}
-
-export function iniciarAgenda(raiz: string, trabalhos: Trabalhos): void {
-  let rodando = false
-  const espera = new Espera()
-  const ciclo = async () => {
-    if (rodando) return
-    rodando = true
-    try {
-      await rodarUmaVez(raiz, trabalhos, espera)
-    } finally {
-      rodando = false
-    }
-  }
-  setTimeout(() => {
-    void ciclo()
-    setInterval(() => void ciclo(), INTERVALO_MS)
-  }, ATRASO_NA_SUBIDA_MS)
 }
