@@ -402,24 +402,6 @@ bool planoPendente(List<RegistroDeTarefa> registros) {
   return plano >= 0 && registros.lastIndexWhere((r) => r.tipo == 'plano-aprovado') < plano;
 }
 
-class LinhaDeAuditoria {
-  const LinhaDeAuditoria({required this.em, required this.quem, required this.acao, required this.alvo, this.detalhe = ''});
-
-  final DateTime em;
-  final String quem;
-  final String acao;
-  final String alvo;
-  final String detalhe;
-
-  factory LinhaDeAuditoria.deJson(Map<String, dynamic> j) => LinhaDeAuditoria(
-        em: DateTime.tryParse(j['em'] as String? ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
-        quem: j['quem'] as String? ?? '',
-        acao: j['acao'] as String? ?? '',
-        alvo: j['alvo'] as String? ?? '',
-        detalhe: j['detalhe'] as String? ?? '',
-      );
-}
-
 DateTime? _data(Object? bruto) => bruto is String ? DateTime.tryParse(bruto) : null;
 
 class Execucao {

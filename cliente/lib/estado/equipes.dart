@@ -20,7 +20,6 @@ class EstadoEquipes extends ChangeNotifier {
   bool salvando = false;
   bool? mostrarPersonas;
   bool pausadoTudo = false;
-  List<LinhaDeAuditoria>? auditoria;
   bool vendoRotinas = false;
 
   void verRotinas(bool sim) {
@@ -38,8 +37,6 @@ class EstadoEquipes extends ChangeNotifier {
 
   void salvarOrcamento(String persona, {required double? usd, required int? tokens}) =>
       _enviar(SalvarOrcamento(persona, usd: usd, tokens: tokens));
-
-  void pedirAuditoria() => _enviar(const PedirAuditoria());
 
   bool get alterada => rascunho != null;
 
@@ -179,8 +176,9 @@ class EstadoEquipes extends ChangeNotifier {
         break;
       case OrquestraRecebida(:final pausadoTudo):
         this.pausadoTudo = pausadoTudo;
-      case AuditoriaRecebida(:final lista):
-        auditoria = lista;
+      case PainelRecebido(:final retrato):
+        if (pausadoTudo == retrato.pausadoTudo) return;
+        pausadoTudo = retrato.pausadoTudo;
       case Erro(:final mensagem) when salvando:
         salvando = false;
         erro = mensagem;

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'modelos.dart';
+import 'painel.dart';
 import 'rotinas.dart';
 import 'tarefas.dart';
 
@@ -49,7 +50,10 @@ sealed class Entrada {
         ),
       'personas' => PersonasRecebidas(listaDeJson(json['lista'], Perfil.deJson)),
       'orquestra' => OrquestraRecebida(pausadoTudo: json['pausadoTudo'] == true),
-      'auditoria' => AuditoriaRecebida(listaDeJson(json['lista'], LinhaDeAuditoria.deJson)),
+      'painel' => PainelRecebido(Retrato.deJson(switch (json['retrato']) {
+          final Map<String, dynamic> retrato => retrato,
+          _ => const {},
+        })),
       'permissao' => PedidoDePermissao(texto('id'), texto('comando'), tarefaId: inteiro('tarefaId')),
       'permissao-resolvida' => PermissaoResolvida(texto('id'), texto('como')),
       'tarefa' => TarefaRecebida(
@@ -136,9 +140,9 @@ class OrquestraRecebida extends Entrada {
   final bool pausadoTudo;
 }
 
-class AuditoriaRecebida extends Entrada {
-  const AuditoriaRecebida(this.lista);
-  final List<LinhaDeAuditoria> lista;
+class PainelRecebido extends Entrada {
+  const PainelRecebido(this.retrato);
+  final Retrato retrato;
 }
 
 class PersonasRecebidas extends Entrada {
@@ -538,13 +542,14 @@ class AprovarPlano extends Saida {
   Map<String, Object?> get campos => {'id': id};
 }
 
-class PedirAuditoria extends Saida {
-  const PedirAuditoria();
+class AssinarPainel extends Saida {
+  const AssinarPainel({required this.ativo});
+  final bool ativo;
 
   @override
-  String get tipo => 'auditoria';
+  String get tipo => 'painel';
   @override
-  Map<String, Object?> get campos => const {};
+  Map<String, Object?> get campos => {'ativo': ativo};
 }
 
 class DecidirTarefa extends Saida {

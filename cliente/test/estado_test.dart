@@ -4,10 +4,12 @@ import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
 import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/estado/equipes.dart';
+import 'package:control_tower/estado/painel.dart';
 import 'package:control_tower/estado/rotinas.dart';
 import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
+import 'package:control_tower/nucleo/painel.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/rotinas.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -377,6 +379,68 @@ void main() {
         ..definirNaTela('c1')
         ..reconectou();
       expect(visiveis(), ['c1', 'c1']);
+    });
+  });
+
+  group('EstadoPainel', () {
+    List<Object?> assinaturas() => [for (final e in enviados) if (e['tipo'] == 'painel') e['ativo']];
+
+    test('assina ao entrar, desassina ao sair e não repete', () {
+      EstadoPainel(enviar)
+        ..definirAberto(false)
+        ..definirAberto(true)
+        ..definirAberto(true)
+        ..definirAberto(false)
+        ..definirAberto(false);
+      expect(assinaturas(), [true, false]);
+    });
+
+    test('reconectar com o painel aberto assina de novo; fechado, não manda nada', () {
+      final p = EstadoPainel(enviar)..reconectou();
+      expect(assinaturas(), isEmpty);
+      p
+        ..definirAberto(true)
+        ..reconectou();
+      expect(assinaturas(), [true, true]);
+      p
+        ..definirAberto(false)
+        ..reconectou();
+      expect(assinaturas(), [true, true, false]);
+    });
+
+    test('sem conexão ao entrar, a assinatura sai quando reconecta', () {
+      online = false;
+      final p = EstadoPainel(enviar)..definirAberto(true);
+      expect(enviados, isEmpty);
+      online = true;
+      p.reconectou();
+      expect(assinaturas(), [true]);
+    });
+
+    test('retrato chega, filtros aplicam no cliente e ação manda a mensagem', () {
+      final p = EstadoPainel(enviar);
+      var avisos = 0;
+      p
+        ..addListener(() => avisos++)
+        ..tratar(const PainelRecebido(Retrato(atividade: [
+          ItemDeAtividade(tipo: 'entrega', quem: 'nati', texto: 'a'),
+          ItemDeAtividade(tipo: 'comentario', quem: 'ueslei', texto: 'b'),
+        ])));
+      expect([avisos, p.atividade.length], [1, 2]);
+      p.filtrar(quem: 'ueslei');
+      expect(p.atividade.map((a) => a.texto), ['b']);
+      p.filtrar(quem: 'ueslei', tipo: 'entrega');
+      expect(p.atividade, isEmpty);
+      expect(p.agir(const ItemDeAtencao(tipo: 'entrega', tarefaId: 9), 'concluir'), isA<MandarSaida>());
+      expect(enviados.last, {'tipo': 'tarefa-status', 'id': 9, 'status': 'concluida'});
+      final antes = enviados.length;
+      expect(p.agir(const ItemDeAtencao(tipo: 'entrega', tarefaId: 9), 'abrir'), isA<IrParaTarefa>());
+      expect(enviados.length, antes);
+    });
+
+    test('retrato do painel atualiza a pausa geral de Equipes', () {
+      final e = EstadoEquipes(enviar)..tratar(const PainelRecebido(Retrato(pausadoTudo: true)));
+      expect(e.pausadoTudo, isTrue);
     });
   });
 }

@@ -4,16 +4,18 @@ import 'package:flutter/foundation.dart';
 
 import '../conexao/canal.dart';
 import '../nucleo/modelos.dart';
+import '../nucleo/painel.dart';
 import '../nucleo/protocolo.dart';
 import 'areas.dart';
 import 'chat.dart';
 import 'equipes.dart';
+import 'painel.dart';
 import 'presenca.dart';
 import 'rotinas.dart';
 import 'servidor.dart';
 import 'tarefas.dart';
 
-enum Tela { conversas, chat, board, decisoes, tarefas, equipes, configuracao }
+enum Tela { conversas, chat, board, decisoes, painel, tarefas, equipes, configuracao }
 
 class Sala extends ChangeNotifier {
   Sala(this.servidor) : canal = Canal(servidor.resolver) {
@@ -24,6 +26,7 @@ class Sala extends ChangeNotifier {
     tarefas = EstadoTarefas(canal.enviar);
     equipes = EstadoEquipes(canal.enviar);
     rotinas = EstadoRotinas(canal.enviar);
+    painel = EstadoPainel(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -41,6 +44,7 @@ class Sala extends ChangeNotifier {
   late final EstadoTarefas tarefas;
   late final EstadoEquipes equipes;
   late final EstadoRotinas rotinas;
+  late final EstadoPainel painel;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -61,8 +65,9 @@ class Sala extends ChangeNotifier {
     tela = nova;
     if (nova == Tela.decisoes && !decisoes.carregada) decisoes.carregar();
     if (nova == Tela.tarefas && !tarefas.carregada) tarefas.carregar();
-    if (nova == Tela.equipes && !equipes.carregada) equipes.carregar();
+    if ((nova == Tela.equipes || nova == Tela.painel) && !equipes.carregada) equipes.carregar();
     if ((nova == Tela.equipes || nova == Tela.tarefas) && !rotinas.carregada) rotinas.carregar();
+    painel.definirAberto(nova == Tela.painel);
     notifyListeners();
     _atualizarPresenca();
   }
@@ -98,9 +103,35 @@ class Sala extends ChangeNotifier {
     tarefas.abrir(id);
   }
 
+  void abrirTarefasDaEquipe(String equipe) {
+    tarefas.fecharDetalhe();
+    tarefas.escolherEquipe(equipe);
+    ir(Tela.tarefas);
+  }
+
+  void abrirEquipe(String? equipe, {bool rotinas = false}) {
+    ir(Tela.equipes);
+    if (equipe != null && equipe != equipes.vista && !equipes.alterada) equipes.escolher(equipe);
+    equipes.verRotinas(rotinas);
+  }
+
+  void agirNoPainel(ItemDeAtencao item, String acao, {String? texto}) {
+    switch (painel.agir(item, acao, texto: texto)) {
+      case IrParaTarefa(:final id):
+        abrirTarefa(id);
+      case IrParaEquipe(:final equipe):
+        abrirEquipe(equipe);
+      case IrParaRotinas(:final equipe):
+        abrirEquipe(equipe, rotinas: true);
+      case MandarSaida() || null:
+        break;
+    }
+  }
+
   void _aoConectar() {
     conversas.listar();
     presenca.reconectou();
+    painel.reconectou();
     if (_primeiraConexao) {
       _primeiraConexao = false;
       return;
@@ -154,6 +185,7 @@ class Sala extends ChangeNotifier {
         tarefas.tratar(e);
         equipes.tratar(e);
         rotinas.tratar(e);
+        painel.tratar(e);
     }
   }
 
@@ -172,6 +204,7 @@ class Sala extends ChangeNotifier {
     tarefas.dispose();
     equipes.dispose();
     rotinas.dispose();
+    painel.dispose();
     canal.dispose();
     super.dispose();
   }

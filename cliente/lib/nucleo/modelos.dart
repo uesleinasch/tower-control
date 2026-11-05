@@ -37,20 +37,12 @@ class Perfil {
   final int tokensTotalMes;
   final String? pausa;
 
-  double? get proporcaoDoOrcamento {
-    double? fracao(num gasto, num? limite) {
-      if (limite == null) return null;
-      if (limite <= 0) return 1;
-      final p = gasto / limite;
-      return p > 1 ? 1 : p.toDouble();
-    }
-
-    final usd = fracao(gastoMesUSD, orcamentoMensalUSD);
-    final tokens = fracao(tokensMes, orcamentoMensalTokens);
-    if (usd == null) return tokens;
-    if (tokens == null) return usd;
-    return usd > tokens ? usd : tokens;
-  }
+  double? get proporcaoDoOrcamento => proporcaoDoOrcamentoMensal(
+        gastoUSD: gastoMesUSD,
+        limiteUSD: orcamentoMensalUSD,
+        tokens: tokensMes,
+        limiteTokens: orcamentoMensalTokens,
+      );
 
   factory Perfil.deJson(Map<String, dynamic> j) {
     final chave = j['id'] as String? ?? '';
@@ -91,9 +83,25 @@ class Perfil {
   static const corBoard = 0xFF5B8DEF;
   static const corDecisoes = 0xFF58B7C9;
   static const corTarefas = 0xFFC9A227;
+  static const corPainel = 0xFFD9774B;
 
   static Perfil porChave(String chave) =>
       todos.firstWhere((p) => p.chave == chave, orElse: () => Perfil(chave, chave, '?', 0xFF8B93A7, ''));
+}
+
+double? proporcaoDoOrcamentoMensal({required num gastoUSD, num? limiteUSD, required num tokens, num? limiteTokens}) {
+  double? fracao(num gasto, num? limite) {
+    if (limite == null) return null;
+    if (limite <= 0) return 1;
+    final p = gasto / limite;
+    return p > 1 ? 1 : p.toDouble();
+  }
+
+  final usd = fracao(gastoUSD, limiteUSD);
+  final porTokens = fracao(tokens, limiteTokens);
+  if (usd == null) return porTokens;
+  if (porTokens == null) return usd;
+  return usd > porTokens ? usd : porTokens;
 }
 
 String formatarTokens(num n) {

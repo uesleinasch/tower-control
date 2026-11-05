@@ -10,6 +10,7 @@ import 'comum.dart';
 import 'conversas.dart';
 import 'decisoes.dart';
 import 'equipes.dart';
+import 'painel.dart';
 import 'tarefas.dart';
 
 const larguraDupla = 840.0;
@@ -72,6 +73,7 @@ class _RaizState extends State<Raiz> {
   Widget _principal(BuildContext context, {required bool compacto}) => switch (sala.tela) {
         Tela.board => TelaBoard(sala: sala),
         Tela.decisoes => TelaDecisoes(sala: sala),
+        Tela.painel => TelaPainel(sala: sala),
         Tela.tarefas => TelaTarefas(sala: sala),
         Tela.equipes => TelaEquipes(sala: sala),
         Tela.configuracao when widget.configuracao != null => widget.configuracao!(context),
@@ -97,7 +99,7 @@ class _RaizState extends State<Raiz> {
         child: Scaffold(body: _principal(context, compacto: true)),
       );
     }
-    final abas = [Tela.conversas, Tela.board, Tela.decisoes, Tela.tarefas, Tela.equipes];
+    final abas = [Tela.conversas, Tela.board, Tela.decisoes, Tela.painel, Tela.tarefas, Tela.equipes];
     return Scaffold(
       appBar: sala.tela == Tela.conversas
           ? AppBar(
@@ -129,6 +131,7 @@ class _RaizState extends State<Raiz> {
           NavigationDestination(icon: Icon(Icons.gavel_outlined), selectedIcon: Icon(Icons.gavel), label: 'Board'),
           NavigationDestination(
               icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Decisões'),
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Painel'),
           NavigationDestination(icon: Icon(Icons.task_alt_outlined), selectedIcon: Icon(Icons.task_alt), label: 'Tarefas'),
           NavigationDestination(icon: Icon(Icons.account_tree_outlined), selectedIcon: Icon(Icons.account_tree), label: 'Equipes'),
         ],
@@ -180,6 +183,7 @@ class _Lateral extends StatelessWidget {
         const SizedBox(height: 8),
         destino(Tela.board, const Avatar(cor: Color(Perfil.corBoard), inicial: 'B', tamanho: 28), 'Convocar board'),
         destino(Tela.decisoes, const Avatar(cor: Color(Perfil.corDecisoes), inicial: 'D', tamanho: 28), 'Decisões'),
+        destino(Tela.painel, const Avatar(cor: Color(Perfil.corPainel), inicial: 'P', tamanho: 28), 'Painel'),
         destino(Tela.tarefas, const Avatar(cor: Color(Perfil.corTarefas), inicial: 'T', tamanho: 28), 'Tarefas'),
         destino(Tela.equipes, const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 28), 'Equipes'),
         const Divider(),

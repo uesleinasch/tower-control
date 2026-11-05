@@ -172,7 +172,6 @@ class _Topo extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(children: [
           const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 32),
-          IconButton(tooltip: 'Atividade', icon: const Icon(Icons.history), onPressed: () => mostrarAtividade(context, estado)),
           if (!editar)
             IconButton(
               tooltip: estado.vendoRotinas ? 'Organograma' : 'Rotinas',
@@ -1321,37 +1320,6 @@ class BarraDePausa extends StatelessWidget {
       ),
     );
   }
-}
-
-Future<void> mostrarAtividade(BuildContext context, EstadoEquipes estado) {
-  estado.pedirAuditoria();
-  return showDialog<void>(
-    context: context,
-    builder: (contexto) => AlertDialog(
-      title: const Text('Atividade'),
-      content: SizedBox(
-        width: 520,
-        height: 420,
-        child: ListenableBuilder(
-          listenable: estado,
-          builder: (_, _) {
-            final lista = estado.auditoria;
-            if (lista == null) return const Center(child: CircularProgressIndicator());
-            if (lista.isEmpty) return const Center(child: Text('Nada registrado ainda.'));
-            return ListView(children: [
-              for (final a in lista)
-                ListTile(
-                  dense: true,
-                  title: Text('${a.quem} ${a.acao} · ${a.alvo}'),
-                  subtitle: Text([quandoCurto(a.em), if (a.detalhe.isNotEmpty) a.detalhe].join(' · ')),
-                ),
-            ]);
-          },
-        ),
-      ),
-      actions: [TextButton(onPressed: () => Navigator.pop(contexto), child: const Text('Fechar'))],
-    ),
-  );
 }
 
 String quandoCurto(DateTime em) {

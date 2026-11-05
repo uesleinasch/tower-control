@@ -8,6 +8,7 @@ import 'package:control_tower/nucleo/formato.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/organograma.dart';
+import 'package:control_tower/nucleo/painel.dart';
 import 'package:control_tower/nucleo/rotinas.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,6 +52,65 @@ const _disparo = {
   'resultado': 'criada',
   'motivo': '',
   'tarefa': 12,
+};
+
+const _retrato = {
+  'em': '2026-11-05T09:00:00.000Z',
+  'pausadoTudo': true,
+  'atencao': [
+    {
+      'tipo': 'comando',
+      'titulo': 'Alfred quer rodar um comando',
+      'detalhe': 'git push',
+      'desde': '2026-11-05T08:50:00.000Z',
+      'acoes': ['aprovar', 'negar'],
+      'tarefaId': 12,
+      'permissaoId': 'p9',
+      'persona': 'alfred',
+      'equipe': 'casa',
+    },
+    {
+      'tipo': 'aprovacao',
+      'titulo': '#13 Plano do dia',
+      'detalhe': 'entrega pronta',
+      'desde': '2026-11-05T08:00:00.000Z',
+      'acoes': ['aprovar', 'pedir-mudanca'],
+      'tarefaId': 13,
+    },
+  ],
+  'agora': {
+    'rodando': [
+      {
+        'execucao': 40,
+        'tarefaId': 14,
+        'titulo': 'Revisar backup',
+        'equipe': 'casa',
+        'persona': 'Nati',
+        'papel': 'revisa',
+        'inicio': '2026-11-05T08:58:00.000Z',
+        'ultimoEvento': {'tipo': 'ferramenta', 'conteudo': 'Read docs/x.md', 'em': '2026-11-05T08:59:00.000Z'},
+      },
+    ],
+    'naFila': [
+      {'execucao': 41, 'tarefaId': 15, 'titulo': 'Relatório', 'persona': 'Alfred', 'motivo': 'tudo pausado', 'desde': '2026-11-05T08:30:00.000Z'},
+    ],
+  },
+  'personas': [
+    {'id': 'nati', 'nome': 'Nati', 'cor': '#9a6ee8', 'estado': 'rodando', 'tarefaId': 14, 'gastoMesUSD': 4.5, 'limiteUSD': 5, 'tokensMes': 1000, 'limiteTokens': null, 'abertas': 3},
+  ],
+  'tarefas': {
+    'casa': {'a_fazer': 2, 'em_revisao': 1},
+    'codigo': {'concluida': 4},
+  },
+  'gasto': {'mes': '2026-11', 'tarefasUSD': 1.25, 'totalUSD': 3.5, 'tokensTarefas': 120000, 'tokensTotal': 400000},
+  'proximasRotinas': [
+    {'equipe': 'casa', 'id': 'plano-do-dia', 'nome': 'Plano do dia', 'proximo': '2026-11-06T11:30:00.000Z'},
+  ],
+  'atividade': [
+    {'em': '2026-11-05T08:59:00.000Z', 'tipo': 'entrega', 'quem': 'nati', 'texto': 'feito', 'tarefaId': 14, 'equipe': 'casa'},
+    {'em': '2026-11-05T08:00:00.000Z', 'tipo': 'auditoria', 'quem': 'ueslei', 'texto': 'pausou tudo'},
+    {'em': '2026-11-05T07:30:00.000Z', 'tipo': 'disparo', 'quem': 'Plano do dia', 'texto': 'criou a #13', 'tarefaId': 13},
+  ],
 };
 
 const _meta = {'id': '2026-09-30-poe-abc', 'perfil': 'poe', 'titulo': 't', 'criadaEm': '2026-09-30T10:00:00Z'};
@@ -118,11 +178,7 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
   'fim': {'conversaId': 'c'},
   'permissao': {'id': 'p1', 'comando': 'git status'},
   'orquestra': {'pausadoTudo': true},
-  'auditoria': {
-    'lista': [
-      {'id': 1, 'em': '2026-11-04T12:00:00Z', 'quem': 'ueslei', 'acao': 'pausou', 'alvo': 'tudo', 'detalhe': ''},
-    ],
-  },
+  'painel': {'retrato': _retrato},
   'personas': {
     'lista': [
       {'id': 'vera', 'nome': 'Vera', 'inicial': 'V', 'cor': '#112233', 'titulo': 'revisora', 'conversa': true, 'executor': false, 'excluivel': true, 'modelo': null, 'gerandoPerfil': true},
@@ -209,7 +265,7 @@ final _saidas = <Saida>[
   const Pausar('*'),
   const Retomar('alfred'),
   const AprovarPlano(3),
-  const PedirAuditoria(),
+  const AssinarPainel(ativo: true),
   const DecidirTarefa.aprovar(3),
   const PedirRotinas(),
   const DispararRotina('casa', 'plano-do-dia'),
@@ -938,6 +994,151 @@ void main() {
       } finally {
         Perfil.registrar(original);
       }
+    });
+  });
+
+  group('painel', () {
+    Retrato decodificar(Object? retrato) =>
+        (Entrada.decodificar(jsonEncode({'tipo': 'painel', 'retrato': retrato})) as PainelRecebido).retrato;
+
+    test('retrato completo decodifica todas as seções', () {
+      final r = decodificar(_retrato);
+      expect([r.pausadoTudo, r.em], [true, DateTime.utc(2026, 11, 5, 9)]);
+      expect(r.atencao.map((a) => [a.tipo, a.acoes, a.tarefaId, a.permissaoId, a.persona]), [
+        ['comando', ['aprovar', 'negar'], 12, 'p9', 'alfred'],
+        ['aprovacao', ['aprovar', 'pedir-mudanca'], 13, null, null],
+      ]);
+      final viva = r.rodando.single;
+      expect([viva.execucao, viva.tarefaId, viva.persona, viva.papel], [40, 14, 'Nati', 'revisa']);
+      expect([viva.ultimoEvento?.tipo, viva.ultimoEvento?.conteudo], ['ferramenta', 'Read docs/x.md']);
+      expect([r.naFila.single.motivo, r.naFila.single.persona], ['tudo pausado', 'Alfred']);
+      final nati = r.personas.single;
+      expect(
+        [nati.cor, nati.estado, nati.tarefaId, nati.limiteUSD, nati.limiteTokens, nati.abertas, nati.proporcaoDoLimite],
+        [0xFF9A6EE8, 'rodando', 14, 5.0, null, 3, 0.9],
+      );
+      expect(r.tarefas, {
+        'casa': {'a_fazer': 2, 'em_revisao': 1},
+        'codigo': {'concluida': 4},
+      });
+      expect([r.gasto.mes, r.gasto.tarefasUSD, r.gasto.tokensTotal], ['2026-11', 1.25, 400000]);
+      expect(r.proximasRotinas.single.proximo, DateTime.utc(2026, 11, 6, 11, 30));
+      expect(r.atividade.map((a) => a.tipo), ['entrega', 'auditoria', 'disparo']);
+    });
+
+    test('campos ausentes ou com tipo errado caem em padrões seguros', () {
+      for (final vazio in [null, <String, Object?>{}, 'lixo']) {
+        final r = decodificar(vazio);
+        expect(
+          [r.em, r.pausadoTudo, r.atencao, r.rodando, r.naFila, r.personas, r.tarefas, r.proximasRotinas, r.atividade],
+          [null, false, isEmpty, isEmpty, isEmpty, isEmpty, isEmpty, isEmpty, isEmpty],
+        );
+        expect([r.gasto.mes, r.gasto.totalUSD, r.gasto.tokensTarefas], ['', 0, 0]);
+      }
+      final r = decodificar({
+        'agora': {
+          'rodando': [<String, Object?>{}],
+          'naFila': [<String, Object?>{}],
+        },
+        'atencao': [
+          {'acoes': ['abrir', 3]},
+        ],
+        'personas': [
+          {'id': 'vera'},
+        ],
+        'tarefas': {
+          'casa': {'a_fazer': 'dois', 'backlog': 1},
+          'ruim': 3,
+        },
+        'proximasRotinas': [<String, Object?>{}],
+        'atividade': [<String, Object?>{}, 'nada'],
+      });
+      final viva = r.rodando.single;
+      expect(
+        [viva.execucao, viva.tarefaId, viva.titulo, viva.persona, viva.papel, viva.inicio, viva.ultimoEvento],
+        [0, 0, '', null, 'executa', null, null],
+      );
+      final espera = r.naFila.single;
+      expect([espera.tarefaId, espera.persona, espera.motivo, espera.desde], [0, null, '', null]);
+      final item = r.atencao.single;
+      expect(
+        [item.tipo, item.titulo, item.detalhe, item.desde, item.acoes, item.tarefaId, item.permissaoId],
+        ['', '', '', null, ['abrir'], null, null],
+      );
+      final vera = r.personas.single;
+      expect(
+        [vera.nome, vera.cor, vera.estado, vera.tarefaId, vera.gastoMesUSD, vera.limiteUSD, vera.tokensMes, vera.abertas],
+        ['vera', 0xFF8B93A7, 'ocioso', null, 0, null, 0, 0],
+      );
+      expect(vera.proporcaoDoLimite, isNull);
+      expect(r.tarefas, {
+        'casa': {'backlog': 1},
+        'ruim': <String, int>{},
+      });
+      expect([r.proximasRotinas.single.nome, r.proximasRotinas.single.proximo], ['', null]);
+      expect(r.atividade.single.em, isNull);
+    });
+
+    test('cada ação vira a mensagem que as telas já mandam', () {
+      Map<String, Object?>? mensagem(ItemDeAtencao item, String acao, {String? texto}) =>
+          switch (efeitoDaAcao(item, acao, texto: texto)) {
+            MandarSaida(:final saida) => jsonDecode(saida.codificar()) as Map<String, Object?>,
+            _ => null,
+          };
+      const comando = ItemDeAtencao(tipo: 'comando', permissaoId: 'p9', tarefaId: 12);
+      const aprovacao = ItemDeAtencao(tipo: 'aprovacao', tarefaId: 13);
+      const plano = ItemDeAtencao(tipo: 'plano', tarefaId: 14);
+      const entrega = ItemDeAtencao(tipo: 'entrega', tarefaId: 15);
+      const backlog = ItemDeAtencao(tipo: 'backlog', tarefaId: 16);
+      expect(mensagem(comando, 'aprovar'), {'tipo': 'permissao-resposta', 'id': 'p9', 'permitido': true});
+      expect(mensagem(comando, 'negar'), {'tipo': 'permissao-resposta', 'id': 'p9', 'permitido': false});
+      expect(mensagem(aprovacao, 'aprovar'), {'tipo': 'tarefa-decidir', 'id': 13, 'decisao': 'aprovar'});
+      expect(
+        mensagem(aprovacao, 'pedir-mudanca', texto: '  refaz o resumo  '),
+        {'tipo': 'tarefa-decidir', 'id': 13, 'decisao': 'mudanca', 'texto': 'refaz o resumo'},
+      );
+      expect(efeitoDaAcao(aprovacao, 'pedir-mudanca'), isNull);
+      expect(efeitoDaAcao(aprovacao, 'pedir-mudanca', texto: '   '), isNull);
+      expect(mensagem(plano, 'aprovar-plano'), {'tipo': 'tarefa-aprovar-plano', 'id': 14});
+      expect(mensagem(entrega, 'concluir'), {'tipo': 'tarefa-status', 'id': 15, 'status': 'concluida'});
+      expect(mensagem(backlog, 'liberar'), {'tipo': 'tarefa-status', 'id': 16, 'status': 'a_fazer'});
+      expect(efeitoDaAcao(const ItemDeAtencao(tipo: 'comando'), 'aprovar'), isNull);
+      expect(efeitoDaAcao(const ItemDeAtencao(tipo: 'entrega'), 'concluir'), isNull);
+      expect(efeitoDaAcao(entrega, 'desconhecida'), isNull);
+    });
+
+    test('abrir navega sem mandar mensagem', () {
+      EfeitoDaAcao? abrir(ItemDeAtencao item) => efeitoDaAcao(item, 'abrir');
+      expect((abrir(const ItemDeAtencao(tipo: 'bloqueada', tarefaId: 7)) as IrParaTarefa).id, 7);
+      expect((abrir(const ItemDeAtencao(tipo: 'vaga', tarefaId: 8, equipe: 'codigo')) as IrParaTarefa).id, 8);
+      expect((abrir(const ItemDeAtencao(tipo: 'orcamento', persona: 'nati', equipe: 'casa')) as IrParaEquipe).equipe, 'casa');
+      expect((abrir(const ItemDeAtencao(tipo: 'vaga', equipe: 'codigo')) as IrParaEquipe).equipe, 'codigo');
+      expect((abrir(const ItemDeAtencao(tipo: 'rotina', equipe: 'casa', rotina: 'p')) as IrParaRotinas).equipe, 'casa');
+      expect(abrir(const ItemDeAtencao(tipo: 'bloqueada')), isNull);
+    });
+
+    test('filtros da atividade por persona e por tipo', () {
+      final r = decodificar(_retrato);
+      expect(filtrarAtividade(r.atividade).length, 3);
+      expect(filtrarAtividade(r.atividade, quem: 'nati').map((a) => a.texto), ['feito']);
+      expect(filtrarAtividade(r.atividade, tipo: 'auditoria').map((a) => a.quem), ['ueslei']);
+      expect(filtrarAtividade(r.atividade, quem: 'nati', tipo: 'auditoria'), isEmpty);
+      expect(quemNaAtividade(r.atividade), ['nati', 'ueslei', 'Plano do dia']);
+      expect(tiposNaAtividade(r.atividade), ['entrega', 'auditoria', 'disparo']);
+      expect([for (final q in quemNaAtividade(r.atividade)) nomeDeQuem(q, r)], ['Nati', 'Ueslei', 'Plano do dia']);
+    });
+
+    test('equipe das tarefas, contagem por status e tempo relativo', () {
+      final r = decodificar(_retrato);
+      expect([equipeDasTarefas(r, null), equipeDasTarefas(r, 'codigo'), equipeDasTarefas(r, 'sumiu')],
+          ['casa', 'codigo', 'casa']);
+      expect(contagemPorStatus(r.tarefas['casa']!).map((c) => c.status), ['em_revisao', 'a_fazer']);
+      final agora = DateTime.utc(2026, 11, 5, 9);
+      expect(haQuanto(agora.subtract(const Duration(seconds: 20)), agora), 'agora');
+      expect(haQuanto(agora.subtract(const Duration(minutes: 12)), agora), 'há 12 min');
+      expect(haQuanto(agora.subtract(const Duration(hours: 3)), agora), 'há 3 h');
+      expect(haQuanto(agora.subtract(const Duration(days: 2)), agora), 'há 2 d');
+      expect(haQuanto(null, agora), '');
     });
   });
 }
