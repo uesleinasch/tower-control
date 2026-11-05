@@ -10,6 +10,7 @@ import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/organograma.dart';
 import 'package:control_tower/nucleo/painel.dart';
 import 'package:control_tower/nucleo/rotinas.dart';
+import 'package:control_tower/nucleo/skills.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/workflows.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -248,7 +249,7 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
         'id': 'casa',
         'nome': 'Casa',
         'posicoes': [
-          {'id': 'executor', 'titulo': 'executor de tarefas', 'persona': 'alfred', 'personaNome': 'Alfred'},
+          {'id': 'executor', 'titulo': 'executor de tarefas', 'persona': 'alfred', 'personaNome': 'Alfred', 'skills': ['relatorio-semanal']},
           {'id': 'vaga', 'titulo': 'revisora', 'persona': null, 'personaNome': null},
         ],
       },
@@ -273,7 +274,7 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
   'painel': {'retrato': _retrato},
   'personas': {
     'lista': [
-      {'id': 'vera', 'nome': 'Vera', 'inicial': 'V', 'cor': '#112233', 'titulo': 'revisora', 'conversa': true, 'executor': false, 'excluivel': true, 'modelo': null, 'gerandoPerfil': true},
+      {'id': 'vera', 'nome': 'Vera', 'inicial': 'V', 'cor': '#112233', 'titulo': 'revisora', 'conversa': true, 'executor': false, 'excluivel': true, 'modelo': null, 'gerandoPerfil': true, 'skills': ['relatorio-semanal']},
     ],
   },
   'permissao-resolvida': {'id': 'p1', 'como': 'aprovado'},
@@ -287,6 +288,30 @@ final _fixturasEntrada = <String, Map<String, Object?>>{
     'execucoes': [_execucao],
     'custoUSD': 0.03,
     'pedida': true,
+  },
+  'skills': {
+    'lista': [
+      {
+        'dono': 'casa',
+        'id': 'relatorio-semanal',
+        'descricao': 'Como escrever o relatório da semana',
+        'corpo': '# Relatório\n\n1. junte as tarefas',
+        'arquivos': ['modelo.md'],
+        'usadaPor': {
+          'personas': ['vera'],
+          'posicoes': ['casa/executor'],
+        },
+      },
+      {
+        'dono': 'vera',
+        'id': 'revisar-texto',
+        'descricao': '',
+        'corpo': '',
+        'arquivos': [],
+        'erro': 'a descrição é obrigatória',
+        'usadaPor': {'personas': [], 'posicoes': []},
+      },
+    ],
   },
   'rotinas': {
     'lista': [
@@ -378,6 +403,10 @@ final _saidas = <Saida>[
   const CancelarWorkflow(9),
   const SalvarWorkflow('casa', _mudancaComPlano),
   const ExcluirWorkflow('casa', 'mudanca-com-plano'),
+  const PedirSkills(),
+  const SalvarSkill(RascunhoDeSkill(dono: 'casa', id: 'relatorio-semanal', descricao: 'd', corpo: 'c')),
+  const ExcluirSkill('casa', 'relatorio-semanal'),
+  const SalvarSkillsDaPersona('poe', ['relatorio-semanal']),
 ];
 
 void main() {
@@ -1489,6 +1518,111 @@ void main() {
       expect((efeitoDaAcao(comTarefa, 'abrir') as IrParaTarefa).id, 21);
       expect(rotulosDeAcao['sinalizar'], 'Sinalizar');
       expect([rotulosDeAtencao['decisao'], rotulosDeAtencao['sinal'], rotulosDeAtencao['atrasada']], ['decisão', 'sinal', 'atrasada']);
+    });
+  });
+
+  group('skills', () {
+    test('skills decodifica dono, arquivos, erro e quem usa', () {
+      final e = Entrada.decodificar(jsonEncode({'tipo': 'skills', ..._fixturasEntrada['skills']!})) as SkillsRecebidas;
+      final [relatorio, revisar] = e.lista;
+      expect([relatorio.daCasa, relatorio.valida, relatorio.arquivos], [true, true, ['modelo.md']]);
+      expect([relatorio.usadaPor.personas, relatorio.usadaPor.posicoes], [['vera'], ['casa/executor']]);
+      expect([revisar.dono, revisar.valida, revisar.erro, revisar.usadaPor.vazio], ['vera', false, 'a descrição é obrigatória', true]);
+      expect(agruparSkills(e.lista).map((g) => (g.dono, g.skills.length)), [('casa', 1), ('vera', 1)]);
+      expect(agruparSkills(const []).map((g) => g.dono), ['casa']);
+      expect(
+        descreverUso(relatorio.usadaPor, nomeDaPersona: (p) => p.toUpperCase(), nomeDaPosicao: (p) => 'pos $p'),
+        'VERA, pos casa/executor',
+      );
+      expect(descreverUso(revisar.usadaPor, nomeDaPersona: (p) => p), 'ninguém usa');
+    });
+
+    test('skills da posição e da persona vão e voltam pelo JSON', () {
+      final equipes = Entrada.decodificar(jsonEncode({'tipo': 'equipes', ..._fixturasEntrada['equipes']!})) as EquipesRecebidas;
+      final [executor, vaga] = equipes.lista.single.posicoes;
+      expect([executor.skills, vaga.skills], [['relatorio-semanal'], isEmpty]);
+      expect(executor.paraJson()['skills'], ['relatorio-semanal']);
+      expect(vaga.paraJson().containsKey('skills'), isFalse);
+      expect(PosicaoResumo.deJson(executor.paraJson().cast<String, dynamic>()).skills, ['relatorio-semanal']);
+      expect(executor.copiar(titulo: 'x').skills, ['relatorio-semanal']);
+
+      final personas = Entrada.decodificar(jsonEncode({'tipo': 'personas', ..._fixturasEntrada['personas']!})) as PersonasRecebidas;
+      expect(personas.lista.single.skills, ['relatorio-semanal']);
+      expect(Perfil.deJson(const {'id': 'x'}).skills, isEmpty);
+      expect(jsonDecode(SalvarSkillsDaPersona('vera', personas.lista.single.skills).codificar()), {
+        'tipo': 'persona-salvar',
+        'persona': {'id': 'vera', 'skills': ['relatorio-semanal']},
+      });
+      expect((jsonDecode(const SalvarSkillsDaPersona('vera', []).codificar()) as Map)['persona'], {'id': 'vera', 'skills': []});
+    });
+
+    test('salvar e excluir skill levam o dono, o rascunho limpo e a marca de nova', () {
+      const r = RascunhoDeSkill(dono: 'poe', id: ' revisar-texto ', descricao: ' revisa ', corpo: 'passo a passo');
+      expect(jsonDecode(const SalvarSkill(r).codificar()), {
+        'tipo': 'skill-salvar',
+        'dono': 'poe',
+        'skill': {'id': 'revisar-texto', 'descricao': 'revisa', 'corpo': 'passo a passo'},
+        'nova': true,
+      });
+      final existente = RascunhoDeSkill.de(const Skill(dono: 'casa', id: 'x', descricao: 'd', corpo: 'c'));
+      expect((jsonDecode(SalvarSkill(existente).codificar()) as Map)['nova'], false);
+      expect(existente.copiar(id: 'outro').id, 'x');
+      expect(jsonDecode(const ExcluirSkill('casa', 'x').codificar()), {'tipo': 'skill-excluir', 'dono': 'casa', 'id': 'x'});
+    });
+
+    test('validação do rascunho segue a do servidor', () {
+      List<String> erros(RascunhoDeSkill r, [List<Skill> existentes = const []]) => errosDoRascunho(r, existentes: existentes);
+      const ok = RascunhoDeSkill(dono: 'casa', id: 'relatorio-semanal', descricao: 'quando pedir o relatório', corpo: '# passos');
+      expect(erros(ok), isEmpty);
+      for (final id in ['', 'Relatorio', '1relatorio', 'relatório', 'com espaco x', 'a' * 65]) {
+        expect(erros(ok.copiar(id: id)), [contains('id inválido')], reason: id);
+      }
+      expect(erros(ok.copiar(id: 'a' * 64)), isEmpty);
+      expect(erros(ok.copiar(id: 'a-1-b')), isEmpty);
+      expect(erros(ok.copiar(descricao: '   ')), ['a descrição é obrigatória']);
+      expect(erros(ok.copiar(descricao: 'x' * limiteDaDescricao)), isEmpty);
+      expect(erros(ok.copiar(descricao: 'x' * (limiteDaDescricao + 1))), ['a descrição passa de 1024 caracteres']);
+      expect(erros(ok.copiar(corpo: '\n  \n')), ['o corpo da skill está vazio']);
+      expect(erros(ok.copiar(corpo: 'x' * (limiteDoCorpo + 1))), ['o corpo da skill passa de 100 mil caracteres']);
+      const mesma = Skill(dono: 'casa', id: 'relatorio-semanal');
+      expect(erros(ok, [mesma]), [contains('já existe')]);
+      expect(erros(ok.copiar(dono: 'poe'), [mesma]), isEmpty);
+      expect(erros(RascunhoDeSkill.de(const Skill(dono: 'casa', id: 'relatorio-semanal', descricao: 'd', corpo: 'c')), [mesma]),
+          isEmpty);
+    });
+
+    test('anexar e tirar skill de persona e de posição, sem repetir', () {
+      expect(comSkill(['a'], 'b'), ['a', 'b']);
+      expect(comSkill(['a', 'b'], 'a'), ['a', 'b']);
+      expect(semSkill(['a', 'b'], 'a'), ['b']);
+      expect(semSkill(['a'], 'z'), ['a']);
+      const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor')]);
+      final com = anexarSkillNaPosicao(anexarSkillNaPosicao(casa, 'executor', 'a'), 'executor', 'a');
+      expect(com.posicao('executor')!.skills, ['a']);
+      expect(tirarSkillDaPosicao(com, 'executor', 'a').posicao('executor')!.skills, isEmpty);
+      const biblioteca = [
+        Skill(dono: 'casa', id: 'a', descricao: 'da casa'),
+        Skill(dono: 'casa', id: 'b', descricao: 'quebrada', erro: 'sem descrição'),
+        Skill(dono: 'casa', id: 'c', descricao: 'outra'),
+        Skill(dono: 'poe', id: 'propria', descricao: 'só do poe'),
+      ];
+      expect(anexaveis(biblioteca, ['a']).map((s) => s.id), ['c']);
+    });
+
+    test('descrição das skills: próprias primeiro, anexadas depois, sumidas e inválidas marcadas', () {
+      const biblioteca = [
+        Skill(dono: 'casa', id: 'a', descricao: 'da casa'),
+        Skill(dono: 'casa', id: 'b', descricao: 'quebrada', erro: 'sem name'),
+        Skill(dono: 'poe', id: 'propria', descricao: 'só do poe'),
+        Skill(dono: 'nati', id: 'dela', descricao: 'da nati'),
+      ];
+      const poe = Perfil('poe', 'Poe', 'P', 0, 'o amigo', skills: ['a', 'b', 'sumiu']);
+      final daPersona = skillsDaPersona(biblioteca, poe);
+      expect(daPersona.map((s) => s.rotulo), ['propria', 'a', 'b (inválida)', 'sumiu (inválida)']);
+      expect(daPersona.map((s) => s.propria), [true, false, false, false]);
+      expect(daPersona.map((s) => s.descricao).take(2), ['só do poe', 'da casa']);
+      const posicao = PosicaoResumo(id: 'executor', titulo: 'executor', skills: ['a']);
+      expect(skillsDaPosicao(biblioteca, posicao).map((s) => (s.id, s.descricao, s.propria)), [('a', 'da casa', false)]);
     });
   });
 }

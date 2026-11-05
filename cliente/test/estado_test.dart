@@ -7,6 +7,7 @@ import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/painel.dart';
 import 'package:control_tower/estado/rotinas.dart';
+import 'package:control_tower/estado/skills.dart';
 import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/estado/workflows.dart';
 import 'package:control_tower/nucleo/editor_de_workflow.dart';
@@ -15,6 +16,7 @@ import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/painel.dart';
 import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/rotinas.dart';
+import 'package:control_tower/nucleo/skills.dart';
 import 'package:control_tower/nucleo/workflows.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,6 +73,100 @@ void main() {
         ..salvar();
       expect(enviados.length, enviadosAntes);
       expect(estado.erro, contains('nome obrigatório'));
+    });
+  });
+
+  group('EstadoSkills', () {
+    const relatorio = Skill(dono: 'casa', id: 'relatorio-semanal', descricao: 'relatório da semana', corpo: '# passos');
+
+    test('nova skill vai com nova: true, e a lista com o conteúdo enviado tira do rascunho', () {
+      final e = EstadoSkills(enviar)
+        ..tratar(const SkillsRecebidas([relatorio]))
+        ..nova('poe');
+      expect([e.rascunho?.nova, e.podeSalvar], [true, false]);
+      e
+        ..mudar(id: 'revisar-texto')
+        ..mudar(descricao: ' revisa o texto ')
+        ..mudar(corpo: 'passo a passo\n')
+        ..salvar();
+      expect(enviados.last, {
+        'tipo': 'skill-salvar',
+        'dono': 'poe',
+        'skill': {'id': 'revisar-texto', 'descricao': 'revisa o texto', 'corpo': 'passo a passo\n'},
+        'nova': true,
+      });
+      expect([e.salvando, e.podeSalvar], [true, false]);
+      e.tratar(const SkillsRecebidas([relatorio]));
+      expect([e.salvando, e.rascunho?.id], [true, 'revisar-texto']);
+      e.tratar(const SkillsRecebidas([
+        relatorio,
+        Skill(dono: 'poe', id: 'revisar-texto', descricao: 'revisa o texto', corpo: 'passo a passo'),
+      ]));
+      expect([e.salvando, e.rascunho, e.erro], [false, null, null]);
+    });
+
+    test('editar manda nova: false e o erro do servidor mantém o rascunho', () {
+      final e = EstadoSkills(enviar)
+        ..tratar(const SkillsRecebidas([relatorio]))
+        ..editar(relatorio)
+        ..mudar(id: 'outro', corpo: '# outros passos')
+        ..salvar();
+      expect(enviados.last['nova'], false);
+      expect((enviados.last['skill'] as Map)['id'], 'relatorio-semanal');
+      e.tratar(const Erro('skill relatorio-semanal: não existe'));
+      expect([e.salvando, e.erro, e.rascunho?.corpo], [false, 'skill relatorio-semanal: não existe', '# outros passos']);
+    });
+
+    test('rascunho inválido nem envia, e id repetido no mesmo dono é recusado', () {
+      final e = EstadoSkills(enviar)
+        ..tratar(const SkillsRecebidas([relatorio]))
+        ..nova('casa')
+        ..mudar(id: 'relatorio-semanal', descricao: 'd', corpo: 'c')
+        ..salvar();
+      expect(enviados, isEmpty);
+      expect(e.erro, contains('já existe'));
+      e.descartar();
+      expect([e.rascunho, e.erro], [null, null]);
+    });
+
+    test('excluir espera a lista sem a skill, e a recusa vira erro', () {
+      final e = EstadoSkills(enviar)
+        ..tratar(const SkillsRecebidas([relatorio]))
+        ..excluir(relatorio);
+      expect(enviados.last, {'tipo': 'skill-excluir', 'dono': 'casa', 'id': 'relatorio-semanal'});
+      e.tratar(const Erro('a skill relatorio-semanal está anexada a Poe'));
+      expect([e.salvando, e.erro], [false, 'a skill relatorio-semanal está anexada a Poe']);
+      e
+        ..editar(relatorio)
+        ..excluir(relatorio)
+        ..tratar(const SkillsRecebidas([]));
+      expect([e.salvando, e.rascunho, e.lista], [false, null, isEmpty]);
+    });
+
+    test('anexar e tirar na persona mandam persona-salvar com a lista inteira', () {
+      final antes = Perfil.todos;
+      addTearDown(() => Perfil.registrar(antes));
+      Perfil.registrar(const [Perfil('poe', 'Poe', 'P', 0, 'o amigo', skills: ['a'])]);
+      EstadoSkills(enviar)
+        ..anexarNaPersona('poe', 'relatorio-semanal')
+        ..anexarNaPersona('poe', 'a')
+        ..tirarDaPersona('poe', 'a');
+      expect(enviados.map((m) => m['persona']), [
+        {'id': 'poe', 'skills': ['a', 'relatorio-semanal']},
+        {'id': 'poe', 'skills': ['a']},
+        {'id': 'poe', 'skills': []},
+      ]);
+    });
+
+    test('anexo na posição entra no rascunho do organograma e vai pelo equipe-salvar', () {
+      const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor', persona: 'alfred')]);
+      final equipes = EstadoEquipes(enviar)
+        ..tratar(const EquipesRecebidas([casa]))
+        ..aplicar((e) => anexarSkillNaPosicao(e, 'executor', 'relatorio-semanal'));
+      expect(equipes.alterada, isTrue);
+      equipes.salvar();
+      final posicoes = (enviados.last['equipe'] as Map)['posicoes'] as List;
+      expect((posicoes.single as Map)['skills'], ['relatorio-semanal']);
     });
   });
 

@@ -6,7 +6,7 @@ import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
 import 'chat.dart';
 
-enum AbaDaEquipe { organograma, rotinas, workflows }
+enum AbaDaEquipe { organograma, rotinas, workflows, skills }
 
 class EstadoEquipes extends ChangeNotifier {
   EstadoEquipes(this._enviar);
@@ -27,6 +27,8 @@ class EstadoEquipes extends ChangeNotifier {
   bool get vendoRotinas => aba == AbaDaEquipe.rotinas;
 
   bool get vendoWorkflows => aba == AbaDaEquipe.workflows;
+
+  bool get vendoSkills => aba == AbaDaEquipe.skills;
 
   void verAba(AbaDaEquipe nova) {
     if (aba == nova) return;

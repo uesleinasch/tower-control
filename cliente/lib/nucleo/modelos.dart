@@ -17,6 +17,7 @@ class Perfil {
     this.tokensMes = 0,
     this.tokensTotalMes = 0,
     this.pausa,
+    this.skills = const [],
   });
 
   final String chave;
@@ -36,6 +37,7 @@ class Perfil {
   final int tokensMes;
   final int tokensTotalMes;
   final String? pausa;
+  final List<String> skills;
 
   double? get proporcaoDoOrcamento => proporcaoDoOrcamentoMensal(
         gastoUSD: gastoMesUSD,
@@ -65,6 +67,7 @@ class Perfil {
       tokensMes: (j['tokensMes'] as num?)?.toInt() ?? 0,
       tokensTotalMes: (j['tokensTotalMes'] as num?)?.toInt() ?? 0,
       pausa: (j['pausa'] as Map?)?['motivo'] as String?,
+      skills: [for (final s in j['skills'] is List ? j['skills'] as List : const []) if (s is String) s],
     );
   }
 

@@ -109,6 +109,7 @@ class PosicaoResumo {
     this.aprovarPlano = false,
     this.delegaDireto = false,
     this.politica = const [],
+    this.skills = const [],
   });
 
   final String id;
@@ -122,6 +123,7 @@ class PosicaoResumo {
   final bool aprovarPlano;
   final bool delegaDireto;
   final List<EtapaDePolitica> politica;
+  final List<String> skills;
 
   String get rotulo => personaNome != null ? '$personaNome · $titulo' : '$titulo (vaga)';
 
@@ -135,6 +137,7 @@ class PosicaoResumo {
     bool? aprovarPlano,
     bool? delegaDireto,
     List<EtapaDePolitica>? politica,
+    List<String>? skills,
   }) =>
       PosicaoResumo(
         id: id,
@@ -148,6 +151,7 @@ class PosicaoResumo {
         aprovarPlano: aprovarPlano ?? this.aprovarPlano,
         delegaDireto: delegaDireto ?? this.delegaDireto,
         politica: politica ?? this.politica,
+        skills: skills ?? this.skills,
       );
 
   Map<String, Object?> paraJson() => {
@@ -161,6 +165,7 @@ class PosicaoResumo {
         if (aprovarPlano) 'aprovarPlano': true,
         if (delegaDireto) 'delegaDireto': true,
         if (politica.isNotEmpty) 'politica': [for (final e in politica) e.paraJson()],
+        if (skills.isNotEmpty) 'skills': skills,
       };
 
   factory PosicaoResumo.deJson(Map<String, dynamic> j) => PosicaoResumo(
@@ -175,8 +180,11 @@ class PosicaoResumo {
         aprovarPlano: j['aprovarPlano'] == true,
         delegaDireto: j['delegaDireto'] == true,
         politica: politicaDeJson(j['politica']),
+        skills: listaDeTextos(j['skills']),
       );
 }
+
+List<String> listaDeTextos(Object? bruto) => [for (final x in bruto is List ? bruto : const []) if (x is String) x];
 
 typedef Ponto = ({double x, double y});
 

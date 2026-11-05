@@ -5,13 +5,16 @@ import 'package:flutter/services.dart';
 
 import '../estado/equipes.dart';
 import '../estado/sala.dart';
+import '../estado/skills.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/organograma.dart';
+import '../nucleo/skills.dart';
 import '../nucleo/tarefas.dart';
 import 'canvas.dart';
 import 'comum.dart';
 import 'editor_de_workflow.dart';
 import 'rotinas.dart';
+import 'skills.dart';
 import 'workflows.dart';
 
 bool get edicaoDisponivel =>
@@ -30,7 +33,7 @@ class TelaEquipes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Listenable.merge([sala.equipes, sala, sala.editorDeWorkflow]),
+        listenable: Listenable.merge([sala.equipes, sala, sala.editorDeWorkflow, sala.skills]),
         builder: (context, _) {
           final estado = sala.equipes;
           final editar = edicao ?? edicaoDisponivel;
@@ -45,7 +48,7 @@ class TelaEquipes extends StatelessWidget {
                 color: cores.surface,
                 child: SafeArea(
                   bottom: false,
-                  child: _Topo(estado: estado, editar: editar, personasVisiveis: personasVisiveis),
+                  child: _Topo(estado: estado, skills: sala.skills, editar: editar, personasVisiveis: personasVisiveis),
                 ),
               ),
               BarraDePausa(estado: estado),
@@ -76,6 +79,7 @@ class TelaEquipes extends StatelessWidget {
   }) {
     if (estado.vendoRotinas) return PainelDeRotinas(sala: sala, equipe: equipe, editar: editar, largo: largo);
     if (estado.vendoWorkflows) return PainelDeWorkflows(sala: sala, equipe: equipe, desenhar: editar);
+    if (estado.vendoSkills && editar) return PainelDeSkills(sala: sala);
     final selecionada = estado.selecionada == null ? null : equipe.posicao(estado.selecionada!);
     final canvas = CanvasDoOrganograma(estado: estado, equipe: equipe, editar: editar);
     if (!editar) {
@@ -85,9 +89,10 @@ class TelaEquipes extends StatelessWidget {
       ]);
     }
     final Widget? painel = selecionada != null
-        ? _PainelDaPosicao(key: ValueKey('${equipe.id}/${selecionada.id}'), estado: estado, posicao: selecionada)
+        ? _PainelDaPosicao(
+            key: ValueKey('${equipe.id}/${selecionada.id}'), estado: estado, skills: sala.skills, posicao: selecionada)
         : personasVisiveis
-            ? _PainelDePersonas(estado: estado, personasVisiveis: personasVisiveis)
+            ? _PainelDePersonas(estado: estado, skills: sala.skills, personasVisiveis: personasVisiveis)
             : null;
     if (painel == null) {
       return Stack(children: [
@@ -126,9 +131,10 @@ class TelaEquipes extends StatelessWidget {
 }
 
 class _Topo extends StatelessWidget {
-  const _Topo({required this.estado, required this.editar, required this.personasVisiveis});
+  const _Topo({required this.estado, required this.skills, required this.editar, required this.personasVisiveis});
 
   final EstadoEquipes estado;
+  final EstadoSkills skills;
   final bool editar;
   final bool personasVisiveis;
 
@@ -201,8 +207,9 @@ class _Topo extends StatelessWidget {
                 builder: (_) => SizedBox(
                   height: MediaQuery.sizeOf(context).height * 0.7,
                   child: ListenableBuilder(
-                    listenable: estado,
-                    builder: (_, _) => _PainelDePersonas(estado: estado, personasVisiveis: true, gerenciar: false),
+                    listenable: Listenable.merge([estado, skills]),
+                    builder: (_, _) =>
+                        _PainelDePersonas(estado: estado, skills: skills, personasVisiveis: true, gerenciar: false),
                   ),
                 ),
               ),
@@ -237,6 +244,8 @@ class _Topo extends StatelessWidget {
               acao(Icons.schedule, 'Rotinas', () => estado.alternarAba(AbaDaEquipe.rotinas), marcado: estado.vendoRotinas),
               acao(Icons.alt_route, 'Workflows', () => estado.alternarAba(AbaDaEquipe.workflows),
                   marcado: estado.vendoWorkflows),
+              acao(Icons.extension_outlined, 'Skills', () => estado.alternarAba(AbaDaEquipe.skills),
+                  marcado: estado.vendoSkills),
               acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
               if (estado.aba == AbaDaEquipe.organograma) ...[
                 acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
@@ -673,9 +682,10 @@ class _Ligacoes extends CustomPainter {
 }
 
 class _PainelDaPosicao extends StatefulWidget {
-  const _PainelDaPosicao({super.key, required this.estado, required this.posicao});
+  const _PainelDaPosicao({super.key, required this.estado, required this.skills, required this.posicao});
 
   final EstadoEquipes estado;
+  final EstadoSkills skills;
   final PosicaoResumo posicao;
 
   @override
@@ -780,6 +790,13 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         onChanged: (v) => _editar((x) => x.copiar(delegaDireto: v)),
       ),
       _DepoisDaEntrega(estado: widget.estado, equipe: equipe, posicao: p),
+      const SizedBox(height: 12),
+      SecaoDeSkills(
+        itens: skillsDaPosicao(widget.skills.lista, p),
+        anexaveis: anexaveis(widget.skills.lista, p.skills),
+        aoAnexar: (id) => widget.estado.aplicar((e) => anexarSkillNaPosicao(e, p.id, id)),
+        aoTirar: (id) => widget.estado.aplicar((e) => tirarSkillDaPosicao(e, p.id, id)),
+      ),
       if (comandos) ...[
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
@@ -902,9 +919,15 @@ class _DepoisDaEntrega extends StatelessWidget {
 }
 
 class _PainelDePersonas extends StatelessWidget {
-  const _PainelDePersonas({required this.estado, required this.personasVisiveis, this.gerenciar = true});
+  const _PainelDePersonas({
+    required this.estado,
+    required this.skills,
+    required this.personasVisiveis,
+    this.gerenciar = true,
+  });
 
   final EstadoEquipes estado;
+  final EstadoSkills skills;
   final bool personasVisiveis;
   final bool gerenciar;
 
@@ -980,6 +1003,16 @@ class _PainelDePersonas extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: proporcao,
                       color: proporcao >= 1 ? cores.error : proporcao >= 0.8 ? const Color(0xFFE0A458) : const Color(0xFF4FAE7C),
+                    ),
+                  ),
+                if (gerenciar || skillsDaPersona(skills.lista, p).isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: SecaoDeSkills(
+                      itens: skillsDaPersona(skills.lista, p),
+                      anexaveis: anexaveis(skills.lista, p.skills),
+                      aoAnexar: gerenciar ? (id) => skills.anexarNaPersona(p.chave, id) : null,
+                      aoTirar: gerenciar ? (id) => skills.tirarDaPersona(p.chave, id) : null,
                     ),
                   ),
               ]),
@@ -1116,6 +1149,10 @@ class _DetalheDaPosicao extends StatelessWidget {
               const Text('Depois da entrega:'),
               for (final (i, etapa) in posicao.politica.indexed)
                 Text('${i + 1}. ${rotuloDaEtapa(etapa, equipe, _nomeDaPersona)}'),
+            ],
+            if (posicao.skills.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SecaoDeSkills(itens: skillsDaPosicao(sala.skills.lista, posicao), anexaveis: const []),
             ],
             if (abertas.isNotEmpty) ...[
               const SizedBox(height: 8),

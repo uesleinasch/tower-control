@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'modelos.dart';
 import 'painel.dart';
 import 'rotinas.dart';
+import 'skills.dart';
 import 'tarefas.dart';
 import 'workflows.dart';
 
@@ -66,6 +67,7 @@ sealed class Entrada {
         ),
       'tarefas' => TarefasRecebidas(listaDeJson(json['lista'], Tarefa.deJson)),
       'rotinas' => RotinasRecebidas(listaDeJson(json['lista'], Rotina.deJson)),
+      'skills' => SkillsRecebidas(listaDeJson(json['lista'], Skill.deJson)),
       'workflows' => WorkflowsRecebidos(
           listaDeJson(json['definicoes'] is List ? json['definicoes'] : null, Workflow.deJson),
           listaDeJson(json['fluxos'] is List ? json['fluxos'] : null, Fluxo.deJson),
@@ -163,6 +165,11 @@ class TarefasRecebidas extends Entrada {
 class RotinasRecebidas extends Entrada {
   const RotinasRecebidas(this.lista);
   final List<Rotina> lista;
+}
+
+class SkillsRecebidas extends Entrada {
+  const SkillsRecebidas(this.lista);
+  final List<Skill> lista;
 }
 
 class WorkflowsRecebidos extends Entrada {
@@ -712,4 +719,45 @@ class ExcluirWorkflow extends Saida {
   String get tipo => 'workflow-excluir';
   @override
   Map<String, Object?> get campos => {'equipe': equipe, 'id': id};
+}
+
+class PedirSkills extends Saida {
+  const PedirSkills();
+
+  @override
+  String get tipo => 'skills';
+}
+
+class SalvarSkill extends Saida {
+  const SalvarSkill(this.rascunho);
+  final RascunhoDeSkill rascunho;
+
+  @override
+  String get tipo => 'skill-salvar';
+  @override
+  Map<String, Object?> get campos => {'dono': rascunho.dono, 'skill': rascunho.paraJson(), 'nova': rascunho.nova};
+}
+
+class ExcluirSkill extends Saida {
+  const ExcluirSkill(this.dono, this.id);
+  final String dono;
+  final String id;
+
+  @override
+  String get tipo => 'skill-excluir';
+  @override
+  Map<String, Object?> get campos => {'dono': dono, 'id': id};
+}
+
+class SalvarSkillsDaPersona extends Saida {
+  const SalvarSkillsDaPersona(this.id, this.skills);
+  final String id;
+  final List<String> skills;
+
+  @override
+  String get tipo => 'persona-salvar';
+  @override
+  Map<String, Object?> get campos => {
+        'persona': {'id': id, 'skills': skills},
+      };
 }

@@ -14,6 +14,7 @@ import 'painel.dart';
 import 'presenca.dart';
 import 'rotinas.dart';
 import 'servidor.dart';
+import 'skills.dart';
 import 'tarefas.dart';
 import 'workflows.dart';
 
@@ -31,6 +32,7 @@ class Sala extends ChangeNotifier {
     painel = EstadoPainel(canal.enviar);
     workflows = EstadoWorkflows(canal.enviar);
     editorDeWorkflow = EstadoEditorDeWorkflow(canal.enviar);
+    skills = EstadoSkills(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -51,6 +53,7 @@ class Sala extends ChangeNotifier {
   late final EstadoPainel painel;
   late final EstadoWorkflows workflows;
   late final EstadoEditorDeWorkflow editorDeWorkflow;
+  late final EstadoSkills skills;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -73,6 +76,7 @@ class Sala extends ChangeNotifier {
     if (nova == Tela.tarefas && !tarefas.carregada) tarefas.carregar();
     if ((nova == Tela.equipes || nova == Tela.painel) && !equipes.carregada) equipes.carregar();
     if ((nova == Tela.equipes || nova == Tela.tarefas) && !rotinas.carregada) rotinas.carregar();
+    if (nova == Tela.equipes && !skills.carregada) skills.carregar();
     if ((nova == Tela.equipes || nova == Tela.painel || nova == Tela.tarefas) && !workflows.carregada) {
       workflows.carregar();
     }
@@ -167,6 +171,7 @@ class Sala extends ChangeNotifier {
     if (equipes.carregada) equipes.carregar();
     if (rotinas.carregada) rotinas.carregar();
     if (workflows.carregada) workflows.carregar();
+    if (skills.carregada) skills.carregar();
   }
 
   void _tratar(Entrada e) {
@@ -184,6 +189,9 @@ class Sala extends ChangeNotifier {
         return;
       case Erro() when editorDeWorkflow.salvando:
         editorDeWorkflow.tratar(e);
+        return;
+      case Erro() when skills.salvando:
+        skills.tratar(e);
         return;
       case Aviso(:final texto) when tela != Tela.chat:
         _avisos.add(texto);
@@ -216,6 +224,7 @@ class Sala extends ChangeNotifier {
         painel.tratar(e);
         workflows.tratar(e);
         editorDeWorkflow.tratar(e);
+        skills.tratar(e);
     }
   }
 
@@ -237,6 +246,7 @@ class Sala extends ChangeNotifier {
     painel.dispose();
     workflows.dispose();
     editorDeWorkflow.dispose();
+    skills.dispose();
     canal.dispose();
     super.dispose();
   }
