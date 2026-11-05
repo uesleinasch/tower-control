@@ -151,8 +151,8 @@ export function caminhoDoWorkflow(raiz: string, equipe: string, id: string): str
   return join(raiz, "equipes", equipe, "workflows", `${id}.json`)
 }
 
-const CAMPOS_DE_TEXTO = ["instrucao", "criterio", "pergunta", "pauta"]
-const ARQUIVO_DE_TEXTO = /^@([a-z0-9][a-z0-9-]{0,63}\.md)$/
+export const CAMPOS_DE_TEXTO = ["instrucao", "criterio", "pergunta", "pauta"]
+export const ARQUIVO_DE_TEXTO = /^@([a-z0-9][a-z0-9-]{0,63}\.md)$/
 
 // "@plano.md" num texto de caixa vira o conteúdo de workflows/<id>/plano.md; o nome é restrito porque vira caminho.
 async function comTextos(raiz: string, equipe: string, id: string, bruto: unknown): Promise<unknown> {

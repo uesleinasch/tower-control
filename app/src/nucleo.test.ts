@@ -55,6 +55,19 @@ import {
 } from "./tipos"
 import { exigeAprovacaoSempre } from "./comandos"
 import {
+  aplicar as aplicarModelo,
+  caminhoDeSkillValido,
+  estadoAtual as estadoParaModelo,
+  exportarEquipe,
+  exportarWorkflow,
+  lerModelo,
+  lerParaExportar,
+  lerWorkflowParaModelo,
+  planejar as planejarModelo,
+  type Modelo,
+} from "./orquestra/modelos"
+import { lerElenco as lerElencoDoDisco, lerRotinas as lerRotinasDoDisco, lerWorkflows as lerWorkflowsDoDisco } from "./orquestra/elenco"
+import {
   Elenco,
   casaInicial,
   completarLayout,
@@ -2972,8 +2985,15 @@ describe("contrato do protocolo", () => {
     const protocolo = (await Bun.file(join(raiz, "docs", "protocolo.json")).json()) as Protocolo
     const web = await ler("app/web/app.js")
     const soDesktop = new Set(protocolo["cliente→servidor só no desktop"] ?? [])
+    const recebidosSoNoDesktop = new Set(protocolo["servidor→cliente só no desktop"] ?? [])
     expect(tiposEmitidos(web)).toEqual(protocolo["cliente→servidor"].filter((t) => !soDesktop.has(t)).sort())
-    expect(tiposTratados(web)).toEqual([...protocolo["servidor→cliente"]].sort())
+    expect(tiposTratados(web)).toEqual(protocolo["servidor→cliente"].filter((t) => !recebidosSoNoDesktop.has(t)).sort())
+  })
+
+  test("o que só o desktop recebe também está em servidor→cliente", async () => {
+    const protocolo = (await Bun.file(join(raiz, "docs", "protocolo.json")).json()) as Protocolo
+    const todos = new Set(protocolo["servidor→cliente"])
+    expect((protocolo["servidor→cliente só no desktop"] ?? []).filter((t) => !todos.has(t))).toEqual([])
   })
 
   test("extrai tipos só do switch de mensagens", () => {
@@ -4556,3 +4576,279 @@ function aplicarMudancas(alvo: unknown, mudancas: Record<string, unknown>[]): un
   }
   return alvo
 }
+
+describe("modelos de equipe e de workflow", () => {
+  const SKILL_MD = (id: string, corpo = "Faça o relatório.") => `---\nname: ${id}\ndescription: "skill ${id}"\nlicense: MIT\n---\n\n${corpo}\n`
+  const WORK = {
+    id: "work",
+    nome: "Work",
+    posicoes: [
+      { id: "exec", titulo: "executor", persona: "alfred", respondeA: null, capacidades: ["arquivos", "comandos"], aprovacao: "auto", diretorio: "/home/x/projeto" },
+      { id: "revisora", titulo: "revisora", persona: "nati", respondeA: null, capacidades: ["arquivos"], aprovacao: "sempre", skills: ["relatorio"] },
+    ],
+    layout: { exec: { x: 0, y: 0 }, revisora: { x: 280, y: 0 } },
+  }
+  const FLUXO = {
+    id: "fluxo",
+    nome: "Fluxo",
+    versao: 3,
+    entrada: {},
+    inicio: "a",
+    nos: [
+      { id: "a", tipo: "executar", posicao: "exec", instrucao: "@passo.md" },
+      { id: "r", tipo: "revisar", de: "a", por: { posicao: "revisora" } },
+      { id: "fim", tipo: "fim" },
+    ],
+    arestas: [{ de: "a", para: "r" }, { de: "r", para: "fim", quando: "aprovado" }],
+    layout: {},
+  }
+  const ROTINA = { id: "diaria", nome: "Diária", ativa: true, posicao: "exec", tarefa: { titulo: "Rodar" }, cron: "0 9 * * *", concorrencia: "pular", perdidos: "um" }
+
+  async function escrever(raiz: string, caminho: string, conteudo: unknown) {
+    await mkdir(join(raiz, caminho, ".."), { recursive: true })
+    await Bun.write(join(raiz, caminho), typeof conteudo === "string" ? conteudo : `${JSON.stringify(conteudo, null, 2)}\n`)
+  }
+
+  async function pastaVazia(personas: { id: string; nome: string }[] = []) {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-modelos-"))
+    for (const p of personas) {
+      await escrever(raiz, `profiles/${p.id}/persona.json`, p)
+      await escrever(raiz, `profiles/${p.id}/profile.md`, `# ${p.nome}\n`)
+    }
+    const posicoes = personas.map((p) => ({ id: `conselho-${p.id}`, titulo: "conselho", persona: p.id, respondeA: null, capacidades: ["arquivos", "memoria"], aprovacao: "sempre" }))
+    await escrever(raiz, "equipes/casa/equipe.json", { id: "casa", nome: "Casa", posicoes, layout: {} })
+    await escrever(raiz, "skills/.claude-plugin/plugin.json", { name: "ct-casa", skills: "./" })
+    return raiz
+  }
+
+  async function pastaDeOrigem() {
+    const raiz = await pastaVazia([
+      { id: "alfred", nome: "Alfred" },
+      { id: "nati", nome: "Nati" },
+    ])
+    await escrever(raiz, "profiles/nati/persona.json", { id: "nati", nome: "Nati", modelo: "sonnet", protegida: true, orcamentoMensalUSD: 5, orcamentoMensalTokens: 1000 })
+    await escrever(raiz, "profiles/nati/profile.md", "# Nati\n\nEngenheira.\n")
+    await escrever(raiz, "profiles/nati/ritmo.json", { padrao: 1.2 })
+    await escrever(raiz, "profiles/nati/memory.md", "segredo da memória\n")
+    await escrever(raiz, "profiles/nati/skills/.claude-plugin/plugin.json", { name: "ct-nati", skills: "./" })
+    await escrever(raiz, "profiles/nati/skills/propria/SKILL.md", SKILL_MD("propria"))
+    await escrever(raiz, "profiles/nati/skills/propria/scripts/conta.sh", "echo 1\n")
+    await escrever(raiz, "skills/relatorio/SKILL.md", SKILL_MD("relatorio"))
+    await escrever(raiz, "equipes/work/equipe.json", WORK)
+    await escrever(raiz, "equipes/work/workflows/fluxo.json", FLUXO)
+    await escrever(raiz, "equipes/work/workflows/fluxo/passo.md", "Faça o passo.\n")
+    await escrever(raiz, "equipes/work/rotinas/diaria.json", ROTINA)
+    return raiz
+  }
+
+  async function exportar(raiz: string, opcoes = { personas: true, rotinas: true }): Promise<Modelo> {
+    const elencoLido = await lerElencoDoDisco(raiz)
+    const equipe = elencoLido.equipe("work")!
+    const rotinas = (await lerRotinasDoDisco(raiz, [equipe], () => ({}))).map((r) => r.rotina)
+    const dados = await lerParaExportar(raiz, equipe, elencoLido.personas(), ["fluxo"], rotinas)
+    return lerModelo(JSON.stringify(exportarEquipe(dados, opcoes)))
+  }
+
+  async function estado(raiz: string, workflows: Record<string, string[]> = {}) {
+    const e = await lerElencoDoDisco(raiz)
+    return estadoParaModelo(raiz, e.personas(), e.equipes(), workflows)
+  }
+
+  test("a exportação leva a equipe e deixa de fora orçamento, protegida, diretório, memória e manifesto", async () => {
+    const raiz = await pastaDeOrigem()
+    try {
+      const modelo = await exportar(raiz)
+      if (modelo.tipo !== "equipe") throw new Error("tipo")
+      const texto = JSON.stringify(modelo)
+      expect(texto).not.toContain("orcamentoMensal")
+      expect(texto).not.toContain("protegida")
+      expect(texto).not.toContain("/home/x/projeto")
+      expect(texto).not.toContain("segredo da memória")
+      expect(texto).not.toContain(".claude-plugin")
+      const nati = modelo.personas.find((p) => p.persona.id === "nati")!
+      expect(nati.ritmo).toEqual({ padrao: 1.2 })
+      expect(Object.keys(nati.skills[0]!.arquivos).sort()).toEqual(["SKILL.md", "scripts/conta.sh"])
+      expect(modelo.skills.map((s) => s.id)).toEqual(["relatorio"])
+      expect(modelo.workflows[0]!.textos).toEqual({ "passo.md": "Faça o passo.\n" })
+      expect(modelo.rotinas.map((r) => r.id)).toEqual(["diaria"])
+      const sem = await exportar(raiz, { personas: false, rotinas: false })
+      if (sem.tipo !== "equipe") throw new Error("tipo")
+      expect((sem.equipe.posicoes as { persona: unknown }[]).map((p) => p.persona)).toEqual([null, null])
+      expect(sem.personas).toEqual([])
+      expect(sem.rotinas).toEqual([])
+      expect(sem.skills.map((s) => s.id)).toEqual(["relatorio"])
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("ida e volta numa pasta vazia cria personas, skills, workflow e rotina desligada", async () => {
+    const origem = await pastaDeOrigem()
+    const destino = await pastaVazia()
+    try {
+      const modelo = await exportar(origem)
+      const plano = planejarModelo(modelo, await estado(destino))
+      expect(plano.erros).toEqual([])
+      expect(plano.escolhas.equipe).toEqual({ id: "work", nome: "Work" })
+      expect(plano.escolhas.personas).toEqual({ alfred: { acao: "criar" }, nati: { acao: "criar" } })
+      expect(plano.avisos.some((a) => a.includes("SEM pedir aprovação"))).toBe(true)
+      expect(plano.avisos.some((a) => a.includes("conta.sh"))).toBe(true)
+      await aplicarModelo(destino, plano)
+      const lido = await lerElencoDoDisco(destino)
+      expect(lido.ids().sort()).toEqual(["alfred", "nati"])
+      expect(lido.persona("nati")).toEqual({ id: "nati", nome: "Nati", modelo: "sonnet" })
+      expect(lido.casa.posicoes.find((p) => p.persona === "nati")?.titulo).toBe("revisora")
+      expect(lido.equipe("work")!.posicoes.find((p) => p.id === "exec")!.diretorio).toBeUndefined()
+      expect(await Bun.file(join(destino, "profiles/nati/ritmo.json")).json()).toEqual({ padrao: 1.2 })
+      expect(await Bun.file(join(destino, "profiles/nati/skills/propria/scripts/conta.sh")).text()).toBe("echo 1\n")
+      expect(await Bun.file(join(destino, "profiles/nati/skills/.claude-plugin/plugin.json")).json()).toEqual({ name: "ct-nati", skills: "./" })
+      expect(await Bun.file(join(destino, "profiles/nati/memory.md")).exists()).toBe(false)
+      const [wf] = await lerWorkflowsDoDisco(destino, [lido.equipe("work")!])
+      expect(wf!.workflow.versao).toBe(1)
+      expect(wf!.arquivos).toEqual({ a: { instrucao: "passo.md" } })
+      const [rotina] = await lerRotinasDoDisco(destino, [lido.equipe("work")!], () => ({}))
+      expect(rotina!.rotina.ativa).toBe(false)
+    } finally {
+      await rm(origem, { recursive: true, force: true })
+      await rm(destino, { recursive: true, force: true })
+    }
+  })
+
+  test("na mesma pasta reaproveita personas e skill igual e sugere outro id de equipe", async () => {
+    const raiz = await pastaDeOrigem()
+    try {
+      const plano = planejarModelo(await exportar(raiz), await estado(raiz))
+      expect(plano.erros).toEqual([])
+      expect(plano.escolhas.equipe).toEqual({ id: "work-2", nome: "Work 2" })
+      expect(plano.escolhas.personas).toEqual({ alfred: { acao: "usar", persona: "alfred" }, nati: { acao: "usar", persona: "nati" } })
+      expect(plano.escolhas.skills).toEqual({})
+      expect(plano.casa).toBeUndefined()
+      expect(plano.escritas.some((e) => e.caminho.startsWith("profiles/") || e.caminho.startsWith("skills/"))).toBe(false)
+      await aplicarModelo(raiz, plano)
+      expect((await lerElencoDoDisco(raiz)).equipe("work-2")!.posicoes.map((p) => p.persona)).toEqual(["alfred", "nati"])
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
+  })
+
+  test("colisões: skill diferente, persona com outro nome, id existente e id de excluída", async () => {
+    const origem = await pastaDeOrigem()
+    const destino = await pastaVazia([{ id: "alfred", nome: "Alfred" }])
+    try {
+      await escrever(destino, "skills/relatorio/SKILL.md", SKILL_MD("relatorio", "Outro jeito."))
+      await escrever(destino, "profiles/excluidas.json", ["nati"])
+      const modelo = await exportar(origem)
+      const atual = await estado(destino)
+      const padrao = planejarModelo(modelo, atual)
+      expect(padrao.escolhas.personas).toEqual({ alfred: { acao: "usar", persona: "alfred" }, nati: { acao: "vaga" } })
+      expect(padrao.escolhas.skills).toEqual({ relatorio: { acao: "usar" } })
+      expect(padrao.avisos.some((a) => a.includes("relatorio daqui é diferente"))).toBe(true)
+
+      expect(planejarModelo(modelo, atual, { personas: { nati: { acao: "criar" } } }).erros.join()).toContain("persona excluída")
+      expect(planejarModelo(modelo, atual, { personas: { alfred: { acao: "criar" } } }).erros.join()).toContain("já existe uma persona com o id alfred")
+
+      const plano = planejarModelo(modelo, atual, {
+        personas: { nati: { acao: "criar", nome: "Natália" }, alfred: { acao: "vaga" } },
+        skills: { relatorio: { acao: "importar", id: "relatorio-nati" } },
+      })
+      expect(plano.erros).toEqual([])
+      await aplicarModelo(destino, plano)
+      const lido = await lerElencoDoDisco(destino)
+      expect(lido.equipe("work")!.posicoes.map((p) => [p.persona, p.skills])).toEqual([
+        [null, undefined],
+        ["natalia", ["relatorio-nati"]],
+      ])
+      const skillMd = await Bun.file(join(destino, "skills/relatorio-nati/SKILL.md")).text()
+      expect(skillMd).toContain("name: relatorio-nati")
+      expect(skillMd).toContain("license: MIT")
+      expect(skillMd).toContain("Faça o relatório.")
+      expect(await Bun.file(join(destino, "skills/relatorio/SKILL.md")).text()).toContain("Outro jeito.")
+    } finally {
+      await rm(origem, { recursive: true, force: true })
+      await rm(destino, { recursive: true, force: true })
+    }
+  })
+
+  test("modelo de workflow liga posições por id ou título e reescreve as referências", async () => {
+    const origem = await pastaDeOrigem()
+    try {
+      const elencoLido = await lerElencoDoDisco(origem)
+      const work = elencoLido.equipe("work")!
+      const [lido] = await lerWorkflowsDoDisco(origem, [work])
+      const modelo = lerModelo(JSON.stringify(exportarWorkflow(work, lido!.workflow, await lerWorkflowParaModelo(origem, "work", "fluxo"))))
+      if (modelo.tipo !== "workflow") throw new Error("tipo")
+      expect(modelo.posicoes).toEqual([
+        { id: "exec", titulo: "executor", capacidades: ["arquivos", "comandos"] },
+        { id: "revisora", titulo: "revisora", capacidades: ["arquivos"] },
+      ])
+      const outra = {
+        id: "outra",
+        nome: "Outra",
+        posicoes: [
+          { id: "fazedor", titulo: "Executor", persona: "alfred", respondeA: null, capacidades: ["arquivos"], aprovacao: "sempre" },
+          { id: "chefe", titulo: "chefe", persona: "nati", respondeA: null, capacidades: ["arquivos"], aprovacao: "sempre" },
+        ],
+        layout: {},
+      }
+      await escrever(origem, "equipes/outra/equipe.json", outra)
+      const atual = await estado(origem, { work: ["fluxo"], outra: [] })
+      const semLigar = planejarModelo(modelo, atual, {}, "outra")
+      expect(semLigar.escolhas.posicoes).toEqual({ exec: "fazedor", revisora: null })
+      expect(semLigar.erros).toEqual(["posição revisora: escolha uma posição da equipe Outra para ela"])
+      expect(planejarModelo(modelo, atual, {}, "nenhuma").erros).toEqual(["a equipe nenhuma não existe"])
+
+      const plano = planejarModelo(modelo, atual, { posicoes: { revisora: "chefe" } }, "outra")
+      expect(plano.erros).toEqual([])
+      await aplicarModelo(origem, plano)
+      const gravado = await Bun.file(join(origem, "equipes/outra/workflows/fluxo.json")).json()
+      expect(gravado.nos[0].posicao).toBe("fazedor")
+      expect(gravado.nos[1].por).toEqual({ posicao: "chefe" })
+      expect(gravado.versao).toBe(1)
+      expect(await Bun.file(join(origem, "equipes/outra/workflows/fluxo/passo.md")).text()).toBe("Faça o passo.\n")
+
+      const naMesma = planejarModelo(modelo, await estado(origem, { work: ["fluxo"] }), {}, "work")
+      expect(naMesma.escolhas.workflow).toEqual({ id: "fluxo-2" })
+      expect(naMesma.erros).toEqual([])
+    } finally {
+      await rm(origem, { recursive: true, force: true })
+    }
+  })
+
+  test("lerModelo recusa caminho perigoso, versão nova e arquivo que não é modelo", () => {
+    for (const ruim of ["../x", "/etc/x", ".git/config", "a/../b", "a/b/c/d/e"]) expect(caminhoDeSkillValido(ruim)).toBe(false)
+    for (const bom of ["SKILL.md", "scripts/conta.sh", "a/b/c/d.txt"]) expect(caminhoDeSkillValido(bom)).toBe(true)
+    const base = { formato: "control-tower/modelo", versao: 1, tipo: "equipe", nome: "x", equipe: { id: "x" } }
+    const comSkill = (nome: string) => JSON.stringify({ ...base, skills: [{ id: "s", arquivos: { "SKILL.md": SKILL_MD("s"), [nome]: "x" } }] })
+    expect(() => lerModelo(comSkill("../../.bashrc"))).toThrow("caminho de arquivo inválido")
+    expect(() => lerModelo(JSON.stringify({ ...base, versao: 2 }))).toThrow("versão mais nova")
+    expect(() => lerModelo(JSON.stringify({ formato: "outro" }))).toThrow("não é um modelo")
+    expect(() => lerModelo("{")).toThrow("JSON válido")
+    expect(() => lerModelo(JSON.stringify({ ...base, workflows: [{ workflow: {}, textos: { "../x.md": "a" } }] }))).toThrow("nome de texto inválido")
+  })
+
+  test("aplicar não grava com erro, recusa caminho que surgiu e o desfazer devolve a Casa", async () => {
+    const origem = await pastaDeOrigem()
+    const destino = await pastaVazia()
+    try {
+      const modelo = await exportar(origem)
+      const comErro = planejarModelo(modelo, await estado(destino), { equipe: { id: "Inválido", nome: "x" } })
+      expect(comErro.erros.length).toBeGreaterThan(0)
+      await expect(aplicarModelo(destino, comErro)).rejects.toThrow()
+      expect(await readdir(join(destino, "equipes"))).toEqual(["casa"])
+
+      const plano = planejarModelo(modelo, await estado(destino))
+      const casaAntes = await Bun.file(join(destino, "equipes/casa/equipe.json")).text()
+      const desfazer = await aplicarModelo(destino, plano)
+      await desfazer()
+      expect(await readdir(join(destino, "equipes"))).toEqual(["casa"])
+      expect(await Bun.file(join(destino, "equipes/casa/equipe.json")).text()).toBe(casaAntes)
+      expect((await readdir(join(destino, "profiles"))).sort()).toEqual([])
+
+      await escrever(destino, "equipes/work/sobra.txt", "x")
+      await expect(aplicarModelo(destino, plano)).rejects.toThrow("algo mudou desde a prévia")
+    } finally {
+      await rm(origem, { recursive: true, force: true })
+      await rm(destino, { recursive: true, force: true })
+    }
+  })
+})

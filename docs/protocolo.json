@@ -46,7 +46,10 @@
     "skill-excluir",
     "espelho",
     "espelho-salvar",
-    "espelho-sincronizar"
+    "espelho-sincronizar",
+    "modelo-exportar",
+    "modelo-previa",
+    "modelo-importar"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -76,7 +79,10 @@
     "painel",
     "workflows",
     "skills",
-    "espelho"
+    "espelho",
+    "modelo",
+    "modelo-previa",
+    "modelo-importado"
   ],
   "cliente→servidor só no desktop": [
     "equipe-salvar",
@@ -89,6 +95,14 @@
     "skill-salvar",
     "skill-excluir",
     "espelho-salvar",
-    "espelho-sincronizar"
+    "espelho-sincronizar",
+    "modelo-exportar",
+    "modelo-previa",
+    "modelo-importar"
+  ],
+  "servidor→cliente só no desktop": [
+    "modelo",
+    "modelo-previa",
+    "modelo-importado"
   ]
 }

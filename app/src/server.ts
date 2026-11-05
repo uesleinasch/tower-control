@@ -23,6 +23,20 @@ import {
 } from "./orquestra/elenco"
 import { Agendador } from "./orquestra/agendador"
 import {
+  aplicar,
+  estadoAtual,
+  exportarEquipe,
+  exportarWorkflow,
+  lerEscolhas,
+  lerModelo,
+  lerParaExportar,
+  lerWorkflowParaModelo,
+  nomeDoArquivo,
+  planejar,
+  type Modelo,
+  type Plano,
+} from "./orquestra/modelos"
+import {
   Espelho,
   conectarTickTask,
   gravarConfigDoEspelho,
@@ -523,6 +537,72 @@ async function ativarRotina(equipeId: unknown, idBruto: unknown, ativa: boolean)
   TAREFAS.auditar("ueslei", ativa ? "ativou a rotina" : "desativou a rotina", `rotina:${equipe.id}/${rotina.id}`)
   await registrarNoGit(RAIZ, `rotina ${rotina.nome} ${ativa ? "ativada" : "desativada"}`)
   publicarRotinas()
+}
+
+function workflowsPorEquipe(): Record<string, string[]> {
+  return Object.fromEntries(elenco().equipes().map((e) => [e.id, MOTOR.daEquipe(e.id).map((w) => w.id)]))
+}
+
+async function exportarModelo(msg: Record<string, unknown>) {
+  const equipe = equipeDaRotina(msg.equipe)
+  let modelo: Modelo
+  if (typeof msg.workflow === "string") {
+    const workflow = MOTOR.definicao(equipe.id, msg.workflow)
+    if (!workflow) throw new Error(`o workflow ${msg.workflow} não existe na equipe ${equipe.nome}`)
+    modelo = exportarWorkflow(equipe, workflow, await lerWorkflowParaModelo(RAIZ, equipe.id, workflow.id))
+  } else {
+    const workflows = MOTOR.daEquipe(equipe.id).map((w) => w.id)
+    const dados = await lerParaExportar(RAIZ, equipe, elenco().personas(), workflows, AGENDADOR.daEquipe(equipe.id))
+    modelo = exportarEquipe(dados, { personas: msg.personas !== false, rotinas: msg.rotinas !== false })
+  }
+  return { tipo: "modelo", nome: nomeDoArquivo(modelo), conteudo: JSON.stringify(modelo, null, 2) }
+}
+
+async function planoDoModelo(msg: Record<string, unknown>): Promise<Plano> {
+  const modelo = lerModelo(typeof msg.conteudo === "string" ? msg.conteudo : "")
+  const atual = await estadoAtual(RAIZ, elenco().personas(), elenco().equipes(), workflowsPorEquipe())
+  return planejar(modelo, atual, lerEscolhas(msg.escolhas), typeof msg.destino === "string" ? msg.destino : undefined)
+}
+
+async function previaDoModelo(msg: Record<string, unknown>) {
+  try {
+    const { resumo, personasDoModelo, posicoesDoModelo, entra, escolhas, avisos, erros } = await planoDoModelo(msg)
+    return { tipo: "modelo-previa", resumo, personasDoModelo, posicoesDoModelo, entra, escolhas, avisos, erros }
+  } catch (erro) {
+    const vazia = { resumo: null, personasDoModelo: [], posicoesDoModelo: [], entra: [], escolhas: {}, avisos: [] }
+    return { tipo: "modelo-previa", ...vazia, erros: [(erro as Error).message] }
+  }
+}
+
+async function importarModelo(msg: Record<string, unknown>) {
+  const plano = await planoDoModelo(msg)
+  const desfazer = await aplicar(RAIZ, plano)
+  try {
+    await carregarElenco(RAIZ)
+    const equipe = elenco().equipe(plano.equipe)
+    if (!equipe) throw new Error(`a equipe ${plano.equipe} não carregou`)
+    const lidos = (await lerWorkflows(RAIZ, [equipe])).filter((l) => !plano.workflow || l.workflow.id === plano.workflow)
+    const entrada = (id: string) => lidos.find((l) => l.workflow.id === id)?.workflow.entrada ?? MOTOR.definicao(equipe.id, id)?.entrada
+    const rotinas = plano.workflow ? [] : await lerRotinas(RAIZ, [equipe], (_e, id) => entrada(id))
+    for (const { equipe: e, workflow, arquivos } of lidos) {
+      TEXTOS_EM_ARQUIVO.set(`${e}/${workflow.id}`, arquivos)
+      MOTOR.definir(e, workflow)
+    }
+    for (const { equipe: e, rotina } of rotinas) AGENDADOR.definir(e, rotina)
+  } catch (erro) {
+    if (!plano.workflow) {
+      AGENDADOR.removerDaEquipe(plano.equipe)
+      MOTOR.removerDaEquipe(plano.equipe)
+    } else MOTOR.remover(plano.equipe, plano.workflow)
+    await desfazer()
+    await carregarElenco(RAIZ)
+    throw erro
+  }
+  await registrarNoGit(RAIZ, plano.mensagem)
+  publicarElenco()
+  publicarFluxos()
+  publicarRotinas()
+  return { tipo: "modelo-importado", equipe: plano.equipe, ...(plano.workflow ? { workflow: plano.workflow } : {}) }
 }
 
 async function receberWebhook(req: Request, equipe: string, id: string): Promise<Response> {
@@ -1281,6 +1361,18 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "persona-excluir": {
       await excluirPersonaPeloCliente(String(msg.id ?? ""), String(msg.confirmacao ?? ""))
+      return
+    }
+    case "modelo-exportar": {
+      mandar(ws, await exportarModelo(msg))
+      return
+    }
+    case "modelo-previa": {
+      mandar(ws, await previaDoModelo(msg))
+      return
+    }
+    case "modelo-importar": {
+      mandar(ws, await importarModelo(msg))
       return
     }
     case "equipe-salvar": {
