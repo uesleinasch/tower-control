@@ -639,6 +639,26 @@ export class Repositorio {
     return this.db.query("SELECT * FROM eventos WHERE execucao = ? ORDER BY id").all(execucao) as Evento[]
   }
 
+  ultimoEvento(execucao: number): Evento | undefined {
+    return (this.db.query("SELECT * FROM eventos WHERE execucao = ? ORDER BY id DESC LIMIT 1").get(execucao) ?? undefined) as
+      | Evento
+      | undefined
+  }
+
+  registrosRecentes(tipos: readonly Registro["tipo"][], limite = 100): (Registro & { equipe: string })[] {
+    const marcas = tipos.map(() => "?").join(", ")
+    return this.db
+      .query(
+        `SELECT r.*, t.equipe FROM registros r JOIN tarefas t ON t.id = r.tarefa
+         WHERE r.tipo IN (${marcas}) ORDER BY r.id DESC LIMIT ?`,
+      )
+      .all(...tipos, limite) as (Registro & { equipe: string })[]
+  }
+
+  disparosRecentes(limite = 100): Disparo[] {
+    return this.db.query("SELECT * FROM disparos ORDER BY id DESC LIMIT ?").all(limite) as Disparo[]
+  }
+
   filhasAbertas(id: number): number {
     const { n } = this.db
       .query("SELECT COUNT(*) AS n FROM tarefas WHERE pai = ? AND status NOT IN ('concluida', 'cancelada')")

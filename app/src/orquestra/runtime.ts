@@ -201,6 +201,10 @@ export class Orquestra {
     return membrosDoBoard(equipe, this.executoraDe(tarefa)).filter((p) => !pausas.has(p) && !this.amb.bloqueio?.(p))
   }
 
+  personaDaFila(execucao: Execucao): string | null {
+    return this.personaDa(execucao, this.repo.exigir(execucao.tarefa))
+  }
+
   private personaDa(execucao: Execucao, tarefa: Tarefa): string | null {
     if (execucao.etapa === null) return this.posicaoDe(tarefa)?.persona ?? null
     const etapa = tarefa.politica[execucao.etapa]

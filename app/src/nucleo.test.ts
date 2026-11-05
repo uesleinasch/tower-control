@@ -51,6 +51,9 @@ import { Orquestra } from "./orquestra/runtime"
 import { lerCron, menorIntervaloEmMinutos, proximoHorario, proximosHorarios, ultimoHorarioEntre } from "./orquestra/cron"
 import { LIMITE_DO_CORPO, descricaoComDados, horarioDevido, planoDoDisparo, tituloDaTarefa, validarRotina } from "./orquestra/rotinas"
 import { Agendador } from "./orquestra/agendador"
+import { AssinaturaDoPainel, atividade, cartoesDePersonas, itensDeAtencao, montarRetrato, motivoDaEspera, type DadosDoPainel } from "./orquestra/painel"
+import type { Registro, Tarefa } from "./orquestra/tarefa"
+import type { Execucao } from "./orquestra/execucao"
 import type { trabalhar } from "./sessions"
 import { Database } from "bun:sqlite"
 import { anexarMensagem, atualizarMeta, criarConversa, excluirConversa, filaPorChave, idValido, lerMensagens, lerMeta } from "./store"
@@ -1538,6 +1541,248 @@ describe("rotinas e gatilhos", () => {
     expect(() => exigirMudancaDeEquipe(casa, depois, () => ({ abertas: 0, emAndamento: 0, rotinas: 1 }))).toThrow(
       "posição executor: recebe 1 rotina(s) e não pode sair",
     )
+  })
+})
+
+describe("painel de controle", () => {
+  const agora = new Date("2026-11-05T12:00:00Z")
+  const equipe = validarEquipe(
+    {
+      id: "casa",
+      nome: "Casa",
+      posicoes: [
+        { id: "executor", titulo: "executor", persona: "alfred", capacidades: ["arquivos"], politica: [{ tipo: "aprovacao", por: { ueslei: true } }] },
+        { id: "revisora", titulo: "revisora", persona: "nati", capacidades: ["arquivos"] },
+        { id: "vaga", titulo: "redatora", persona: null, capacidades: ["arquivos"] },
+      ],
+    },
+    new Set(["alfred", "nati"]),
+  )
+  const outra = validarEquipe(
+    { id: "codigo", nome: "Código", posicoes: [{ id: "dev", titulo: "dev", persona: "alfred", capacidades: ["arquivos"] }] },
+    new Set(["alfred", "nati"]),
+  )
+  const tarefa = (id: number, status: string, extra: Record<string, unknown> = {}) =>
+    ({
+      id,
+      equipe: "casa",
+      posicao: "executor",
+      titulo: `tarefa ${id}`,
+      descricao: "",
+      porque: "",
+      pai: null,
+      status,
+      dono: null,
+      criadaPor: "ueslei",
+      criadaEm: "2026-11-05T08:00:00Z",
+      atualizadaEm: `2026-11-05T09:0${id}:00Z`,
+      dependeDe: [],
+      politica: [],
+      etapa: null,
+      retorno: null,
+      voltas: 0,
+      ...extra,
+    }) as Tarefa
+  const registro = (tarefa: number, tipo: string, autor: string, texto: string, em = "2026-11-05T09:00:00Z") =>
+    ({ id: 0, tarefa, tipo, autor, texto, em }) as Registro
+  const execucao = (id: number, tarefa: number, extra: Record<string, unknown> = {}) =>
+    ({
+      id,
+      tarefa,
+      posicao: "executor",
+      persona: null,
+      gatilho: "atribuicao",
+      status: "na_fila",
+      tentativa: 1,
+      naoAntes: null,
+      falha: false,
+      sessionId: null,
+      modelo: null,
+      criadaEm: `2026-11-05T10:0${id}:00Z`,
+      inicio: null,
+      fim: null,
+      resultado: null,
+      erro: null,
+      custoUSD: null,
+      etapa: null,
+      ...extra,
+    }) as Execucao
+  const gasto = (usd = 0) => ({ tarefas: usd, total: usd, tokensTarefas: 0, tokensTotal: 0 })
+
+  function dados(extra: Partial<DadosDoPainel> = {}): DadosDoPainel {
+    const registros: Record<number, Registro[]> = {
+      1: [registro(1, "entrega", "alfred", "fiz o pacote")],
+      2: [registro(2, "plano", "alfred", "1. apagar /tmp")],
+      3: [registro(3, "entrega", "alfred", "relatório pronto")],
+      4: [registro(4, "ajuda", "alfred", "falta a senha do servidor")],
+    }
+    return {
+      agora,
+      mes: "2026-11",
+      teto: 2,
+      pausas: new Map(),
+      bloqueio: () => null,
+      equipes: [equipe, outra],
+      personas: [
+        { id: "alfred", nome: "Alfred", cor: "#e0a458", limiteUSD: 5, limiteTokens: null, gasto: gasto(1) },
+        { id: "nati", nome: "Nati", cor: "#9a6ee8", limiteUSD: 1, limiteTokens: null, gasto: gasto(1.2) },
+      ],
+      tarefas: [
+        tarefa(1, "em_revisao", { politica: [{ tipo: "aprovacao", por: { ueslei: true } }], etapa: 0 }),
+        tarefa(2, "em_revisao"),
+        tarefa(3, "em_revisao"),
+        tarefa(4, "bloqueada"),
+        tarefa(5, "backlog", { pai: 1, criadaPor: "execucao:7" }),
+        tarefa(6, "a_fazer", { posicao: "vaga" }),
+        tarefa(7, "em_revisao", { politica: [{ tipo: "revisao", por: { posicao: "revisora" } }], etapa: 0 }),
+        tarefa(8, "a_fazer", { equipe: "codigo", posicao: "dev" }),
+        tarefa(9, "concluida"),
+      ],
+      registros: (id) => registros[id] ?? [],
+      rodando: [],
+      naFila: [],
+      personaDaFila: (e) => (e.posicao === "revisora" ? "nati" : e.posicao === "vaga" ? null : "alfred"),
+      ultimoEvento: () => undefined,
+      comandos: [{ id: "p1", comando: "rm -rf /tmp/x", quem: "Alfred", desde: "2026-11-05T11:00:00Z", tarefaId: 8 }],
+      rotinas: [
+        {
+          equipe: "casa",
+          id: "plano",
+          nome: "Plano do dia",
+          ativa: true,
+          proximo: "2026-11-06T11:30:00Z",
+          ultimoDisparo: { id: 1, equipe: "casa", rotina: "plano", origem: "cron", horario: null, em: "2026-11-05T11:30:00Z", resultado: "falhou", motivo: "posição sumiu", tarefa: null },
+        },
+      ],
+      registrosRecentes: [],
+      auditoria: [],
+      disparos: [],
+      ...extra,
+    }
+  }
+
+  test("precisa de você junta cada motivo, na ordem de prioridade, com as ações certas", () => {
+    const itens = itensDeAtencao(
+      dados({
+        bloqueio: (p) => (p === "nati" ? "orcamento" : null),
+        naFila: [execucao(1, 7, { posicao: "revisora", etapa: 0 })],
+      }),
+    )
+    expect(itens.map((i) => [i.tipo, i.tarefaId ?? i.persona ?? i.rotina, i.acoes.join(",")])).toEqual([
+      ["comando", 8, "aprovar,negar"],
+      ["aprovacao", 1, "aprovar,pedir-mudanca,abrir"],
+      ["plano", 2, "aprovar-plano,abrir"],
+      ["entrega", 3, "concluir,abrir"],
+      ["bloqueada", 4, "abrir"],
+      ["backlog", 5, "liberar,abrir"],
+      ["orcamento", "nati", "abrir"],
+      ["rotina", "plano", "abrir"],
+      ["vaga", 6, "abrir"],
+    ])
+    expect(itens[0]).toMatchObject({ titulo: "Alfred quer rodar um comando em #8", detalhe: "rm -rf /tmp/x", permissaoId: "p1" })
+    expect(itens[1]).toMatchObject({ titulo: "#1 espera sua aprovação", detalhe: "tarefa 1: fiz o pacote" })
+    expect(itens[4]!.detalhe).toBe("tarefa 4: falta a senha do servidor")
+    expect(itens[6]!.detalhe).toBe("US$ 1.20 de US$ 1.00 · 1 tarefa(s) esperando")
+    expect(itensDeAtencao(dados({ comandos: [], tarefas: [], rotinas: [] }))).toEqual([])
+    const doisPlanos = itensDeAtencao(dados({ tarefas: [tarefa(3, "em_revisao"), tarefa(2, "em_revisao")], registros: () => [registro(2, "plano", "alfred", "p")] }))
+    expect(doisPlanos.filter((i) => i.tipo === "plano").map((i) => i.tarefaId)).toEqual([2, 3])
+  })
+
+  test("o motivo da espera repete o despachante", () => {
+    const fila = (extra: Record<string, unknown>, d: Partial<DadosDoPainel> = {}) => {
+      const e = execucao(3, 8, extra)
+      return motivoDaEspera(dados(d), e, dados(d).tarefas.find((t) => t.id === e.tarefa))
+    }
+    expect(fila({}, { pausas: new Map([["*", "ueslei"]]) })).toBe("tudo pausado")
+    expect(fila({}, { pausas: new Map([["alfred", "ueslei"]]) })).toBe("Alfred pausada")
+    expect(fila({}, { bloqueio: () => "orcamento" })).toBe("Alfred sem orçamento")
+    expect(fila({ posicao: "vaga" })).toBe("posição vaga")
+    expect(fila({}, { tarefas: [tarefa(8, "a_fazer", { dependeDe: [9, 4] }), tarefa(9, "concluida"), tarefa(4, "bloqueada")] })).toBe("depende da #4")
+    expect(fila({ naoAntes: "2026-11-05T12:30:00Z" })).toMatch(/^nova tentativa às \d\d:30$/)
+    expect(fila({}, { rodando: [execucao(1, 3, { persona: "alfred", status: "rodando" })] })).toBe("Alfred ocupada com a #3")
+    expect(fila({}, { rodando: [execucao(1, 3, { persona: "nati" }), execucao(2, 4, { persona: "lucas" })] })).toBe(
+      "limite de 2 execuções ao mesmo tempo",
+    )
+  })
+
+  test("cartões de persona dizem o estado e contam as abertas de todas as equipes", () => {
+    const cartoes = cartoesDePersonas(
+      dados({ rodando: [execucao(1, 3, { persona: "alfred", status: "rodando" })], naFila: [execucao(2, 7, { posicao: "revisora", etapa: 0 })] }),
+    )
+    expect(cartoes.map((c) => [c.id, c.estado, c.tarefaId, c.abertas])).toEqual([
+      ["alfred", "rodando", 3, 7],
+      ["nati", "na_fila", 7, 0],
+    ])
+    expect(cartoesDePersonas(dados({ pausas: new Map([["nati", "ueslei"]]) }))[1]!.estado).toBe("pausada")
+    expect(cartoesDePersonas(dados({ bloqueio: (p) => (p === "nati" ? "orcamento" : null) }))[1]!.estado).toBe("sem_orcamento")
+    expect(cartoesDePersonas(dados())[1]!.estado).toBe("ocioso")
+  })
+
+  test("a atividade junta registros, auditoria e disparos, sem status, em ordem e cortada em 100", () => {
+    const muitos = Array.from({ length: 120 }, (_, i) => ({
+      ...registro(1, "comentario", "ueslei", `c${i}`, new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString()),
+      equipe: "casa",
+    }))
+    const itens = atividade(
+      dados({
+        registrosRecentes: [
+          { ...registro(1, "entrega", "alfred", "fiz", "2026-11-05T09:00:00Z"), equipe: "casa" },
+          { ...registro(1, "status", "orquestra", "a fazer → em andamento", "2026-11-05T09:30:00Z"), equipe: "casa" },
+          { ...registro(7, "mudanca", "nati", "faltou o teste", "2026-11-05T09:40:00Z"), equipe: "casa" },
+        ],
+        auditoria: [{ id: 1, em: "2026-11-05T09:50:00Z", quem: "execucao:4", acao: "delegou direto", alvo: "tarefa:5", detalhe: "" }],
+        disparos: [{ id: 1, equipe: "casa", rotina: "plano", origem: "cron", horario: null, em: "2026-11-05T09:55:00Z", resultado: "criada", motivo: "", tarefa: 1 }],
+      }),
+      (id) => (id === 4 ? "nati" : null),
+    )
+    expect(itens.map((a) => [a.tipo, a.quem, a.texto, a.tarefaId])).toEqual([
+      ["disparo", "Plano do dia", "cron: criou a #1", 1],
+      ["auditoria", "nati", "delegou direto · tarefa:5", 5],
+      ["decisao", "nati", "pediu mudança: faltou o teste", 7],
+      ["entrega", "alfred", "fiz", 1],
+    ])
+    expect(atividade(dados({ registrosRecentes: muitos }), () => null)).toHaveLength(100)
+    expect(atividade(dados({ registrosRecentes: muitos }), () => null)[0]!.texto).toBe("c119")
+  })
+
+  test("o retrato conta tarefas por equipe, soma o gasto e lista as próximas rotinas", () => {
+    const retrato = montarRetrato(dados())
+    expect(retrato.tarefas).toEqual({ casa: { em_revisao: 4, bloqueada: 1, backlog: 1, a_fazer: 1, concluida: 1 }, codigo: { a_fazer: 1 } })
+    expect(retrato.gasto).toEqual({ mes: "2026-11", tarefasUSD: 2.2, totalUSD: 2.2, tokensTarefas: 0, tokensTotal: 0 })
+    expect(retrato.proximasRotinas).toEqual([{ equipe: "casa", id: "plano", nome: "Plano do dia", proximo: "2026-11-06T11:30:00Z" }])
+    expect(retrato.pausadoTudo).toBe(false)
+  })
+
+  test("só manda o retrato para quem assina, e no máximo uma vez por segundo", async () => {
+    let montagens = 0
+    const recebidos: string[] = []
+    const assinatura = new AssinaturaDoPainel<string>(
+      () => {
+        montagens++
+        return montarRetrato(dados({ comandos: [], tarefas: [], rotinas: [] }))
+      },
+      (cliente) => recebidos.push(cliente),
+      40,
+    )
+    assinatura.mudou()
+    await Bun.sleep(60)
+    expect(montagens).toBe(0)
+    assinatura.assinar("web")
+    expect(recebidos).toEqual(["web"])
+    assinatura.mudou()
+    assinatura.mudou()
+    assinatura.mudou()
+    await Bun.sleep(20)
+    expect(recebidos).toEqual(["web", "web"])
+    assinatura.mudou()
+    await Bun.sleep(10)
+    expect(recebidos).toHaveLength(2)
+    await Bun.sleep(60)
+    expect(recebidos).toHaveLength(3)
+    assinatura.sair("web")
+    assinatura.mudou()
+    await Bun.sleep(60)
+    expect(recebidos).toHaveLength(3)
   })
 })
 
