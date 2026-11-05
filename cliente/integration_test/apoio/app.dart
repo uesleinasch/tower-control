@@ -21,6 +21,7 @@ Future<void> subirDesktop(WidgetTester t, AmbienteDeTeste a) async {
   if (montado != null) {
     await t.pumpWidget(montado);
   } else {
+    exigirXdgDeTeste(Platform.environment);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('porta', a.porta);
     Object? falhou;
@@ -46,6 +47,18 @@ Future<void> subirDesktop(WidgetTester t, AmbienteDeTeste a) async {
     );
   }
   await esperarAte(t, () => salaDe(t).canal.conectado, descricao: 'o app conectar no servidor de teste');
+}
+
+void exigirXdgDeTeste(Map<String, String> ambiente) {
+  final casa = ambiente['HOME'] ?? '';
+  for (final (variavel, padrao) in [('XDG_DATA_HOME', '$casa/.local'), ('XDG_CONFIG_HOME', '$casa/.config')]) {
+    final valor = ambiente[variavel] ?? '';
+    final caminho = valor.isEmpty ? '' : Directory(valor).absolute.uri.normalizePath().toFilePath();
+    final pasta = caminho.endsWith('/') ? caminho : '$caminho/';
+    if (valor.isEmpty || casa.isEmpty || pasta == '$casa/' || pasta.startsWith('$padrao/')) {
+      throw StateError('$variavel="$valor" não é uma pasta de teste: o app gravaria nas preferências do app instalado');
+    }
+  }
 }
 
 Sala salaDe(WidgetTester t) => t.widget<app.ControlTower>(find.byType(app.ControlTower)).sala;
@@ -132,13 +145,17 @@ Future<String> _xdotool(List<String> argumentos) async {
 const _teclasLivres = [67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 95, 96];
 final _mapeadas = <int>{};
 
+var _xvfbConferido = false;
+
 Future<void> _exigirXvfb() async {
+  if (_xvfbConferido) return;
   final tela = (Platform.environment['DISPLAY'] ?? '').split('.').first;
   final r = await Process.run('pgrep', ['-a', 'Xvfb']);
   final doXvfb = '${r.stdout}'.split('\n').any((linha) => linha.split(' ').contains(tela));
   if (tela.isEmpty || !doXvfb) {
-    throw StateError('o teclado de teste remapeia teclas e só roda dentro do Xvfb (DISPLAY=$tela)');
+    throw StateError('o teclado de teste digita em janelas do X e só roda dentro do Xvfb (DISPLAY=$tela)');
   }
+  _xvfbConferido = true;
 }
 
 Future<void> _mapearAcentos(String texto) async {
@@ -163,6 +180,7 @@ Future<void> _mapearAcentos(String texto) async {
 }
 
 Future<void> _focarJanela() async {
+  await _exigirXvfb();
   _janela ??= (await _xdotool(['search', '--onlyvisible', '--name', '^Control Tower\$'])).split('\n').first;
   await _xdotool(['windowfocus', '--sync', _janela!]);
 }
@@ -171,6 +189,7 @@ EditableText _editavel(WidgetTester t, Finder campo) =>
     t.widget<EditableText>(find.descendant(of: campo.first, matching: find.byType(EditableText)));
 
 Future<void> digitarNoTeclado(WidgetTester t, Finder campo, String texto, {Future<void> Function()? noMeio}) async {
+  await _exigirXvfb();
   await aparecer(t, campo, descricao: campo.toString(describeSelf: true));
   await t.ensureVisible(campo.first);
   await t.pump();
