@@ -4855,6 +4855,8 @@ describe("modelos de equipe e de workflow", () => {
 
 import { casar, lerPedido as lerPedidoDoModelo, respostaJson, sseDaResposta, type Regra } from "../interface/falsos/roteiro"
 import { servirModeloFalso } from "../interface/falsos/modelo"
+import { servirTickTaskFalso } from "../interface/falsos/ticktask"
+import { conectarTickTask } from "./orquestra/espelho"
 
 function corpoDeChat(sistema: string, mensagem: string) {
   return { model: "m", system: sistema, messages: [{ role: "user", content: mensagem }] }
@@ -4979,6 +4981,25 @@ describe("modelo falso", () => {
       expect((await primeiro).status).toBe(200)
     } finally {
       servidor.fechar()
+    }
+  })
+})
+
+describe("ticktask falso", () => {
+  test("o espelho cria, lê e finaliza no ticktask falso", async () => {
+    const falso = servirTickTaskFalso(0, "t-certo")
+    const url = `http://127.0.0.1:${falso.porta}/mcp`
+    try {
+      const tick = await conectarTickTask({ url, token: "t-certo" })
+      const id = await tick.criar({ nome: "x", descricao: "d", projeto: "p", tag: "t" })
+      expect((await tick.ler(id))?.finalizada).toBe(false)
+      await fetch(`http://127.0.0.1:${falso.porta}/_controle/finalizar/${id}`, { method: "POST" })
+      expect((await tick.ler(id))?.finalizada).toBe(true)
+      expect(await tick.ler(999)).toBeNull()
+      await tick.fechar()
+      await expect(conectarTickTask({ url, token: "errado" })).rejects.toThrow()
+    } finally {
+      falso.fechar()
     }
   })
 })
