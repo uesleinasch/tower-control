@@ -1,5 +1,19 @@
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import {
+  apagarSkill,
+  conjuntoDaChamada,
+  exigirRascunho,
+  garantirManifesto,
+  gravarSkill,
+  lerBiblioteca,
+  lerSkillMd,
+  montarSkillMd,
+  nomeQualificado,
+  opcoesDeSkills,
+  opcoesDoSdk,
+  type Skill,
+} from "./orquestra/skills"
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
 import { parseFrontmatter, linhaIndice } from "./decisions"
@@ -2677,6 +2691,93 @@ describe("apagarSessao", () => {
     expect(await apagarSessao("/tmp", undefined)).toBe(false)
     expect(await apagarSessao("/tmp", "../../../etc/passwd")).toBe(false)
     expect(await apagarSessao("/tmp", "nao-e-uuid")).toBe(false)
+  })
+})
+
+describe("skills", () => {
+  const md = (nome: string, descricao: string, corpo = "Faça assim.", extra = "") =>
+    `---\nname: ${nome}\ndescription: ${descricao}\n${extra}---\n\n${corpo}\n`
+
+  test("lê e valida o SKILL.md", () => {
+    expect(lerSkillMd(md("relatorio", "Relatório da semana."), "relatorio")).toEqual({ descricao: "Relatório da semana.", corpo: "Faça assim." })
+    expect(() => lerSkillMd(md("outro", "x"), "relatorio")).toThrow("precisa ser igual ao nome da pasta (relatorio)")
+    expect(() => lerSkillMd(md("relatorio", '""'), "relatorio")).toThrow("a descrição é obrigatória")
+    expect(() => lerSkillMd("sem frontmatter", "relatorio")).toThrow("falta o frontmatter")
+    expect(() => lerSkillMd(md("relatorio", "x".repeat(1025)), "relatorio")).toThrow("passa de 1024")
+    expect(() => lerSkillMd(md("relatorio", "ok", "  "), "relatorio")).toThrow("corpo da skill está vazio")
+  })
+
+  test("regravar mantém as chaves que o editor não conhece", () => {
+    const antes = "---\nname: relatorio\ndescription: >\n  linha um\n  linha dois\nallowed-tools: Read Grep\nlicense: MIT\n---\nCorpo velho\n"
+    const novo = montarSkillMd({ id: "relatorio", descricao: 'Nova: com "aspas"', corpo: "Corpo novo" }, antes)
+    expect(novo).toBe('---\nname: relatorio\ndescription: "Nova: com \\"aspas\\""\nallowed-tools: Read Grep\nlicense: MIT\n---\n\nCorpo novo\n')
+    expect(lerSkillMd(novo, "relatorio")).toEqual({ descricao: 'Nova: com "aspas"', corpo: "Corpo novo" })
+    expect(() => exigirRascunho({ id: "Relatorio", descricao: "x", corpo: "y" })).toThrow("id inválido")
+  })
+
+  const skill = (dono: string, id: string, erro?: string): Skill => ({ dono, id, descricao: "d", corpo: "c", arquivos: [], ...(erro ? { erro } : {}) })
+
+  test("o conjunto junta próprias, da persona e da posição, sem as inválidas", () => {
+    const biblioteca = [skill("casa", "a"), skill("casa", "b"), skill("casa", "c", "quebrada"), skill("casa", "d"), skill("poe", "minha"), skill("nati", "dela")]
+    const conjunto = conjuntoDaChamada(biblioteca, "poe", ["a", "c"], ["a", "b"])
+    expect(conjunto.map(nomeQualificado)).toEqual(["ct-casa:a", "ct-casa:b", "ct-poe:minha"])
+    expect(opcoesDeSkills("/dados", [])).toBeNull()
+    expect(opcoesDoSdk(null)).toEqual({})
+    const opcoes = opcoesDeSkills("/dados", conjunto)!
+    expect(opcoes).toEqual({
+      plugins: [
+        { type: "local", path: "/dados/skills", skipMcpDiscovery: true },
+        { type: "local", path: "/dados/profiles/poe/skills", skipMcpDiscovery: true },
+      ],
+      skills: ["ct-casa:a", "ct-casa:b", "ct-poe:minha"],
+      ferramentas: ["Skill"],
+    })
+    expect(opcoesDeSkills("/dados", conjunto, "/home/u/projeto")!.additionalDirectories).toEqual(["/dados/skills", "/dados/profiles/poe/skills"])
+    expect(opcoesDoSdk(opcoes)).toEqual({ plugins: opcoes.plugins, skills: opcoes.skills })
+  })
+
+  test("persona e posição só anexam skill que existe na biblioteca", () => {
+    const casa = new Set(["relatorio"])
+    expect(validarPersona({ id: "poe", nome: "Poe", skills: ["relatorio", "relatorio"] }, casa).skills).toEqual(["relatorio"])
+    expect(validarPersona({ id: "poe", nome: "Poe", skills: [] }, casa).skills).toBeUndefined()
+    expect(() => validarPersona({ id: "poe", nome: "Poe", skills: ["sumiu"] }, casa)).toThrow("skill inexistente na biblioteca da Casa (sumiu)")
+    expect(() => validarPersona({ id: "poe", nome: "Poe", skills: "relatorio" })).toThrow("skills precisam ser uma lista")
+    expect(validarPersona({ id: "poe", nome: "Poe", skills: ["sumiu"] }).skills).toEqual(["sumiu"])
+    const equipe = (skills: unknown) => ({
+      id: "casa",
+      nome: "Casa",
+      posicoes: [{ id: "executor", titulo: "executor", persona: "alfred", capacidades: ["comandos"], skills }],
+    })
+    expect(validarEquipe(equipe(["relatorio"]), new Set(["alfred"]), casa).posicoes[0]!.skills).toEqual(["relatorio"])
+    expect(() => validarEquipe(equipe(["sumiu"]), new Set(["alfred"]), casa)).toThrow("posição executor: skill inexistente")
+  })
+
+  test("grava, lista, recusa repetida e apaga no disco", async () => {
+    const raiz = await mkdtemp(join(tmpdir(), "ct-skills-"))
+    try {
+      expect(await garantirManifesto(raiz, "casa")).toBe(true)
+      expect(await garantirManifesto(raiz, "casa")).toBe(false)
+      expect(await Bun.file(join(raiz, "skills/.claude-plugin/plugin.json")).json()).toEqual({ name: "ct-casa", skills: "./" })
+      await gravarSkill(raiz, "casa", { id: "relatorio", descricao: "Relatório.", corpo: "Passos." }, true)
+      await expect(gravarSkill(raiz, "casa", { id: "relatorio", descricao: "x", corpo: "y" }, true)).rejects.toThrow("já existe")
+      await expect(gravarSkill(raiz, "casa", { id: "nova", descricao: "x", corpo: "y" }, false)).rejects.toThrow("não existe")
+      await Bun.write(join(raiz, "skills/relatorio/modelos/base.md"), "modelo")
+      await gravarSkill(raiz, "poe", { id: "minha", descricao: "Minha.", corpo: "Só minha." }, true)
+      await Bun.write(join(raiz, "skills/quebrada/SKILL.md"), "sem frontmatter")
+      const lidas = await lerBiblioteca(raiz, ["poe", "nati"])
+      expect(lidas.map((s) => [s.dono, s.id, s.erro ?? ""])).toEqual([
+        ["casa", "quebrada", "falta o frontmatter (--- no começo e no fim)"],
+        ["casa", "relatorio", ""],
+        ["poe", "minha", ""],
+      ])
+      expect(lidas[1]!.arquivos).toEqual(["modelos/base.md"])
+      expect(await Bun.file(join(raiz, "profiles/poe/skills/.claude-plugin/plugin.json")).json()).toEqual({ name: "ct-poe", skills: "./" })
+      await apagarSkill(raiz, "casa", "relatorio")
+      expect((await lerBiblioteca(raiz, [])).map((s) => s.id)).toEqual(["quebrada"])
+      await expect(apagarSkill(raiz, "casa", "relatorio")).rejects.toThrow("não existe")
+    } finally {
+      await rm(raiz, { recursive: true, force: true })
+    }
   })
 })
 

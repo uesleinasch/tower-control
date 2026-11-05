@@ -1,3 +1,4 @@
+import { skillIdValido } from "./skills"
 export type PersonaId = string
 export type Capacidade = "arquivos" | "comandos" | "ticktask" | "memoria" | "board"
 export type PoliticaDeAprovacao = "sempre" | "sensiveis" | "auto"
@@ -14,6 +15,7 @@ export interface Persona {
   orcamentoMensalUSD?: number
   orcamentoMensalTokens?: number
   cor?: string
+  skills?: string[]
 }
 
 export interface Posicao {
@@ -27,6 +29,7 @@ export interface Posicao {
   aprovarPlano?: boolean
   delegaDireto?: boolean
   politica?: Etapa[]
+  skills?: string[]
 }
 
 export type Etapa =
@@ -82,7 +85,20 @@ function texto(valor: unknown, oQue: string): string {
   return valor.trim()
 }
 
-export function validarPersona(bruto: unknown): Persona {
+// A existência das skills só é conferida ao salvar pelo servidor: na subida, uma skill
+// apagada à mão não pode derrubar o elenco, e o conjunto da chamada já ignora o que falta.
+function lerSkills(bruto: unknown, onde: string, existentes?: ReadonlySet<string>): string[] | undefined {
+  if (bruto === undefined) return undefined
+  if (!Array.isArray(bruto) || !bruto.every((s) => typeof s === "string" && skillIdValido(s))) {
+    throw new Error(`${onde}: skills precisam ser uma lista de ids de skill`)
+  }
+  const ids = [...new Set(bruto as string[])]
+  const faltando = existentes ? ids.filter((s) => !existentes.has(s)) : []
+  if (faltando.length) throw new Error(`${onde}: skill inexistente na biblioteca da Casa (${faltando.join(", ")})`)
+  return ids.length ? ids : undefined
+}
+
+export function validarPersona(bruto: unknown, skillsDaCasa?: ReadonlySet<string>): Persona {
   const p = objeto(bruto, "persona")
   if (!personaIdValido(p.id)) throw new Error(`persona: id inválido (${String(p.id)})`)
   const persona: Persona = { id: p.id, nome: texto(p.nome, `persona ${p.id}: nome`) }
@@ -104,6 +120,8 @@ export function validarPersona(bruto: unknown): Persona {
     }
     persona.orcamentoMensalTokens = p.orcamentoMensalTokens
   }
+  const skills = lerSkills(p.skills, `persona ${p.id}`, skillsDaCasa)
+  if (skills) persona.skills = skills
   return persona
 }
 
@@ -142,7 +160,12 @@ export function errosDaPolitica(posicao: Posicao, posicoes: Posicao[]): string[]
   return erros
 }
 
-function validarPosicao(bruto: unknown, personas: ReadonlySet<string>, erros: string[]): Posicao | undefined {
+function validarPosicao(
+  bruto: unknown,
+  personas: ReadonlySet<string>,
+  erros: string[],
+  skillsDaCasa?: ReadonlySet<string>,
+): Posicao | undefined {
   try {
     const p = objeto(bruto, "posição")
     if (!slugValido(p.id)) throw new Error(`posição: id inválido (${String(p.id)})`)
@@ -171,6 +194,8 @@ function validarPosicao(bruto: unknown, personas: ReadonlySet<string>, erros: st
       if (!Array.isArray(p.politica)) throw new Error(`${onde}: a política precisa ser uma lista`)
       if (p.politica.length) posicao.politica = p.politica.map((e, i) => lerEtapa(e, `${onde}: etapa ${i + 1}`))
     }
+    const skills = lerSkills(p.skills, onde, skillsDaCasa)
+    if (skills) posicao.skills = skills
     return posicao
   } catch (erro) {
     erros.push((erro as Error).message)
@@ -190,13 +215,13 @@ function temCiclo(posicoes: Posicao[]): string | undefined {
   return undefined
 }
 
-export function validarEquipe(bruto: unknown, personas: ReadonlySet<string>): Equipe {
+export function validarEquipe(bruto: unknown, personas: ReadonlySet<string>, skillsDaCasa?: ReadonlySet<string>): Equipe {
   const e = objeto(bruto, "equipe")
   if (!slugValido(e.id)) throw new Error(`equipe: id inválido (${String(e.id)})`)
   const erros: string[] = []
   const nome = typeof e.nome === "string" && e.nome.trim() ? e.nome.trim() : (erros.push("equipe: nome obrigatório"), "")
   const brutas = Array.isArray(e.posicoes) ? e.posicoes : (erros.push("equipe: posições precisam ser uma lista"), [])
-  const posicoes = brutas.map((p) => validarPosicao(p, personas, erros)).filter((p): p is Posicao => Boolean(p))
+  const posicoes = brutas.map((p) => validarPosicao(p, personas, erros, skillsDaCasa)).filter((p): p is Posicao => Boolean(p))
   const ids = new Set<string>()
   for (const p of posicoes) {
     if (ids.has(p.id)) erros.push(`posição ${p.id}: id repetido`)
@@ -419,6 +444,7 @@ export function resumoDaMudanca(antes: Equipe | undefined, depois: Equipe): stri
     ) {
       partes.push(`${p.id}: capacidades`)
     }
+    if ((velha.skills ?? []).join() !== (p.skills ?? []).join()) partes.push(`${p.id}: skills`)
     if (velha.titulo !== p.titulo || velha.diretorio !== p.diretorio) partes.push(`${p.id}: dados`)
   }
   for (const v of antes.posicoes) if (!depois.posicoes.some((p) => p.id === v.id)) partes.push(`-${v.id}`)

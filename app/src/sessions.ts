@@ -16,6 +16,7 @@ import type { Posicao } from "./orquestra/equipe"
 import type { TipoDeEvento } from "./orquestra/execucao"
 import { opcoesDaPosicao, opcoesDePlano, opcoesDeRevisao } from "./orquestra/capacidades"
 import { servidorDaOrquestra, type AcoesDaTarefa } from "./orquestra/ferramentas"
+import { opcoesDoSdk, skillsDaChamada } from "./orquestra/skills"
 
 // allowedTools é lista de AUTO-APROVADAS, não de disponíveis. Pôr "Bash" aqui faria o
 // canUseTool ser pulado e o comando rodar sem ninguém aprovar.
@@ -118,6 +119,7 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       : undefined
   const lembretes = opcoes.agendarLembrete ? { lembretes: servidorDeLembretes(opcoes.agendarLembrete) } : undefined
   const mcp = base || lembretes ? { ...base, ...lembretes } : undefined
+  const skills = await skillsDaChamada(opcoes.raiz, perfil, elenco().persona(perfil)?.skills, elenco().posicaoNaCasa(perfil)?.skills)
   const extras = [
     ...(comTickTask ? FERRAMENTAS_TICKTASK : comMemoria ? FERRAMENTAS_MEMORIA : []),
     ...(lembretes ? [FERRAMENTA_LEMBRETE] : []),
@@ -145,9 +147,10 @@ export async function conversar(opcoes: OpcoesConversa): Promise<{ texto: string
       settingSources: [],
       model: opcoes.modelo ?? MODELO_PADRAO,
       systemPrompt: system,
-      tools: conselheiro ? NATIVAS_DO_CONSELHEIRO : NATIVAS_DO_EXECUTOR,
-      allowedTools: mcp ? [...AUTO_APROVADAS, ...extras] : AUTO_APROVADAS,
+      tools: [...(conselheiro ? NATIVAS_DO_CONSELHEIRO : NATIVAS_DO_EXECUTOR), ...(skills?.ferramentas ?? [])],
+      allowedTools: [...AUTO_APROVADAS, ...(mcp ? extras : []), ...(skills?.ferramentas ?? [])],
       mcpServers: mcp,
+      ...opcoesDoSdk(skills),
       // Executor fica em "default" para o canUseTool decidir tudo explicitamente, em vez
       // de depender de como acceptEdits e canUseTool interagem entre si.
       permissionMode: conselheiro ? "acceptEdits" : "default",
@@ -229,6 +232,8 @@ export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string
     ...(comMemoria ? { memoria: servidorDeMemoria(comMemoria, opcoes.persona, `tarefa:${opcoes.tarefaId}`) } : {}),
     orquestra: servidorDaOrquestra(opcoes.acoes),
   }
+  const cwd = opcoes.posicao.diretorio ?? opcoes.raiz
+  const skills = await skillsDaChamada(opcoes.raiz, opcoes.persona, elenco().persona(opcoes.persona)?.skills, opcoes.posicao.skills, cwd)
   let sessionId: string | undefined
   let final = ""
   const uso = {
@@ -251,16 +256,17 @@ export async function trabalhar(opcoes: OpcoesTrabalho): Promise<{ texto: string
     query({
       prompt: posicao.comandos ? comoStream(prompt) : prompt,
       options: {
-        cwd: opcoes.posicao.diretorio ?? opcoes.raiz,
+        cwd,
         pathToClaudeCodeExecutable: executavelDoClaude(),
         env: ambienteDoClaude(),
         resume: opcoes.sessionId,
         settingSources: [],
         model: opcoes.modelo,
         systemPrompt: await montarSystemPrompt(opcoes.raiz, opcoes.persona, undefined, opcoes.posicao.capacidades.includes("comandos")),
-        tools: posicao.nativas,
-        allowedTools: posicao.autoAprovadas,
+        tools: [...posicao.nativas, ...(skills?.ferramentas ?? [])],
+        allowedTools: [...posicao.autoAprovadas, ...(skills?.ferramentas ?? [])],
         mcpServers: mcp,
+        ...opcoesDoSdk(skills),
         permissionMode: posicao.permissionMode,
         hooks: posicao.comandos ? hookDeComando(posicao.liberaComandoComum, onComando) : undefined,
         maxTurns: LIMITE_DE_TURNOS_EM_TAREFA,
@@ -295,11 +301,17 @@ export async function perguntarUmaVez(opcoes: {
   system: string
   prompt: string
   permitirLeitura?: boolean
+  skillsDe?: string
   modelo?: string
   uso: { tipo: "board-parecer" | "board-sintese" | "persona" | "tarefa"; perfil?: string; tarefaId?: number; execucaoId?: number; modelo?: string }
   controle?: AbortController
 }): Promise<string> {
   let resposta = ""
+  const persona = opcoes.skillsDe
+  const skills = persona
+    ? await skillsDaChamada(opcoes.raiz, persona, elenco().persona(persona)?.skills, elenco().posicaoNaCasa(persona)?.skills)
+    : null
+  const leitura = opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : []
   // Sem "model" de propósito: o board delibera no padrão do SDK (Opus), e não no
   // MODELO_PADRAO do chat. Deliberação é onde o modelo forte se paga.
   for await (const msg of comUso(opcoes.raiz, opcoes.uso, query({
@@ -311,8 +323,9 @@ export async function perguntarUmaVez(opcoes: {
       systemPrompt: opcoes.system,
       settingSources: [],
       model: opcoes.modelo,
-      tools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
-      allowedTools: opcoes.permitirLeitura ? ["Read", "Grep", "Glob"] : [],
+      tools: [...leitura, ...(skills?.ferramentas ?? [])],
+      allowedTools: [...leitura, ...(skills?.ferramentas ?? [])],
+      ...opcoesDoSdk(skills),
       permissionMode: "default",
       maxTurns: 8,
       includePartialMessages: true,

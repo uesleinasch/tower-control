@@ -36,6 +36,7 @@ export async function convocarBoard(
           system,
           prompt: pautaFormatada,
           permitirLeitura: true,
+          skillsDe: perfil,
           uso: { tipo: "board-parecer", perfil },
         })
         return { perfil, texto }
@@ -124,6 +125,7 @@ async function pareceresESintese(
           system,
           prompt: montarPautaParecer(pedido.pauta),
           permitirLeitura: true,
+          skillsDe: perfil,
           modelo,
           uso: { ...uso, perfil, modelo },
           controle: pedido.controle,

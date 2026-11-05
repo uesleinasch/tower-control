@@ -40,7 +40,10 @@
     "workflow-sinal",
     "workflow-cancelar",
     "workflow-salvar",
-    "workflow-excluir"
+    "workflow-excluir",
+    "skills",
+    "skill-salvar",
+    "skill-excluir"
   ],
   "servidor→cliente": [
     "atalhos",
@@ -68,7 +71,8 @@
     "orquestra",
     "rotinas",
     "painel",
-    "workflows"
+    "workflows",
+    "skills"
   ],
   "cliente→servidor só no desktop": [
     "equipe-salvar",
@@ -77,6 +81,8 @@
     "rotina-excluir",
     "rotina-token",
     "workflow-salvar",
-    "workflow-excluir"
+    "workflow-excluir",
+    "skill-salvar",
+    "skill-excluir"
   ]
 }

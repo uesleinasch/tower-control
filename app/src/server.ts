@@ -22,6 +22,7 @@ import {
   versaoNoDisco,
 } from "./orquestra/elenco"
 import { Agendador } from "./orquestra/agendador"
+import { DONO_CASA, apagarSkill, exigirRascunho, garantirManifesto, gravarSkill, lerBiblioteca, lerSkillsDoDono } from "./orquestra/skills"
 import { LIMITE_DO_CORPO, validarRotina } from "./orquestra/rotinas"
 import { corDaPersona, exigirMudancaDeEquipe, resumoDaMudanca, slugValido, validarEquipe, validarPersona } from "./orquestra/equipe"
 import { Contas, TUDO, formatarTokens, mesDe, motivoDeBloqueio, niveisDoOrcamento, type Limites } from "./orquestra/governanca"
@@ -86,6 +87,7 @@ try {
   if (await migrarParaPersonas(RAIZ)) await registrarNoGit(RAIZ, "personas como dados e equipe Casa")
   await carregarElenco(RAIZ)
   await garantirIgnorado(RAIZ, "orquestra/")
+  if (await garantirManifesto(RAIZ, DONO_CASA)) await registrarNoGit(RAIZ, "skills: biblioteca da Casa")
 } catch (erro) {
   console.error(`não consegui preparar a pasta de dados ${RAIZ}: ${(erro as Error).message}`)
   process.exit(1)
@@ -239,7 +241,12 @@ async function salvarPersona(bruto: unknown): Promise<void> {
     nova.nome = pedido.nome.trim()
     mudancas.push(`nome ${pedido.nome.trim()}`)
   }
-  const valida = validarPersona(nova)
+  if ("skills" in pedido) {
+    if (Array.isArray(pedido.skills) && pedido.skills.length) nova.skills = pedido.skills
+    else delete nova.skills
+    mudancas.push(`skills ${Array.isArray(pedido.skills) && pedido.skills.length ? pedido.skills.join(", ") : "nenhuma"}`)
+  }
+  const valida = validarPersona(nova, "skills" in pedido ? await idsDaCasa(atual.skills) : undefined)
   await gravarPersona(RAIZ, valida)
   await carregarElenco(RAIZ)
   await registrarNoGit(RAIZ, `persona ${valida.nome}: ${mudancas.join(", ") || "sem mudança"}`)
@@ -272,6 +279,7 @@ function personasParaCliente() {
         gerandoPerfil: GERANDO_PERFIL.has(p.id),
         orcamentoMensalUSD: p.orcamentoMensalUSD ?? null,
         orcamentoMensalTokens: p.orcamentoMensalTokens ?? null,
+        skills: p.skills ?? [],
         gastoMesUSD: CONTAS.gasto(p.id).tarefas,
         gastoTotalMesUSD: CONTAS.gasto(p.id).total,
         tokensMes: CONTAS.gasto(p.id).tokensTarefas,
@@ -288,6 +296,70 @@ function publicarElenco(): void {
   mandarATodos({ tipo: "personas", lista: personasParaCliente() })
   mandarATodos({ tipo: "equipes", lista: equipesParaCliente() })
   agendarPainel()
+  void publicarSkills()
+}
+
+async function skillsParaCliente() {
+  const lista = await lerBiblioteca(RAIZ, elenco().ids())
+  return {
+    tipo: "skills",
+    lista: lista.map((s) => ({
+      ...s,
+      usadaPor:
+        s.dono === DONO_CASA
+          ? {
+              personas: elenco()
+                .personas()
+                .filter((p) => p.skills?.includes(s.id))
+                .map((p) => p.id),
+              posicoes: elenco()
+                .equipes()
+                .flatMap((e) => e.posicoes.filter((p) => p.skills?.includes(s.id)).map((p) => `${e.id}/${p.id}`)),
+            }
+          : { personas: [s.dono], posicoes: [] },
+    })),
+  }
+}
+
+async function publicarSkills(): Promise<void> {
+  mandarATodos(await skillsParaCliente())
+}
+
+function exigirDono(bruto: unknown): string {
+  const dono = String(bruto ?? "")
+  if (dono === DONO_CASA || elenco().existe(dono)) return dono
+  throw new Error(`dono de skill inválido (${dono || "vazio"}): use casa ou o id de uma persona`)
+}
+
+function ondeDaSkill(dono: string): string {
+  return dono === DONO_CASA ? "na Casa" : `de ${elenco().nome(dono)}`
+}
+
+async function salvarSkill(donoBruto: unknown, bruto: unknown, nova: boolean): Promise<void> {
+  const dono = exigirDono(donoBruto)
+  const rascunho = exigirRascunho(bruto)
+  await gravarSkill(RAIZ, dono, rascunho, nova)
+  await registrarNoGit(RAIZ, `skill ${rascunho.id} ${nova ? "criada" : "editada"} ${ondeDaSkill(dono)}`)
+  await publicarSkills()
+}
+
+async function excluirSkill(donoBruto: unknown, idBruto: unknown): Promise<void> {
+  const dono = exigirDono(donoBruto)
+  const id = String(idBruto ?? "")
+  if (dono === DONO_CASA) {
+    const personas = elenco()
+      .personas()
+      .filter((p) => p.skills?.includes(id))
+      .map((p) => p.nome)
+    const posicoes = elenco()
+      .equipes()
+      .flatMap((e) => e.posicoes.filter((p) => p.skills?.includes(id)).map((p) => `${p.titulo} (${e.nome})`))
+    const quem = [...personas, ...posicoes]
+    if (quem.length) throw new Error(`a skill ${id} está anexada a ${quem.join(", ")}; tire os anexos antes de excluir`)
+  }
+  await apagarSkill(RAIZ, dono, id)
+  await registrarNoGit(RAIZ, `skill ${id} excluída ${ondeDaSkill(dono)}`)
+  await publicarSkills()
 }
 
 const equipePorId = (id: string) => elenco().equipe(id)
@@ -308,8 +380,15 @@ function contarTarefas(equipe: string) {
   }
 }
 
+async function idsDaCasa(...ja: (string[] | undefined)[]): Promise<Set<string>> {
+  const daCasa = (await lerSkillsDoDono(RAIZ, DONO_CASA)).map((s) => s.id)
+  return new Set([...daCasa, ...ja.flatMap((l) => l ?? [])])
+}
+
 async function salvarEquipe(bruto: unknown): Promise<void> {
-  const equipe = validarEquipe(bruto, new Set(elenco().ids()))
+  const id = String((bruto as { id?: unknown } | null)?.id ?? "")
+  const anteriores = elenco().equipe(id)?.posicoes.map((p) => p.skills) ?? []
+  const equipe = validarEquipe(bruto, new Set(elenco().ids()), await idsDaCasa(...anteriores))
   const antes = elenco().equipe(equipe.id)
   exigirMudancaDeEquipe(antes, equipe, contarTarefas(equipe.id))
   await gravarEquipe(RAIZ, equipe)
@@ -1003,6 +1082,18 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
     }
     case "workflows": {
       mandar(ws, workflowsParaCliente())
+      return
+    }
+    case "skills": {
+      mandar(ws, await skillsParaCliente())
+      return
+    }
+    case "skill-salvar": {
+      await salvarSkill(msg.dono, msg.skill, msg.nova === true)
+      return
+    }
+    case "skill-excluir": {
+      await excluirSkill(msg.dono, msg.id)
       return
     }
     case "workflow-iniciar": {

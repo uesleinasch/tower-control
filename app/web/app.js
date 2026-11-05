@@ -31,6 +31,7 @@ const estado = {
   equipeDoPainel: "casa",
   rotinas: [],
   workflows: { definicoes: [], fluxos: [] },
+  skills: [],
   grafo: null,
   caixaVista: null,
   equipes: [],
@@ -1497,7 +1498,14 @@ function abrirEquipes() {
   enviar({ tipo: "tarefas" })
   enviar({ tipo: "rotinas" })
   enviar({ tipo: "workflows" })
+  enviar({ tipo: "skills" })
   renderEquipes()
+}
+
+function descreverSkills(ids, persona) {
+  const daCasa = (ids ?? []).map((id) => estado.skills.find((s) => s.dono === "casa" && s.id === id) ?? { id, descricao: "não existe mais" })
+  const proprias = persona ? estado.skills.filter((s) => s.dono === persona) : []
+  return [...proprias, ...daCasa].map((s) => `${s.id}${s.erro ? " (inválida)" : ""}`)
 }
 
 function svgDoOrganograma(equipe) {
@@ -1558,6 +1566,7 @@ function detalheDaPosicao(equipe, p) {
     p.capacidades.includes("comandos") ? `Aprovação de comando: ${escapar(p.aprovacao)}` : "",
     p.diretorio ? `Diretório: <code>${escapar(p.diretorio)}</code>` : "",
     p.politica?.length ? `Depois da entrega: ${escapar(descreverPolitica(p.politica, equipe.id).join(" → "))}` : "",
+    p.skills?.length ? `Skills: ${escapar(descreverSkills(p.skills).join(", "))}` : "",
   ]
   div.innerHTML = linhas.filter(Boolean).join("<br>")
   if (abertas.length) {
@@ -1629,12 +1638,14 @@ function secaoDePersonas() {
     const limiteTokens = p.orcamentoMensalTokens
     const fracao = (gasto, teto) => (teto == null ? 0 : teto <= 0 ? 1 : Math.min(1, gasto / teto))
     const proporcao = Math.max(fracao(p.gastoMesUSD ?? 0, limite), fracao(p.tokensMes ?? 0, limiteTokens))
+    const skillsDaPersona = descreverSkills(p.skills, p.id)
     li.innerHTML =
       `<span class="avatar avatar-balao ${p.id}">${escapar(p.inicial)}</span>` +
       `<span class="persona-dados">${escapar(p.nome)}` +
       `<small>${escapar([p.titulo, p.modelo, p.gerandoPerfil ? "gerando perfil…" : "", p.pausa ? MOTIVOS[p.pausa.motivo] : ""].filter(Boolean).join(" · "))}</small>` +
       `<small>tarefas no mês: US$ ${(p.gastoMesUSD ?? 0).toFixed(2)}${limite != null ? ` de US$ ${limite.toFixed(2)}` : " · sem limite"} · total US$ ${(p.gastoTotalMesUSD ?? 0).toFixed(2)}</small>` +
       `<small>tokens no mês: ${formatarTokens(p.tokensMes ?? 0)}${limiteTokens != null ? ` de ${formatarTokens(limiteTokens)}` : " · sem limite"} · total ${formatarTokens(p.tokensTotalMes ?? 0)}</small>` +
+      (skillsDaPersona.length ? `<small>skills: ${escapar(skillsDaPersona.join(", "))}</small>` : "") +
       (limite != null || limiteTokens != null ? `<span class="barra-orcamento${proporcao >= 1 ? " estourado" : proporcao >= 0.8 ? " alerta" : ""}"><span style="width:${Math.round(proporcao * 100)}%"></span></span>` : "") +
       `</span>`
     const orcamento = document.createElement("input")
@@ -2020,6 +2031,11 @@ function tratar(msg) {
       renderEquipes()
       renderPainel()
       if (estado.modo === "tarefas" && estado.detalhe) renderTarefa()
+      break
+    }
+    case "skills": {
+      estado.skills = msg.lista ?? []
+      renderEquipes()
       break
     }
     case "rotinas": {
