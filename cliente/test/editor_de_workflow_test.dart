@@ -259,6 +259,38 @@ void main() {
     expect(() => novoWorkflow('  ', const []), throwsA(isA<ErroDeWorkflow>()));
   });
 
+  test('saídas e entrada tipadas vão e voltam, e nome repetido é recusado', () {
+    var w = _base('exemplo');
+    final saidas = camposTipados(caixaDe(w, 'plano')!['saidas']);
+    expect(saidas.map((c) => '${c.nome}:${tipoDoCampoTipado(c.tipo)}'), ['plano:texto', 'risco:escolha']);
+    expect(escolhasDoCampoTipado(saidas.last.tipo), ['baixo', 'alto']);
+    w = definirSaidas(w, 'plano', [...saidas, (nome: nomeDeCampoLivre(saidas.map((c) => c.nome)), tipo: tipoPadrao('numero'))]);
+    expect(saidasDeclaradas(caixaDe(w, 'plano')!).keys, ['plano', 'risco', 'campo']);
+    expect(() => definirSaidas(w, 'plano', [(nome: 'a', tipo: 'texto'), (nome: 'a', tipo: 'numero')]), throwsA(isA<ErroDeWorkflow>()));
+    expect(caixaDe(definirSaidas(w, 'plano', const []), 'plano')!.containsKey('saidas'), isFalse);
+    w = definirEntrada(w, [(nome: 'pedido', tipo: 'texto'), (nome: 'nivel', tipo: tipoComEscolhas(' a, b ,, c'))]);
+    expect(entradaDe(w)['nivel']!.escolhas, ['a', 'b', 'c']);
+  });
+
+  test('geometria: pontos na borda direita, linha e ponto sob o cursor', () {
+    final w = comLayoutCompleto(_base('exemplo'));
+    final layout = layoutDoRascunho(w);
+    final pontos = pontosDoRascunho(w);
+    final canto = cantoDaCaixa(layout, 'ok');
+    final seguir = pontoDaSaida(layout, 'ok', 0, 2);
+    final parar = pontoDaSaida(layout, 'ok', 1, 2);
+    expect([seguir.x, parar.x], [canto.x + larguraDaCaixa, canto.x + larguraDaCaixa]);
+    expect(seguir.y < parar.y, isTrue);
+    expect(saidaEm(layout, pontos, parar.x + 2, parar.y - 2), (caixa: 'ok', indice: 1));
+    expect(saidaEm(layout, pontos, canto.x + 10, canto.y + 10), isNull);
+    final arestas = Workflow.deJson(w).arestas;
+    final ligacao = arestas.firstWhere((a) => a.de == 'ok' && a.quando == 'parar');
+    final meio = pontoNaCurva(curvaDaLigacao(layout, origemDaLigacao(layout, pontos, ligacao), ligacao.para), 0.5);
+    final achada = arestaEm(arestas, layout, pontos, meio.x, meio.y + 2);
+    expect([achada?.de, achada?.para, achada?.quando], ['ok', 'parou', 'parar']);
+    expect(arestaEm(arestas, layout, pontos, -500, -500), isNull);
+  });
+
   test('desfazer e refazer', () {
     final h = Historico<int>(0);
     h.fazer(1);

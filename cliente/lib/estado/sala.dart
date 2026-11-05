@@ -8,6 +8,7 @@ import '../nucleo/painel.dart';
 import '../nucleo/protocolo.dart';
 import 'areas.dart';
 import 'chat.dart';
+import 'editor_de_workflow.dart';
 import 'equipes.dart';
 import 'painel.dart';
 import 'presenca.dart';
@@ -29,6 +30,7 @@ class Sala extends ChangeNotifier {
     rotinas = EstadoRotinas(canal.enviar);
     painel = EstadoPainel(canal.enviar);
     workflows = EstadoWorkflows(canal.enviar);
+    editorDeWorkflow = EstadoEditorDeWorkflow(canal.enviar);
     presenca = Presenca(canal.enviar);
     chat.addListener(_atualizarPresenca);
     _assinaturas = [
@@ -48,6 +50,7 @@ class Sala extends ChangeNotifier {
   late final EstadoRotinas rotinas;
   late final EstadoPainel painel;
   late final EstadoWorkflows workflows;
+  late final EstadoEditorDeWorkflow editorDeWorkflow;
   late final Presenca presenca;
   late final List<StreamSubscription<Object?>> _assinaturas;
   final _avisos = StreamController<String>.broadcast();
@@ -116,6 +119,7 @@ class Sala extends ChangeNotifier {
   }
 
   void abrirEquipe(String? equipe, {bool rotinas = false}) {
+    if (editorDeWorkflow.aberto && !editorDeWorkflow.alterado) editorDeWorkflow.fechar();
     ir(Tela.equipes);
     if (equipe != null && equipe != equipes.vista && !equipes.alterada) equipes.escolher(equipe);
     equipes.verRotinas(rotinas);
@@ -178,6 +182,9 @@ class Sala extends ChangeNotifier {
       case Erro() when rotinas.salvando:
         rotinas.tratar(e);
         return;
+      case Erro() when editorDeWorkflow.salvando:
+        editorDeWorkflow.tratar(e);
+        return;
       case Aviso(:final texto) when tela != Tela.chat:
         _avisos.add(texto);
         return;
@@ -208,6 +215,7 @@ class Sala extends ChangeNotifier {
         rotinas.tratar(e);
         painel.tratar(e);
         workflows.tratar(e);
+        editorDeWorkflow.tratar(e);
     }
   }
 
@@ -228,6 +236,7 @@ class Sala extends ChangeNotifier {
     rotinas.dispose();
     painel.dispose();
     workflows.dispose();
+    editorDeWorkflow.dispose();
     canal.dispose();
     super.dispose();
   }

@@ -2,12 +2,14 @@ import 'dart:convert';
 
 import 'package:control_tower/estado/areas.dart';
 import 'package:control_tower/estado/chat.dart';
+import 'package:control_tower/estado/editor_de_workflow.dart';
 import 'package:control_tower/estado/presenca.dart';
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/painel.dart';
 import 'package:control_tower/estado/rotinas.dart';
 import 'package:control_tower/estado/tarefas.dart';
 import 'package:control_tower/estado/workflows.dart';
+import 'package:control_tower/nucleo/editor_de_workflow.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/painel.dart';
@@ -546,6 +548,125 @@ void main() {
         ..alternarAba(AbaDaEquipe.workflows)
         ..alternarAba(AbaDaEquipe.workflows);
       expect(e.aba, AbaDaEquipe.organograma);
+    });
+  });
+
+  group('EstadoEditorDeWorkflow', () {
+    const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor', persona: 'alfred')]);
+    Workflow relatorio(int versao, [String instrucao = 'faça']) => Workflow.deJson({
+          'id': 'relatorio',
+          'nome': 'Relatório',
+          'versao': versao,
+          'equipe': 'casa',
+          'descricao': 'escrito à mão',
+          'entrada': <String, dynamic>{},
+          'inicio': 'executar',
+          'nos': [
+            {'id': 'executar', 'tipo': 'executar', 'posicao': 'executor', 'instrucao': instrucao},
+            {'id': 'fim', 'tipo': 'fim'},
+          ],
+          'arestas': [
+            {'de': 'executar', 'para': 'fim'},
+          ],
+        });
+    String? instrucao(EstadoEditorDeWorkflow e) => caixaDe(e.rascunho!, 'executar')!['instrucao'] as String?;
+
+    test('abrir, editar, desfazer e refazer; digitação no mesmo campo vira um passo só', () {
+      final e = EstadoEditorDeWorkflow(enviar)..abrir(relatorio(2), casa);
+      expect([e.aberto, e.alterado, e.problemas, e.versaoBase], [true, false, 0, 2]);
+      e
+        ..aplicar((w) => definirCampo(w, 'executar', 'instrucao', 'o'), grupo: 'instrucao')
+        ..aplicar((w) => definirCampo(w, 'executar', 'instrucao', 'ou'), grupo: 'instrucao')
+        ..aplicar((w) => definirCampo(w, 'executar', 'instrucao', 'outra'), grupo: 'instrucao');
+      expect([e.alterado, instrucao(e)], [true, 'outra']);
+      e.desfazer();
+      expect([e.alterado, instrucao(e), e.podeRefazer], [false, 'faça', true]);
+      e.refazer();
+      expect(instrucao(e), 'outra');
+      final id = e.criar('fim', (x: 500, y: 0));
+      expect(e.selecionada, id);
+      e.desfazer();
+      expect(e.selecionada, isNull);
+      expect(e.renomear('executar', 'Fazer'), isNotNull);
+      expect(e.renomear('executar', 'fazer'), isNull);
+      expect(caixaDe(e.rascunho!, 'fazer'), isNotNull);
+    });
+
+    test('salvar manda o rascunho com a versão em que abriu e o layout completo', () {
+      final e = EstadoEditorDeWorkflow(enviar)
+        ..abrir(relatorio(2), casa)
+        ..aplicar((w) => definirCampo(w, 'executar', 'instrucao', 'outra'))
+        ..salvar();
+      expect(e.salvando, isTrue);
+      final w = enviados.single['workflow'] as Map<String, dynamic>;
+      expect([enviados.single['tipo'], enviados.single['equipe'], w['versao'], w['descricao']], ['workflow-salvar', 'casa', 2, 'escrito à mão']);
+      expect((w['layout'] as Map).keys, containsAll(['executar', 'fim']));
+      expect(w.containsKey('equipe'), isFalse);
+    });
+
+    test('sai do rascunho só quando chega a versão nova', () {
+      final e = EstadoEditorDeWorkflow(enviar)
+        ..abrir(relatorio(2), casa)
+        ..aplicar((w) => definirCampo(w, 'executar', 'instrucao', 'outra'))
+        ..salvar()
+        ..tratar(WorkflowsRecebidos([relatorio(2)], const []));
+      expect([e.salvando, e.alterado], [true, true]);
+      e.tratar(WorkflowsRecebidos([relatorio(3, 'outra')], const []));
+      expect([e.aberto, e.salvando, e.alterado, e.versaoBase, instrucao(e), e.podeDesfazer], [true, false, false, 3, 'outra', false]);
+    });
+
+    test('erro do servidor mantém o rascunho aberto com a mensagem', () {
+      final e = EstadoEditorDeWorkflow(enviar)
+        ..abrir(relatorio(2), casa)
+        ..aplicar((w) => definirCampo(w, 'executar', 'instrucao', 'outra'))
+        ..salvar()
+        ..tratar(const Erro('o workflow relatorio mudou desde que você abriu'));
+      expect([e.aberto, e.salvando, e.alterado, instrucao(e)], [true, false, true, 'outra']);
+      expect(e.erro, contains('mudou desde'));
+    });
+
+    test('com erro de validação não salva', () {
+      final e = EstadoEditorDeWorkflow(enviar)
+        ..abrir(relatorio(2), casa)
+        ..aplicar((w) => definirCampo(w, 'executar', 'instrucao', ''));
+      expect(e.erros.keys, ['executar']);
+      expect(e.podeSalvar, isFalse);
+      e.salvar();
+      expect(enviados, isEmpty);
+      expect([e.salvando, e.erro], [false, 'Corrija o problema antes de salvar.']);
+    });
+
+    test('novo, duplicar e excluir', () {
+      final e = EstadoEditorDeWorkflow(enviar);
+      expect(e.criarNovo(' ', casa, const []), isNotNull);
+      expect(e.criarNovo('Relatório', casa, ['relatorio']), isNull);
+      expect([e.id, e.novo, e.alterado], ['relatorio-2', true, true]);
+      e.excluir();
+      expect([e.aberto, enviados], [false, isEmpty]);
+      e.duplicar(relatorio(2), casa, ['relatorio']);
+      expect([e.id, e.rascunho!['nome'], e.versaoBase], ['relatorio-copia', 'Relatório (cópia)', 0]);
+      e
+        ..abrir(relatorio(2), casa)
+        ..excluir();
+      expect(enviados.single, {'tipo': 'workflow-excluir', 'equipe': 'casa', 'id': 'relatorio'});
+      e.tratar(WorkflowsRecebidos([relatorio(2)], const []));
+      expect(e.aberto, isTrue);
+      e.tratar(const WorkflowsRecebidos([], []));
+      expect(e.aberto, isFalse);
+    });
+
+    test('iniciar pelo editor sobrepõe o fluxo novo da mesma versão', () {
+      final def = relatorio(2);
+      Fluxo fluxo(int id) => Fluxo(id: id, equipe: 'casa', workflow: 'relatorio', versao: 2, definicao: def);
+      final e = EstadoEditorDeWorkflow(enviar)
+        ..abrir(def, casa)
+        ..aguardarFluxoNovo([9])
+        ..tratar(WorkflowsRecebidos([def], [fluxo(9)]));
+      expect(e.sobreposto, isNull);
+      e.tratar(WorkflowsRecebidos([def], [fluxo(9), fluxo(10)]));
+      expect(e.sobreposto, 10);
+      e.aplicar((w) => definirCampo(w, 'executar', 'titulo', 'Fazer'));
+      expect(e.sobreposto, isNull);
     });
   });
 }

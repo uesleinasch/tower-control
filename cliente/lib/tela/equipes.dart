@@ -8,7 +8,9 @@ import '../estado/sala.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/organograma.dart';
 import '../nucleo/tarefas.dart';
+import 'canvas.dart';
 import 'comum.dart';
+import 'editor_de_workflow.dart';
 import 'rotinas.dart';
 import 'workflows.dart';
 
@@ -28,10 +30,11 @@ class TelaEquipes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Listenable.merge([sala.equipes, sala]),
+        listenable: Listenable.merge([sala.equipes, sala, sala.editorDeWorkflow]),
         builder: (context, _) {
           final estado = sala.equipes;
           final editar = edicao ?? edicaoDisponivel;
+          if (editar && sala.editorDeWorkflow.aberto) return EditorDeWorkflow(sala: sala);
           final equipe = estado.atual;
           final cores = Theme.of(context).colorScheme;
           return LayoutBuilder(builder: (context, limites) {
@@ -268,21 +271,16 @@ class CanvasDoOrganograma extends StatefulWidget {
   State<CanvasDoOrganograma> createState() => _CanvasDoOrganogramaState();
 }
 
-class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
-  Vista? _vista;
+class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom {
   String? _ajustadaPara;
-  Size _tamanho = Size.zero;
   _Gesto? _gesto;
   String? _alvo;
   Ponto _pegaNoCartao = (x: 0, y: 0);
   Ponto? _cartaoEm;
   Ponto? _ponteiro;
-  double _escalaNoInicio = 1;
   Offset? _pressionado;
   String? _linhaSobre;
   MouseCursor _cursor = SystemMouseCursors.grab;
-
-  Vista get _v => _vista ?? (dx: 0, dy: 0, escala: 1);
 
   EquipeResumo get _mostrada {
     final id = _alvo;
@@ -293,12 +291,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
     return widget.equipe;
   }
 
-  void _ajustar() => setState(() => _vista = ajustarVista(widget.equipe, _tamanho.width, _tamanho.height));
-
-  void _zoom(double fator, {Offset? foco}) {
-    final centro = foco ?? Offset(_tamanho.width / 2, _tamanho.height / 2);
-    setState(() => _vista = zoomEm(_v, centro.dx, centro.dy, _v.escala * fator));
-  }
+  void _ajustar() => setState(() => vista = ajustarVista(widget.equipe, tamanho.width, tamanho.height));
 
   _Gesto _gestoEm(Ponto mundo) {
     if (!widget.editar) return _Gesto.fundo;
@@ -307,7 +300,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
   }
 
   void _aoPassar(PointerHoverEvent e) {
-    final mundo = paraMundo(_v, e.localPosition.dx, e.localPosition.dy);
+    final mundo = paraMundo(v, e.localPosition.dx, e.localPosition.dy);
     final gesto = _gestoEm(mundo);
     final linha = gesto == _Gesto.fundo && widget.editar ? ligacaoEm(widget.equipe, mundo.x, mundo.y) : null;
     final cursor = switch (gesto) {
@@ -368,22 +361,10 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
     if (titulo != null) widget.estado.novaSubordinada(chefe, titulo);
   }
 
-  void _roda(PointerSignalEvent e) {
-    if (e is! PointerScrollEvent) return;
-    final teclado = HardwareKeyboard.instance;
-    if (teclado.isControlPressed || teclado.isMetaPressed) {
-      _zoom(e.scrollDelta.dy > 0 ? 0.9 : 1 / 0.9, foco: e.localPosition);
-    } else if (teclado.isShiftPressed) {
-      setState(() => _vista = deslocarVista(_v, -e.scrollDelta.dy, 0));
-    } else {
-      setState(() => _vista = deslocarVista(_v, -e.scrollDelta.dx, -e.scrollDelta.dy));
-    }
-  }
-
   void _inicio(ScaleStartDetails d) {
     final ponto = d.pointerCount == 1 && _pressionado != null ? _pressionado! : d.localFocalPoint;
-    final mundo = paraMundo(_v, ponto.dx, ponto.dy);
-    _escalaNoInicio = _v.escala;
+    final mundo = paraMundo(v, ponto.dx, ponto.dy);
+    comecarPinca();
     final gesto = d.pointerCount > 1 || d.kind == PointerDeviceKind.trackpad ? _Gesto.fundo : _gestoEm(mundo);
     setState(() {
       _gesto = gesto;
@@ -405,7 +386,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
   }
 
   void _durante(ScaleUpdateDetails d) {
-    final mundo = paraMundo(_v, d.localFocalPoint.dx, d.localFocalPoint.dy);
+    final mundo = paraMundo(v, d.localFocalPoint.dx, d.localFocalPoint.dy);
     setState(() {
       switch (_gesto) {
         case _Gesto.cartao:
@@ -416,9 +397,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
         case _Gesto.alca:
           _ponteiro = mundo;
         case _Gesto.fundo || null:
-          var v = _v;
-          if (d.scale != 1) v = zoomEm(v, d.localFocalPoint.dx, d.localFocalPoint.dy, _escalaNoInicio * d.scale);
-          _vista = deslocarVista(v, d.focalPointDelta.dx, d.focalPointDelta.dy);
+          aplicarPinca(d);
       }
     });
   }
@@ -441,7 +420,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
   }
 
   void _toque(TapUpDetails d) {
-    final mundo = paraMundo(_v, d.localPosition.dx, d.localPosition.dy);
+    final mundo = paraMundo(v, d.localPosition.dx, d.localPosition.dy);
     final alca = widget.editar ? alcaEm(widget.equipe, mundo.x, mundo.y) : null;
     if (alca != null) {
       _criarSubordinada(alca);
@@ -476,16 +455,15 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
       );
     }
     return LayoutBuilder(builder: (context, limites) {
-      _tamanho = limites.biggest;
-      if (_vista == null || _ajustadaPara != widget.equipe.id) {
-        _vista = ajustarVista(widget.equipe, _tamanho.width, _tamanho.height);
+      tamanho = limites.biggest;
+      if (vista == null || _ajustadaPara != widget.equipe.id) {
+        vista = ajustarVista(widget.equipe, tamanho.width, tamanho.height);
         _ajustadaPara = widget.equipe.id;
       }
       final equipe = _mostrada;
-      final v = _v;
-      final tamanho = tamanhoDoOrganograma(equipe);
+      final area = tamanhoDoOrganograma(equipe);
       return Listener(
-        onPointerSignal: _roda,
+        onPointerSignal: rodar,
         onPointerDown: (e) => _pressionado = e.localPosition,
         child: MouseRegion(
           cursor: _cursor,
@@ -499,31 +477,17 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
             child: ClipRect(
               child: Stack(children: [
                 Positioned.fill(child: ColoredBox(color: cores.surfaceContainerLowest)),
-                OverflowBox(
-                  alignment: Alignment.topLeft,
-                  minWidth: 0,
-                  minHeight: 0,
-                  maxWidth: double.infinity,
-                  maxHeight: double.infinity,
-                  child: Transform(
-                    transform: Matrix4.identity()
-                      ..translateByDouble(v.dx, v.dy, 0, 1)
-                      ..scaleByDouble(v.escala, v.escala, 1, 1),
-                    child: IgnorePointer(
-                      child: SizedBox(
-                        width: tamanho.largura,
-                        height: tamanho.altura,
-                        child: _Area(
-                          equipe: equipe,
-                          editar: widget.editar,
-                          selecionada: widget.estado.selecionada,
-                          ligandoDe: _gesto == _Gesto.alca ? _alvo : null,
-                          ponteiro: _ponteiro,
-                          destino: _gesto == _Gesto.alca && _ponteiro != null ? alvoEm(equipe, _ponteiro!.x, _ponteiro!.y)?.id : null,
-                          linhaRealcada: _linhaSobre,
-                        ),
-                      ),
-                    ),
+                mundo(
+                  largura: area.largura,
+                  altura: area.altura,
+                  child: _Area(
+                    equipe: equipe,
+                    editar: widget.editar,
+                    selecionada: widget.estado.selecionada,
+                    ligandoDe: _gesto == _Gesto.alca ? _alvo : null,
+                    ponteiro: _ponteiro,
+                    destino: _gesto == _Gesto.alca && _ponteiro != null ? alvoEm(equipe, _ponteiro!.x, _ponteiro!.y)?.id : null,
+                    linhaRealcada: _linhaSobre,
                   ),
                 ),
                 if (widget.editar)
@@ -539,13 +503,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> {
                 Positioned(
                   right: 12,
                   bottom: 12,
-                  child: ControlesDeZoom(
-                    escala: v.escala,
-                    aoAproximar: () => _zoom(1.2),
-                    aoAfastar: () => _zoom(1 / 1.2),
-                    aoAjustar: _ajustar,
-                    aoTamanhoReal: () => _zoom(1 / v.escala),
-                  ),
+                  child: controlesDeZoom(aoAjustar: _ajustar),
                 ),
               ]),
             ),
@@ -618,34 +576,6 @@ class _Area extends StatelessWidget {
       ],
     ]);
   }
-}
-
-class ControlesDeZoom extends StatelessWidget {
-  const ControlesDeZoom({
-    super.key,
-    required this.escala,
-    required this.aoAproximar,
-    required this.aoAfastar,
-    required this.aoAjustar,
-    required this.aoTamanhoReal,
-  });
-
-  final double escala;
-  final VoidCallback aoAproximar;
-  final VoidCallback aoAfastar;
-  final VoidCallback aoAjustar;
-  final VoidCallback aoTamanhoReal;
-
-  @override
-  Widget build(BuildContext context) => Card(
-        elevation: 3,
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(tooltip: 'Afastar (Ctrl + roda)', onPressed: escala > escalaMinima ? aoAfastar : null, icon: const Icon(Icons.remove)),
-          TextButton(onPressed: aoTamanhoReal, child: Text('${(escala * 100).round()}%')),
-          IconButton(tooltip: 'Aproximar (Ctrl + roda)', onPressed: escala < escalaMaxima ? aoAproximar : null, icon: const Icon(Icons.add)),
-          IconButton(tooltip: 'Ajustar à tela', onPressed: aoAjustar, icon: const Icon(Icons.fit_screen_outlined)),
-        ]),
-      );
 }
 
 class _Cartao extends StatelessWidget {

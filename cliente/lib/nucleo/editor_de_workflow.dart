@@ -930,6 +930,161 @@ bool _temCiclo(Iterable<String> ids, Map<String, List<String>> saida) {
 
 int contarErros(ErrosDoWorkflow erros) => erros.values.fold(0, (soma, lista) => soma + lista.length);
 
+// ── campos tipados (saídas do executar e entrada do workflow) ──────
+
+typedef CampoTipado = ({String nome, Object? tipo});
+
+const tiposDeCampo = ['texto', 'numero', 'booleano', 'escolha'];
+
+const nomesDeTipoDeCampo = {'texto': 'texto', 'numero': 'número', 'booleano': 'sim/não', 'escolha': 'escolha'};
+
+List<CampoTipado> camposTipados(Object? bruto) => [
+      if (bruto is Map)
+        for (final MapEntry(:key, :value) in bruto.entries) (nome: key as String, tipo: copiaProfunda(value)),
+    ];
+
+String tipoDoCampoTipado(Object? tipo) => tipo is Map ? 'escolha' : (tiposDeCampo.contains(tipo) ? tipo as String : 'texto');
+
+List<String> escolhasDoCampoTipado(Object? tipo) =>
+    tipo is Map && tipo['escolha'] is List ? [for (final x in tipo['escolha'] as List) if (x is String) x] : const [];
+
+Object? tipoComEscolhas(String texto) => {
+      'escolha': [for (final p in texto.split(',')) if (p.trim().isNotEmpty) p.trim()],
+    };
+
+Object? tipoPadrao(String tipo) => tipo == 'escolha'
+    ? {
+        'escolha': ['opção 1', 'opção 2'],
+      }
+    : tipo;
+
+String nomeDeCampoLivre(Iterable<String> usados) {
+  final ocupados = usados.toSet();
+  for (var n = 1;; n++) {
+    final nome = n == 1 ? 'campo' : 'campo$n';
+    if (!ocupados.contains(nome)) return nome;
+  }
+}
+
+Map<String, dynamic> _mapaDeCampos(List<CampoTipado> campos) {
+  final mapa = <String, dynamic>{};
+  for (final c in campos) {
+    if (mapa.containsKey(c.nome)) throw ErroDeWorkflow('Já existe um campo ${c.nome}.');
+    mapa[c.nome] = copiaProfunda(c.tipo);
+  }
+  return mapa;
+}
+
+WorkflowJson definirSaidas(WorkflowJson w, String id, List<CampoTipado> campos) {
+  final mapa = _mapaDeCampos(campos);
+  return editarCaixa(w, id, (caixa) {
+    if (mapa.isEmpty) {
+      caixa.remove('saidas');
+    } else {
+      caixa['saidas'] = mapa;
+    }
+  });
+}
+
+WorkflowJson definirEntrada(WorkflowJson w, List<CampoTipado> campos) {
+  final mapa = _mapaDeCampos(campos);
+  return editarWorkflow(w, (c) => c['entrada'] = mapa);
+}
+
+// ── geometria do canvas ────────────────────────────────────────────
+
+const raioDoPonto = 6.0;
+
+typedef Curva = ({Ponto p0, Ponto p1, Ponto p2, Ponto p3});
+
+Map<String, List<PontoDeSaida>> pontosDoRascunho(WorkflowJson w) => {for (final id in idsDe(w)) id: pontosDeSaida(w, id)};
+
+Ponto pontoDaSaida(Map<String, Ponto> layout, String id, int indice, int total) {
+  final c = cantoDaCaixa(layout, id);
+  return (x: c.x + larguraDaCaixa, y: c.y + alturaDaCaixa * (indice + 1) / (total + 1));
+}
+
+Ponto origemDaLigacao(Map<String, Ponto> layout, Map<String, List<PontoDeSaida>> pontos, Aresta a) {
+  final lista = pontos[a.de] ?? const <PontoDeSaida>[];
+  final i = lista.indexWhere((p) => p.varias || p.quando == a.quando);
+  if (i >= 0) return pontoDaSaida(layout, a.de, i, lista.length);
+  final c = cantoDaCaixa(layout, a.de);
+  return (x: c.x + larguraDaCaixa, y: c.y + alturaDaCaixa / 2);
+}
+
+Curva curvaDaLigacao(Map<String, Ponto> layout, Ponto origem, String para) {
+  final alvo = cantoDaCaixa(layout, para);
+  final p3 = (x: alvo.x, y: alvo.y + alturaDaCaixa / 2);
+  if (p3.x > origem.x + 20) {
+    final meio = (p3.x - origem.x) / 2;
+    return (p0: origem, p1: (x: origem.x + meio, y: origem.y), p2: (x: p3.x - meio, y: p3.y), p3: p3);
+  }
+  final baixo = (origem.y > p3.y ? origem.y : p3.y) + alturaDaCaixa;
+  return (p0: origem, p1: (x: origem.x + 80, y: baixo), p2: (x: p3.x - 80, y: baixo), p3: p3);
+}
+
+Ponto pontoNaCurva(Curva c, double t) {
+  final u = 1 - t;
+  final a = u * u * u, b = 3 * u * u * t, d = 3 * u * t * t, e = t * t * t;
+  return (
+    x: a * c.p0.x + b * c.p1.x + d * c.p2.x + e * c.p3.x,
+    y: a * c.p0.y + b * c.p1.y + d * c.p2.y + e * c.p3.y,
+  );
+}
+
+double _distancia(Ponto p, Ponto a, Ponto b) {
+  final dx = b.x - a.x, dy = b.y - a.y;
+  final tamanho = dx * dx + dy * dy;
+  final t = tamanho == 0 ? 0.0 : (((p.x - a.x) * dx + (p.y - a.y) * dy) / tamanho).clamp(0.0, 1.0);
+  final x = a.x + t * dx - p.x, y = a.y + t * dy - p.y;
+  return x * x + y * y;
+}
+
+Aresta? arestaEm(
+  List<Aresta> arestas,
+  Map<String, Ponto> layout,
+  Map<String, List<PontoDeSaida>> pontos,
+  double x,
+  double y, {
+  double tolerancia = 6,
+}) {
+  final p = (x: x, y: y);
+  Aresta? melhor;
+  var menor = tolerancia * tolerancia;
+  for (final a in arestas) {
+    if (!layout.containsKey(a.de) || !layout.containsKey(a.para)) continue;
+    final curva = curvaDaLigacao(layout, origemDaLigacao(layout, pontos, a), a.para);
+    var anterior = curva.p0;
+    for (var i = 1; i <= 24; i++) {
+      final atual = pontoNaCurva(curva, i / 24);
+      final d = _distancia(p, anterior, atual);
+      if (d <= menor) {
+        menor = d;
+        melhor = a;
+      }
+      anterior = atual;
+    }
+  }
+  return melhor;
+}
+
+({String caixa, int indice})? saidaEm(
+  Map<String, Ponto> layout,
+  Map<String, List<PontoDeSaida>> pontos,
+  double x,
+  double y, {
+  double raio = raioDoPonto + 4,
+}) {
+  for (final MapEntry(key: id, value: lista) in pontos.entries) {
+    if (!layout.containsKey(id)) continue;
+    for (var i = 0; i < lista.length; i++) {
+      final c = pontoDaSaida(layout, id, i, lista.length);
+      if ((c.x - x) * (c.x - x) + (c.y - y) * (c.y - y) <= raio * raio) return (caixa: id, indice: i);
+    }
+  }
+  return null;
+}
+
 // ── desfazer ───────────────────────────────────────────────────────
 
 class Historico<T> {

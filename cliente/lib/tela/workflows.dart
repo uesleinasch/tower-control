@@ -4,11 +4,13 @@ import 'package:flutter/services.dart';
 
 import '../estado/sala.dart';
 import '../estado/workflows.dart';
-import '../nucleo/organograma.dart' show Vista, deslocarVista, paraMundo, zoomEm;
+import '../nucleo/editor_de_workflow.dart';
+import '../nucleo/organograma.dart' show paraMundo;
 import '../nucleo/painel.dart' show haQuanto;
 import '../nucleo/tarefas.dart';
 import '../nucleo/workflows.dart';
-import 'equipes.dart' show ControlesDeZoom, confirmar, quandoCurto;
+import 'canvas.dart';
+import 'equipes.dart' show confirmar, pedirTexto, quandoCurto;
 
 Color corDaFicha(String? status, ColorScheme cores) => switch (status) {
       'concluida' => const Color(0xFF4FAE7C),
@@ -34,10 +36,27 @@ Future<void> cancelarFluxo(BuildContext context, EstadoWorkflows estado, int flu
   if (ok) estado.cancelar(fluxo);
 }
 
-Future<void> abrirIniciarWorkflow(BuildContext context, EstadoWorkflows estado, Workflow w) => showDialog<void>(
+Future<bool> abrirIniciarWorkflow(BuildContext context, EstadoWorkflows estado, Workflow w) async =>
+    await showDialog<bool>(
       context: context,
       builder: (_) => _DialogoDeIniciar(estado: estado, workflow: w),
-    );
+    ) ==
+    true;
+
+Future<void> abrirPaginaDoFluxo(BuildContext context, Sala sala, int fluxo) async {
+  sala.workflows.verFluxo(fluxo);
+  await Navigator.of(context).push(MaterialPageRoute<void>(
+    builder: (contexto) => Scaffold(
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: sala.workflows,
+          builder: (_, _) => _VistaDoGrafo(sala: sala, desenhar: true, aoVoltar: () => Navigator.of(contexto).pop()),
+        ),
+      ),
+    ),
+  ));
+  sala.workflows.fecharGrafo();
+}
 
 class PainelDeWorkflows extends StatelessWidget {
   const PainelDeWorkflows({super.key, required this.sala, required this.equipe, required this.desenhar});
@@ -54,16 +73,30 @@ class PainelDeWorkflows extends StatelessWidget {
           if (v != null && (v.equipe == equipe.id || v.equipe.isEmpty)) {
             return _VistaDoGrafo(sala: sala, desenhar: desenhar);
           }
-          return _ListaDeWorkflows(sala: sala, equipe: equipe);
+          return _ListaDeWorkflows(sala: sala, equipe: equipe, editar: desenhar);
         },
       );
 }
 
 class _ListaDeWorkflows extends StatelessWidget {
-  const _ListaDeWorkflows({required this.sala, required this.equipe});
+  const _ListaDeWorkflows({required this.sala, required this.equipe, required this.editar});
 
   final Sala sala;
   final EquipeResumo equipe;
+  final bool editar;
+
+  Future<void> _novo(BuildContext context) async {
+    final nome = await pedirTexto(
+      context,
+      titulo: 'Novo workflow',
+      rotulo: 'Nome do workflow',
+      explicacao: 'O id sai do nome e não muda depois: é o nome do arquivo, e as rotinas apontam para ele.',
+      acao: 'Criar',
+    );
+    if (nome == null) return;
+    final erro = sala.editorDeWorkflow.criarNovo(nome, equipe, sala.workflows.daEquipe(equipe.id).map((w) => w.id));
+    if (erro != null && context.mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(erro)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +108,12 @@ class _ListaDeWorkflows extends StatelessWidget {
     return ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 24), children: [
       Row(children: [
         Expanded(child: Text('WORKFLOWS · ${equipe.nome.toUpperCase()}', style: rotulo)),
+        if (editar)
+          FilledButton.tonalIcon(
+            onPressed: () => _novo(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Novo workflow'),
+          ),
         IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: estado.carregar),
       ]),
       if (!estado.carregada)
@@ -83,11 +122,13 @@ class _ListaDeWorkflows extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            'Nenhum workflow nesta equipe. Eles ficam em equipes/${equipe.id}/workflows/ na pasta de dados.',
+            editar
+                ? 'Nenhum workflow nesta equipe. Use "Novo workflow" para montar o primeiro.'
+                : 'Nenhum workflow nesta equipe. Eles ficam em equipes/${equipe.id}/workflows/ na pasta de dados.',
             style: TextStyle(color: cores.onSurfaceVariant),
           ),
         ),
-      for (final w in daEquipe) _CartaoDoWorkflow(sala: sala, workflow: w),
+      for (final w in daEquipe) _CartaoDoWorkflow(sala: sala, equipe: equipe, workflow: w, editar: editar),
       if (encerrados.isNotEmpty)
         Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -102,10 +143,12 @@ class _ListaDeWorkflows extends StatelessWidget {
 }
 
 class _CartaoDoWorkflow extends StatelessWidget {
-  const _CartaoDoWorkflow({required this.sala, required this.workflow});
+  const _CartaoDoWorkflow({required this.sala, required this.equipe, required this.workflow, required this.editar});
 
   final Sala sala;
+  final EquipeResumo equipe;
   final Workflow workflow;
+  final bool editar;
 
   @override
   Widget build(BuildContext context) {
@@ -141,6 +184,18 @@ class _CartaoDoWorkflow extends StatelessWidget {
                 icon: const Icon(Icons.alt_route, size: 18),
                 label: const Text('Ver'),
               ),
+              if (editar) ...[
+                OutlinedButton.icon(
+                  onPressed: () => sala.editorDeWorkflow.abrir(w, equipe),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Editar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => sala.editorDeWorkflow.duplicar(w, equipe, estado.daEquipe(equipe.id).map((x) => x.id)),
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  label: const Text('Duplicar'),
+                ),
+              ],
             ]),
           ),
           for (final f in abertos) _LinhaDoFluxo(sala: sala, fluxo: f),
@@ -228,7 +283,7 @@ class _DialogoDeIniciarState extends State<_DialogoDeIniciar> {
     };
     final erros = widget.estado.iniciar(widget.workflow, brutos);
     if (erros.isEmpty) {
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } else {
       setState(() => _erros = erros);
     }
@@ -288,10 +343,11 @@ class _DialogoDeIniciarState extends State<_DialogoDeIniciar> {
 }
 
 class _VistaDoGrafo extends StatelessWidget {
-  const _VistaDoGrafo({required this.sala, required this.desenhar});
+  const _VistaDoGrafo({required this.sala, required this.desenhar, this.aoVoltar});
 
   final Sala sala;
   final bool desenhar;
+  final VoidCallback? aoVoltar;
 
   @override
   Widget build(BuildContext context) {
@@ -304,7 +360,7 @@ class _VistaDoGrafo extends StatelessWidget {
     final cabecalho = Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
       child: Row(children: [
-        IconButton(tooltip: 'Voltar', icon: const Icon(Icons.arrow_back), onPressed: estado.fecharGrafo),
+        IconButton(tooltip: 'Voltar', icon: const Icon(Icons.arrow_back), onPressed: aoVoltar ?? estado.fecharGrafo),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(w?.nome ?? 'Workflow', style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
@@ -520,6 +576,46 @@ class _CaixasEmLista extends StatelessWidget {
   }
 }
 
+class EdicaoDoGrafo {
+  const EdicaoDoGrafo({
+    required this.rascunho,
+    required this.aoMover,
+    required this.aoLigar,
+    required this.aoDesligar,
+    required this.aoTocarPonto,
+    required this.aoSoltarTipo,
+    required this.aoMenuDaCaixa,
+    required this.aoRemover,
+    required this.aoDesfazer,
+    required this.aoRefazer,
+  });
+
+  final WorkflowJson rascunho;
+  final void Function(String id, Ponto ponto) aoMover;
+  final void Function(String de, String? quando, String? para) aoLigar;
+  final ValueChanged<Aresta> aoDesligar;
+  final void Function(String caixa, PontoDeSaida ponto, Offset global) aoTocarPonto;
+  final void Function(String tipo, Ponto ponto) aoSoltarTipo;
+  final void Function(String caixa, Offset global) aoMenuDaCaixa;
+  final VoidCallback aoRemover;
+  final VoidCallback aoDesfazer;
+  final VoidCallback aoRefazer;
+}
+
+const iconesDeCaixa = {
+  'executar': Icons.engineering_outlined,
+  'revisar': Icons.rate_review_outlined,
+  'aprovar': Icons.verified_outlined,
+  'board': Icons.groups_outlined,
+  'decisao_humana': Icons.help_outline,
+  'condicao': Icons.call_split,
+  'paralelo': Icons.device_hub,
+  'juncao': Icons.merge_type,
+  'laco': Icons.loop,
+  'espera': Icons.hourglass_empty,
+  'fim': Icons.flag_outlined,
+};
+
 class CanvasDoGrafo extends StatefulWidget {
   const CanvasDoGrafo({
     super.key,
@@ -528,6 +624,8 @@ class CanvasDoGrafo extends StatefulWidget {
     this.percorridas = const {},
     this.selecionada,
     this.aoTocar,
+    this.comErro = const {},
+    this.edicao,
   });
 
   final Workflow workflow;
@@ -535,169 +633,398 @@ class CanvasDoGrafo extends StatefulWidget {
   final Set<String> percorridas;
   final String? selecionada;
   final ValueChanged<String?>? aoTocar;
+  final Set<String> comErro;
+  final EdicaoDoGrafo? edicao;
 
   @override
-  State<CanvasDoGrafo> createState() => _CanvasDoGrafoState();
+  State<CanvasDoGrafo> createState() => EstadoDoCanvasDoGrafo();
 }
 
-class _CanvasDoGrafoState extends State<CanvasDoGrafo> {
-  Vista? _vista;
+enum _Gesto { fundo, caixa, ponto }
+
+String _chaveDaAresta(Aresta a) => '${a.de}>${a.para}>${a.quando ?? ''}';
+
+class EstadoDoCanvasDoGrafo extends State<CanvasDoGrafo> with PanEZoom {
   String? _ajustadaPara;
-  Size _tamanho = Size.zero;
-  double _escalaNoInicio = 1;
+  _Gesto? _gesto;
+  String? _alvo;
+  int _indice = 0;
+  Ponto _pega = (x: 0, y: 0);
+  Ponto? _caixaEm;
+  Ponto? _ponteiro;
+  Offset? _pressionado;
+  String? _linhaSobre;
+  MouseCursor _cursor = SystemMouseCursors.grab;
+  final _foco = FocusNode(debugLabel: 'canvas do grafo');
 
-  Vista get _v => _vista ?? (dx: 0, dy: 0, escala: 1);
+  EdicaoDoGrafo? get _ed => widget.edicao;
 
-  String get _chave => '${widget.workflow.equipe}/${widget.workflow.id}/${widget.workflow.versao}';
+  String get _chave =>
+      '${widget.workflow.equipe}/${widget.workflow.id}${_ed == null ? '/${widget.workflow.versao}' : ''}';
 
-  void _zoom(double fator, {Offset? foco}) {
-    final centro = foco ?? Offset(_tamanho.width / 2, _tamanho.height / 2);
-    setState(() => _vista = zoomEm(_v, centro.dx, centro.dy, _v.escala * fator));
+  Map<String, Ponto> get _base => layoutDoGrafo(widget.workflow);
+
+  Map<String, List<PontoDeSaida>> get _pontos => pontosDoRascunho(_ed?.rascunho ?? widget.workflow.bruto);
+
+  @override
+  void dispose() {
+    _foco.dispose();
+    super.dispose();
   }
 
-  void _roda(PointerSignalEvent e) {
-    if (e is! PointerScrollEvent) return;
-    final teclado = HardwareKeyboard.instance;
-    if (teclado.isControlPressed || teclado.isMetaPressed) {
-      _zoom(e.scrollDelta.dy > 0 ? 0.9 : 1 / 0.9, foco: e.localPosition);
-    } else if (teclado.isShiftPressed) {
-      setState(() => _vista = deslocarVista(_v, -e.scrollDelta.dy, 0));
-    } else {
-      setState(() => _vista = deslocarVista(_v, -e.scrollDelta.dx, -e.scrollDelta.dy));
+  void ajustar() => setState(() => vista = ajustarVistaAoGrafo(_base, tamanho.width, tamanho.height));
+
+  Ponto pontoNoCentro() {
+    final m = paraMundo(v, tamanho.width / 2, tamanho.height / 2);
+    return (x: m.x - margemDoGrafo - larguraDaCaixa / 2, y: m.y - margemDoGrafo - alturaDaCaixa / 2);
+  }
+
+  void centralizar(String id) {
+    final layout = _base;
+    if (!layout.containsKey(id)) return;
+    final c = cantoDaCaixa(layout, id);
+    setState(() => vista = (
+          dx: tamanho.width / 2 - (c.x + larguraDaCaixa / 2) * v.escala,
+          dy: tamanho.height / 2 - (c.y + alturaDaCaixa / 2) * v.escala,
+          escala: v.escala,
+        ));
+  }
+
+  Map<String, Ponto> _layout() {
+    final base = _base;
+    final id = _alvo;
+    final em = _caixaEm;
+    if (_gesto == _Gesto.caixa && id != null && em != null && base.containsKey(id)) return {...base, id: em};
+    return base;
+  }
+
+  _Gesto _gestoEm(Ponto m, Map<String, Ponto> layout) {
+    if (_ed == null) return _Gesto.fundo;
+    if (saidaEm(layout, _pontos, m.x, m.y) != null) return _Gesto.ponto;
+    return caixaEm(layout, m.x, m.y) != null ? _Gesto.caixa : _Gesto.fundo;
+  }
+
+  Aresta? _arestaEm(Map<String, Ponto> layout, Ponto m) =>
+      arestaEm(widget.workflow.arestas, layout, _pontos, m.x, m.y, tolerancia: 6 / v.escala);
+
+  void _aoPassar(PointerHoverEvent e) {
+    if (_ed == null) return;
+    final layout = _base;
+    final m = paraMundo(v, e.localPosition.dx, e.localPosition.dy);
+    final gesto = _gestoEm(m, layout);
+    final linha = gesto == _Gesto.fundo ? _arestaEm(layout, m) : null;
+    final cursor = switch (gesto) {
+      _Gesto.ponto => SystemMouseCursors.precise,
+      _Gesto.caixa => SystemMouseCursors.move,
+      _Gesto.fundo => linha != null ? SystemMouseCursors.click : SystemMouseCursors.grab,
+    };
+    final chave = linha == null ? null : _chaveDaAresta(linha);
+    if (cursor != _cursor || chave != _linhaSobre) {
+      setState(() {
+        _cursor = cursor;
+        _linhaSobre = chave;
+      });
     }
   }
 
-  void _toque(TapUpDetails d, Map<String, Ponto> layout) {
-    final mundo = paraMundo(_v, d.localPosition.dx, d.localPosition.dy);
-    widget.aoTocar?.call(caixaEm(layout, mundo.x, mundo.y));
+  void _inicio(ScaleStartDetails d) {
+    final ponto = d.pointerCount == 1 && _pressionado != null ? _pressionado! : d.localFocalPoint;
+    final m = paraMundo(v, ponto.dx, ponto.dy);
+    comecarPinca();
+    final layout = _base;
+    final gesto = d.pointerCount > 1 || d.kind == PointerDeviceKind.trackpad ? _Gesto.fundo : _gestoEm(m, layout);
+    setState(() {
+      _gesto = gesto;
+      _alvo = null;
+      _caixaEm = null;
+      _ponteiro = null;
+      if (gesto == _Gesto.ponto) {
+        final s = saidaEm(layout, _pontos, m.x, m.y)!;
+        _alvo = s.caixa;
+        _indice = s.indice;
+        _ponteiro = m;
+      } else if (gesto == _Gesto.caixa) {
+        final id = caixaEm(layout, m.x, m.y)!;
+        final c = cantoDaCaixa(layout, id);
+        _alvo = id;
+        _pega = (x: m.x - c.x, y: m.y - c.y);
+      } else {
+        _cursor = SystemMouseCursors.grabbing;
+      }
+    });
+  }
+
+  void _durante(ScaleUpdateDetails d) {
+    final m = paraMundo(v, d.localFocalPoint.dx, d.localFocalPoint.dy);
+    setState(() {
+      switch (_gesto) {
+        case _Gesto.caixa:
+          _caixaEm = (x: m.x - _pega.x - margemDoGrafo, y: m.y - _pega.y - margemDoGrafo);
+        case _Gesto.ponto:
+          _ponteiro = m;
+        case _Gesto.fundo || null:
+          aplicarPinca(d);
+      }
+    });
+  }
+
+  void _fim(ScaleEndDetails _) {
+    final gesto = _gesto;
+    final id = _alvo;
+    final em = _caixaEm;
+    final ponteiro = _ponteiro;
+    final indice = _indice;
+    setState(() {
+      _gesto = null;
+      _alvo = null;
+      _caixaEm = null;
+      _ponteiro = null;
+      _cursor = SystemMouseCursors.grab;
+    });
+    final ed = _ed;
+    if (ed == null || id == null) return;
+    if (gesto == _Gesto.caixa && em != null) ed.aoMover(id, em);
+    if (gesto == _Gesto.ponto && ponteiro != null) {
+      final pontos = _pontos[id] ?? const <PontoDeSaida>[];
+      if (indice < pontos.length) ed.aoLigar(id, pontos[indice].quando, caixaEm(_base, ponteiro.x, ponteiro.y));
+    }
+  }
+
+  void _toque(TapUpDetails d) {
+    final layout = _base;
+    final m = paraMundo(v, d.localPosition.dx, d.localPosition.dy);
+    final ed = _ed;
+    if (ed != null) {
+      final s = saidaEm(layout, _pontos, m.x, m.y);
+      if (s != null) {
+        ed.aoTocarPonto(s.caixa, _pontos[s.caixa]![s.indice], d.globalPosition);
+        return;
+      }
+    }
+    final caixa = caixaEm(layout, m.x, m.y);
+    if (caixa != null) {
+      widget.aoTocar?.call(caixa);
+      return;
+    }
+    final linha = ed == null ? null : _arestaEm(layout, m);
+    if (linha != null) {
+      setState(() => _linhaSobre = null);
+      ed!.aoDesligar(linha);
+      return;
+    }
+    widget.aoTocar?.call(null);
+  }
+
+  void _toqueSecundario(TapUpDetails d) {
+    final ed = _ed;
+    if (ed == null) return;
+    final m = paraMundo(v, d.localPosition.dx, d.localPosition.dy);
+    final caixa = caixaEm(_base, m.x, m.y);
+    if (caixa != null) ed.aoMenuDaCaixa(caixa, d.globalPosition);
+  }
+
+  KeyEventResult _tecla(FocusNode _, KeyEvent e) {
+    final ed = _ed;
+    if (ed == null || e is KeyUpEvent) return KeyEventResult.ignored;
+    final teclado = HardwareKeyboard.instance;
+    final ctrl = teclado.isControlPressed || teclado.isMetaPressed;
+    final tecla = e.logicalKey;
+    if (ctrl && tecla == LogicalKeyboardKey.keyZ) {
+      teclado.isShiftPressed ? ed.aoRefazer() : ed.aoDesfazer();
+      return KeyEventResult.handled;
+    }
+    if (ctrl && tecla == LogicalKeyboardKey.keyY) {
+      ed.aoRefazer();
+      return KeyEventResult.handled;
+    }
+    if (e is KeyDownEvent && (tecla == LogicalKeyboardKey.delete || tecla == LogicalKeyboardKey.backspace)) {
+      ed.aoRemover();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
     final w = widget.workflow;
-    final layout = layoutDoGrafo(w);
-    final tamanho = tamanhoDoGrafo(layout);
+    final ed = _ed;
     return LayoutBuilder(builder: (context, limites) {
-      _tamanho = limites.biggest;
-      if (_vista == null || _ajustadaPara != _chave) {
-        _vista = ajustarVistaAoGrafo(layout, _tamanho.width, _tamanho.height);
+      tamanho = limites.biggest;
+      if (vista == null || _ajustadaPara != _chave) {
+        vista = ajustarVistaAoGrafo(_base, tamanho.width, tamanho.height);
         _ajustadaPara = _chave;
       }
-      final v = _v;
-      return Listener(
-        onPointerSignal: _roda,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (d) => _toque(d, layout),
-          onScaleStart: (_) => _escalaNoInicio = _v.escala,
-          onScaleUpdate: (d) => setState(() {
-            var nova = _v;
-            if (d.scale != 1) nova = zoomEm(nova, d.localFocalPoint.dx, d.localFocalPoint.dy, _escalaNoInicio * d.scale);
-            _vista = deslocarVista(nova, d.focalPointDelta.dx, d.focalPointDelta.dy);
-          }),
-          child: ClipRect(
-            child: Stack(children: [
-              Positioned.fill(child: ColoredBox(color: cores.surfaceContainerLowest)),
-              OverflowBox(
-                alignment: Alignment.topLeft,
-                minWidth: 0,
-                minHeight: 0,
-                maxWidth: double.infinity,
-                maxHeight: double.infinity,
-                child: Transform(
-                  transform: Matrix4.identity()
-                    ..translateByDouble(v.dx, v.dy, 0, 1)
-                    ..scaleByDouble(v.escala, v.escala, 1, 1),
-                  child: IgnorePointer(
-                    child: SizedBox(
-                      width: tamanho.largura,
-                      height: tamanho.altura,
-                      child: Stack(clipBehavior: Clip.none, children: [
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: _LigacoesDoGrafo(
-                              workflow: w,
-                              layout: layout,
-                              percorridas: widget.percorridas,
-                              cor: cores.outline,
-                              realce: cores.primary,
-                              fundo: cores.surfaceContainerLowest,
-                              texto: cores.onSurfaceVariant,
-                            ),
+      final layout = _layout();
+      final pontos = _pontos;
+      final area = tamanhoDoGrafo(layout);
+      final ligando = _gesto == _Gesto.ponto ? _alvo : null;
+      final destino = ligando != null && _ponteiro != null ? caixaEm(layout, _ponteiro!.x, _ponteiro!.y) : null;
+      final origemDoArrasto = ligando != null && layout.containsKey(ligando)
+          ? pontoDaSaida(layout, ligando, _indice, pontos[ligando]?.length ?? 1)
+          : null;
+      Widget conteudo = Listener(
+        onPointerSignal: rodar,
+        onPointerDown: (e) {
+          _pressionado = e.localPosition;
+          if (ed != null) _foco.requestFocus();
+        },
+        child: MouseRegion(
+          cursor: ed == null ? MouseCursor.defer : _cursor,
+          onHover: _aoPassar,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: _toque,
+            onSecondaryTapUp: ed == null ? null : _toqueSecundario,
+            onScaleStart: _inicio,
+            onScaleUpdate: _durante,
+            onScaleEnd: _fim,
+            child: ClipRect(
+              child: Stack(children: [
+                Positioned.fill(child: ColoredBox(color: cores.surfaceContainerLowest)),
+                mundo(
+                  largura: area.largura,
+                  altura: area.altura,
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _LigacoesDoGrafo(
+                          arestas: w.arestas,
+                          layout: layout,
+                          pontos: pontos,
+                          percorridas: widget.percorridas,
+                          rotulosNasLinhas: ed == null,
+                          linhaRealcada: _linhaSobre,
+                          arrasto: origemDoArrasto == null || _ponteiro == null ? null : (origemDoArrasto, _ponteiro!),
+                          cor: cores.outline,
+                          realce: cores.primary,
+                          fundo: cores.surfaceContainerLowest,
+                          texto: cores.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    for (final c in w.nos)
+                      if (layout.containsKey(c.id))
+                        Positioned(
+                          left: cantoDaCaixa(layout, c.id).x,
+                          top: cantoDaCaixa(layout, c.id).y,
+                          width: larguraDaCaixa,
+                          height: alturaDaCaixa,
+                          child: _CaixaDoGrafo(
+                            caixa: c,
+                            inicio: c.id == w.inicio,
+                            estado: widget.estados[c.id],
+                            escolhida: widget.selecionada == c.id || destino == c.id,
+                            comErro: widget.comErro.contains(c.id),
                           ),
                         ),
-                        for (final c in w.nos)
-                          Positioned(
-                            left: cantoDaCaixa(layout, c.id).x,
-                            top: cantoDaCaixa(layout, c.id).y,
-                            width: larguraDaCaixa,
-                            height: alturaDaCaixa,
-                            child: _CaixaDoGrafo(
-                              caixa: c,
-                              inicio: c.id == w.inicio,
-                              estado: widget.estados[c.id],
-                              escolhida: widget.selecionada == c.id,
-                            ),
-                          ),
-                      ]),
-                    ),
+                    if (ed != null)
+                      for (final MapEntry(key: id, value: lista) in pontos.entries)
+                        if (layout.containsKey(id))
+                          for (final (i, ponto) in lista.indexed) ..._pontoDeSaida(cores, pontoDaSaida(layout, id, i, lista.length), ponto),
+                  ]),
+                ),
+                Positioned(
+                  left: 12,
+                  bottom: 12,
+                  right: 260,
+                  child: Text(
+                    ed == null
+                        ? 'Toque numa caixa para ver as saídas · arraste o fundo para mover · Ctrl + roda para zoom'
+                        : 'Arraste da paleta ou clique nela para criar · puxe um ponto de saída até outra caixa para ligar, '
+                            'ou clique nele para criar a seguinte · clique numa linha para desligar · botão direito na caixa abre o menu · '
+                            'Delete remove · Ctrl+Z desfaz',
+                    style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
                   ),
                 ),
-              ),
-              Positioned(
-                left: 12,
-                bottom: 12,
-                right: 260,
-                child: Text(
-                  'Toque numa caixa para ver as saídas · arraste o fundo para mover · Ctrl + roda para zoom',
-                  style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
-                ),
-              ),
-              Positioned(
-                right: 12,
-                bottom: 12,
-                child: ControlesDeZoom(
-                  escala: v.escala,
-                  aoAproximar: () => _zoom(1.2),
-                  aoAfastar: () => _zoom(1 / 1.2),
-                  aoAjustar: () => setState(() => _vista = ajustarVistaAoGrafo(layout, _tamanho.width, _tamanho.height)),
-                  aoTamanhoReal: () => _zoom(1 / v.escala),
-                ),
-              ),
-            ]),
+                Positioned(right: 12, bottom: 12, child: controlesDeZoom(aoAjustar: ajustar)),
+              ]),
+            ),
           ),
         ),
       );
+      if (ed == null) return conteudo;
+      conteudo = Focus(focusNode: _foco, onKeyEvent: _tecla, child: conteudo);
+      return DragTarget<String>(
+        onWillAcceptWithDetails: (d) => tiposDeCaixa.contains(d.data),
+        onAcceptWithDetails: (d) {
+          final caixa = context.findRenderObject();
+          if (caixa is! RenderBox) return;
+          final local = caixa.globalToLocal(d.offset);
+          final m = paraMundo(v, local.dx, local.dy);
+          ed.aoSoltarTipo(d.data, (x: m.x - margemDoGrafo - larguraDaCaixa / 2, y: m.y - margemDoGrafo - alturaDaCaixa / 2));
+        },
+        builder: (context, candidatos, _) => candidatos.isEmpty
+            ? conteudo
+            : DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: BoxDecoration(border: Border.all(color: cores.primary, width: 2)),
+                child: conteudo,
+              ),
+      );
     });
   }
+
+  List<Widget> _pontoDeSaida(ColorScheme cores, Ponto centro, PontoDeSaida ponto) => [
+        Positioned(
+          left: centro.x - raioDoPonto,
+          top: centro.y - raioDoPonto,
+          child: Container(
+            width: raioDoPonto * 2,
+            height: raioDoPonto * 2,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: ponto.livre ? cores.surface : cores.primary,
+              border: Border.all(color: cores.primary, width: 2),
+            ),
+          ),
+        ),
+        if (ponto.rotulo.isNotEmpty || ponto.varias)
+          Positioned(
+            left: centro.x + raioDoPonto + 2,
+            top: centro.y - 15,
+            child: Text(
+              ponto.varias ? 'várias' : ponto.rotulo,
+              style: TextStyle(color: cores.primary, fontSize: 10, fontWeight: FontWeight.w600),
+            ),
+          ),
+      ];
 }
 
 class _CaixaDoGrafo extends StatelessWidget {
-  const _CaixaDoGrafo({required this.caixa, required this.inicio, required this.estado, required this.escolhida});
+  const _CaixaDoGrafo({
+    required this.caixa,
+    required this.inicio,
+    required this.estado,
+    required this.escolhida,
+    this.comErro = false,
+  });
 
   final Caixa caixa;
   final bool inicio;
   final String? estado;
   final bool escolhida;
+  final bool comErro;
 
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
     final cor = estado == null ? null : corDaFicha(estado, cores);
+    final borda = escolhida ? cores.primary : (comErro ? cores.error : cor ?? cores.outlineVariant);
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
       decoration: BoxDecoration(
         color: cor == null ? cores.surfaceContainerHighest : Color.alphaBlend(cor.withValues(alpha: 0.22), cores.surfaceContainerHighest),
         borderRadius: BorderRadius.circular(caixa.tipo == 'condicao' || caixa.tipo == 'decisao_humana' ? 18 : 8),
-        border: Border.all(
-          color: escolhida ? cores.primary : cor ?? cores.outlineVariant,
-          width: escolhida || cor != null ? 2 : 1,
-        ),
+        border: Border.all(color: borda, width: escolhida || comErro || cor != null ? 2 : 1),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
         Row(children: [
           if (inicio) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(Icons.play_arrow, size: 14, color: cores.primary)),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Icon(iconesDeCaixa[caixa.tipo] ?? Icons.crop_square, size: 12, color: cores.onSurfaceVariant),
+          ),
           Expanded(
             child: Text(
               caixa.nomeDoTipo.toUpperCase(),
@@ -706,6 +1033,7 @@ class _CaixaDoGrafo extends StatelessWidget {
               style: TextStyle(color: cores.onSurfaceVariant, fontSize: 10, letterSpacing: 0.8),
             ),
           ),
+          if (comErro) Icon(Icons.error_outline, size: 14, color: cores.error),
           if (estado case final e?)
             Text(nomesDeStatusDaFicha[e] ?? e, style: TextStyle(color: cor, fontSize: 10, fontWeight: FontWeight.w600)),
         ]),
@@ -719,48 +1047,44 @@ class _CaixaDoGrafo extends StatelessWidget {
 
 class _LigacoesDoGrafo extends CustomPainter {
   _LigacoesDoGrafo({
-    required this.workflow,
+    required this.arestas,
     required this.layout,
+    required this.pontos,
     required this.percorridas,
+    required this.rotulosNasLinhas,
+    required this.linhaRealcada,
+    required this.arrasto,
     required this.cor,
     required this.realce,
     required this.fundo,
     required this.texto,
   });
 
-  final Workflow workflow;
+  final List<Aresta> arestas;
   final Map<String, Ponto> layout;
+  final Map<String, List<PontoDeSaida>> pontos;
   final Set<String> percorridas;
+  final bool rotulosNasLinhas;
+  final String? linhaRealcada;
+  final (Ponto, Ponto)? arrasto;
   final Color cor;
   final Color realce;
   final Color fundo;
   final Color texto;
 
+  Offset _o(Ponto p) => Offset(p.x, p.y);
+
   @override
   void paint(Canvas canvas, Size size) {
-    for (final a in workflow.arestas) {
+    for (final a in arestas) {
       if (!layout.containsKey(a.de) || !layout.containsKey(a.para)) continue;
-      final de = cantoDaCaixa(layout, a.de);
-      final para = cantoDaCaixa(layout, a.para);
-      final percorrida = percorridas.contains(a.chave);
+      final curva = curvaDaLigacao(layout, origemDaLigacao(layout, pontos, a), a.para);
+      final destacada = percorridas.contains(a.chave) || _chaveDaAresta(a) == linhaRealcada;
       final tinta = Paint()
-        ..color = percorrida ? realce : cor
-        ..strokeWidth = percorrida ? 3 : 1.5
+        ..color = destacada ? realce : cor
+        ..strokeWidth = destacada ? 3 : 1.5
         ..style = PaintingStyle.stroke;
-      late Offset p0, p1, p2, p3;
-      if (para.x > de.x + larguraDaCaixa / 2) {
-        p0 = Offset(de.x + larguraDaCaixa, de.y + alturaDaCaixa / 2);
-        p3 = Offset(para.x, para.y + alturaDaCaixa / 2);
-        final meio = (p3.dx - p0.dx) / 2;
-        p1 = Offset(p0.dx + meio, p0.dy);
-        p2 = Offset(p3.dx - meio, p3.dy);
-      } else {
-        p0 = Offset(de.x + larguraDaCaixa / 2, de.y + alturaDaCaixa);
-        p3 = Offset(para.x + larguraDaCaixa / 2, para.y + alturaDaCaixa);
-        final baixo = (p0.dy > p3.dy ? p0.dy : p3.dy) + 50;
-        p1 = Offset(p0.dx, baixo);
-        p2 = Offset(p3.dx, baixo);
-      }
+      final p0 = _o(curva.p0), p1 = _o(curva.p1), p2 = _o(curva.p2), p3 = _o(curva.p3);
       canvas.drawPath(
         Path()
           ..moveTo(p0.dx, p0.dy)
@@ -777,25 +1101,28 @@ class _LigacoesDoGrafo extends CustomPainter {
         ..close();
       canvas.drawPath(ponta, Paint()..color = tinta.color);
       final quando = a.quando;
-      if (quando == null) continue;
-      final meio = (p0 + p1 * 3 + p2 * 3 + p3) / 8;
+      if (quando == null || !rotulosNasLinhas) continue;
+      final meio = _o(pontoNaCurva(curva, 0.5));
       final pintor = TextPainter(
-        text: TextSpan(text: quando, style: TextStyle(color: percorrida ? realce : texto, fontSize: 11)),
+        text: TextSpan(text: quando, style: TextStyle(color: destacada ? realce : texto, fontSize: 11)),
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: 140);
       final caixa = Rect.fromCenter(center: meio, width: pintor.width + 8, height: pintor.height + 4);
       canvas.drawRRect(RRect.fromRectAndRadius(caixa, const Radius.circular(4)), Paint()..color = fundo);
       pintor.paint(canvas, Offset(caixa.left + 4, caixa.top + 2));
     }
+    final (de, ate) = arrasto ?? ((x: 0.0, y: 0.0), (x: 0.0, y: 0.0));
+    if (arrasto != null) {
+      canvas.drawLine(
+        _o(de),
+        _o(ate),
+        Paint()
+          ..color = realce
+          ..strokeWidth = 2,
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _LigacoesDoGrafo antigo) =>
-      antigo.workflow != workflow ||
-      antigo.percorridas.length != percorridas.length ||
-      !antigo.percorridas.containsAll(percorridas) ||
-      antigo.cor != cor ||
-      antigo.realce != realce ||
-      antigo.fundo != fundo ||
-      antigo.texto != texto;
+  bool shouldRepaint(covariant _LigacoesDoGrafo antigo) => true;
 }
