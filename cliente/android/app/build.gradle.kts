@@ -7,11 +7,16 @@ plugins {
 // No CI o debug.keystore padrão não é garantido: sem caminho explícito o Gradle gera uma
 // chave nova e o APK deixa de atualizar o instalado. Mesma chave de debug, caminho fixo.
 val keystoreFixa = System.getenv("CT_ANDROID_KEYSTORE")
+val appDeTeste = System.getenv("CT_APP_TESTE") == "1"
 
 android {
     namespace = "dev.ueslei.controltower"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    buildFeatures {
+        resValues = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -33,6 +38,12 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        if (appDeTeste) {
+            applicationIdSuffix = ".teste"
+            resValue("string", "app_name", "Control Tower teste")
+        } else {
+            resValue("string", "app_name", "Control Tower")
+        }
     }
 
     signingConfigs {
