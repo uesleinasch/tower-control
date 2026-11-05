@@ -175,8 +175,25 @@ async function comTextos(raiz: string, equipe: string, id: string, bruto: unknow
   return { ...w, nos }
 }
 
-export async function lerWorkflows(raiz: string, equipes: Equipe[]): Promise<{ equipe: string; workflow: Workflow }[]> {
-  const lidos: { equipe: string; workflow: Workflow }[] = []
+export function textosEmArquivo(bruto: unknown): Record<string, Record<string, string>> {
+  const nos = bruto && typeof bruto === "object" ? (bruto as { nos?: unknown }).nos : undefined
+  const mapa: Record<string, Record<string, string>> = {}
+  for (const no of Array.isArray(nos) ? nos : []) {
+    if (!no || typeof no !== "object") continue
+    for (const campo of CAMPOS_DE_TEXTO) {
+      const valor = (no as Record<string, unknown>)[campo]
+      const m = typeof valor === "string" ? ARQUIVO_DE_TEXTO.exec(valor.trim()) : null
+      if (m) (mapa[String((no as { id?: unknown }).id)] ??= {})[campo] = m[1]!
+    }
+  }
+  return mapa
+}
+
+export async function lerWorkflows(
+  raiz: string,
+  equipes: Equipe[],
+): Promise<{ equipe: string; workflow: Workflow; arquivos: Record<string, Record<string, string>> }[]> {
+  const lidos: { equipe: string; workflow: Workflow; arquivos: Record<string, Record<string, string>> }[] = []
   for (const equipe of equipes) {
     let nomes: string[]
     try {
@@ -187,14 +204,16 @@ export async function lerWorkflows(raiz: string, equipes: Equipe[]): Promise<{ e
     for (const nome of nomes) {
       const caminho = join(raiz, "equipes", equipe.id, "workflows", nome)
       let workflow: Workflow
+      let arquivos: Record<string, Record<string, string>>
       try {
         const bruto = (await Bun.file(caminho).json()) as { id?: unknown }
+        arquivos = textosEmArquivo(bruto)
         workflow = validarWorkflow(await comTextos(raiz, equipe.id, String(bruto.id ?? ""), bruto), equipe)
       } catch (erro) {
         throw new Error(`${caminho}: ${(erro as Error).message}`)
       }
       if (`${workflow.id}.json` !== nome) throw new Error(`${caminho}: o id ${workflow.id} não bate com o nome do arquivo`)
-      lidos.push({ equipe: equipe.id, workflow })
+      lidos.push({ equipe: equipe.id, workflow, arquivos })
     }
   }
   return lidos
@@ -256,11 +275,12 @@ export async function gravarWorkflow(
   equipe: string,
   bruto: Record<string, unknown>,
   disco: Record<string, unknown> | null = null,
-): Promise<void> {
+): Promise<Record<string, unknown>> {
   const id = String(bruto.id)
   const { json, arquivos } = devolverAosArquivos(disco, bruto)
   for (const { nome, texto } of arquivos) await Bun.write(join(raiz, "equipes", equipe, "workflows", id, nome), texto)
   await gravarJson(caminhoDoWorkflow(raiz, equipe, id), json)
+  return json
 }
 
 export async function apagarWorkflow(raiz: string, equipe: string, id: string): Promise<void> {

@@ -7,18 +7,19 @@ import {
   apagarRotina,
   apagarWorkflow,
   carregarElenco,
+  conferirVersao,
   elenco,
   gravarEquipe,
   gravarPersona,
   gravarRotina,
-  conferirVersao,
   gravarWorkflow,
-  lerWorkflowDoDisco,
-  versaoNoDisco,
   lerRotinas,
+  lerWorkflowDoDisco,
   lerWorkflows,
   migrarParaPersonas,
+  textosEmArquivo,
   validarWorkflowDaEquipe,
+  versaoNoDisco,
 } from "./orquestra/elenco"
 import { Agendador } from "./orquestra/agendador"
 import { LIMITE_DO_CORPO, validarRotina } from "./orquestra/rotinas"
@@ -350,7 +351,11 @@ function workflowsParaCliente() {
   const fluxos = [...TAREFAS.fluxosAbertos(), ...TAREFAS.fluxosRecentes(20)]
   return {
     tipo: "workflows",
-    definicoes: MOTOR.todas().map(({ equipe, workflow }) => ({ ...workflow, equipe })),
+    definicoes: MOTOR.todas().map(({ equipe, workflow }) => ({
+      ...workflow,
+      equipe,
+      textosEmArquivo: TEXTOS_EM_ARQUIVO.get(`${equipe}/${workflow.id}`) ?? {},
+    })),
     fluxos: fluxos.map((f) => ({ ...f, fichas: TAREFAS.fichasDo(f.id) })),
   }
 }
@@ -363,14 +368,15 @@ function publicarFluxos(): void {
 async function salvarWorkflow(equipeId: unknown, bruto: unknown): Promise<void> {
   const equipe = equipeDaRotina(equipeId)
   if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) throw new Error("workflow inválido")
-  const { equipe: _equipe, ...recebido } = bruto as Record<string, unknown>
+  const { equipe: _equipe, textosEmArquivo: _arquivos, ...recebido } = bruto as Record<string, unknown>
   const id = String(recebido.id ?? "")
   const disco = slugValido(id) ? await lerWorkflowDoDisco(RAIZ, equipe.id, id) : null
   conferirVersao(disco, id, recebido.versao)
   const antes = MOTOR.definicao(equipe.id, id)
   const cru = { ...recebido, versao: versaoNoDisco(disco) + 1 }
   const workflow = await validarWorkflowDaEquipe(RAIZ, equipe, cru)
-  await gravarWorkflow(RAIZ, equipe.id, cru, disco)
+  const gravado = await gravarWorkflow(RAIZ, equipe.id, cru, disco)
+  TEXTOS_EM_ARQUIVO.set(`${equipe.id}/${id}`, textosEmArquivo(gravado))
   MOTOR.definir(equipe.id, workflow)
   await registrarNoGit(RAIZ, `workflow ${workflow.nome} ${antes ? "editado" : "criado"} (versão ${workflow.versao})`)
   publicarFluxos()
@@ -386,6 +392,7 @@ async function excluirWorkflow(equipeId: unknown, idBruto: unknown): Promise<voi
   if (rotina) throw new Error(`a rotina ${rotina.nome} dispara o workflow ${workflow.nome}`)
   await apagarWorkflow(RAIZ, equipe.id, id)
   MOTOR.remover(equipe.id, id)
+  TEXTOS_EM_ARQUIVO.delete(`${equipe.id}/${id}`)
   await registrarNoGit(RAIZ, `workflow ${workflow.nome} excluído`)
   publicarFluxos()
 }
@@ -693,6 +700,7 @@ const ORQUESTRA = new Orquestra({
   },
 })
 
+const TEXTOS_EM_ARQUIVO = new Map<string, Record<string, Record<string, string>>>()
 const MOTOR = new Motor({
   repo: TAREFAS,
   equipe: equipePorId,
@@ -718,7 +726,9 @@ const MOTOR = new Motor({
   },
 })
 try {
-  MOTOR.carregar(await lerWorkflows(RAIZ, elenco().equipes()))
+  const lidos = await lerWorkflows(RAIZ, elenco().equipes())
+  for (const { equipe, workflow, arquivos } of lidos) TEXTOS_EM_ARQUIVO.set(`${equipe}/${workflow.id}`, arquivos)
+  MOTOR.carregar(lidos)
 } catch (erro) {
   console.error(`workflow inválido: ${(erro as Error).message}`)
   process.exit(1)

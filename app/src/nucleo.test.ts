@@ -46,6 +46,7 @@ import {
   gravarEquipe,
   lerElenco,
   migrarParaPersonas,
+  textosEmArquivo,
   versaoNoDisco,
 } from "./orquestra/elenco"
 import { criarPersona, excluirPersona, lerPedidoDePersona, novaPersona } from "./orquestra/personas"
@@ -1946,6 +1947,7 @@ describe("workflows em grafo", () => {
       { id: "c", instrucao: "texto novo" },
     ])
     expect(arquivos).toEqual([{ nome: "plano.md", texto: "Plano novo\n" }])
+    expect(textosEmArquivo(disco)).toEqual({ plano: { instrucao: "plano.md" }, b: { pauta: "b.md" } })
   })
 
   test("valores: troca no texto, avalia regras e confere a devolutiva pelos tipos", () => {
