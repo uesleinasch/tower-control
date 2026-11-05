@@ -147,7 +147,7 @@ class _Cabecalho extends StatelessWidget {
                 Tooltip(
                   message: 'Modo auto: comandos rodam sem pedir aprovação (os sensíveis ainda pedem) e usa $modeloDoAuto',
                   child: FilterChip(
-                    label: Text(chat.auto ? 'auto · $modeloDoAuto' : 'auto'),
+                    label: Text(chat.auto && !compacto ? 'auto · $modeloDoAuto' : 'auto'),
                     selected: chat.auto,
                     onSelected: chat.emCurso ? null : (_) => chat.alternarAuto(),
                     visualDensity: VisualDensity.compact,
