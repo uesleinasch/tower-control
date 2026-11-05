@@ -1,5 +1,6 @@
 import { join } from "node:path"
 import { homedir, tmpdir } from "node:os"
+import { ambienteDoServidor } from "../interface/ambiente"
 import {
   CONFIG_PADRAO_DO_ESPELHO,
   Espelho,
@@ -5016,5 +5017,16 @@ describe("sessão do SDK e CLAUDE_CONFIG_DIR", () => {
       if (antes === undefined) delete process.env.CLAUDE_CONFIG_DIR
       else process.env.CLAUDE_CONFIG_DIR = antes
     }
+  })
+})
+
+describe("ambiente do servidor de teste", () => {
+  test("não herda variáveis do shell que desviam o teste", () => {
+    const env = ambienteDoServidor(
+      { PATH: "/bin", HOME: "/h", CLAUDE_CODE_USE_BEDROCK: "1", CT_IMPORTAR_DE: "/x", CLAUDECODE: "1" },
+      { CT_DADOS: "/d" },
+    )
+    expect(env).toEqual({ PATH: "/bin", HOME: "/h", CT_DADOS: "/d" })
+    expect("CLAUDE_CODE_USE_BEDROCK" in env || "CT_IMPORTAR_DE" in env).toBe(false)
   })
 })

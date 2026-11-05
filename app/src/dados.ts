@@ -1,4 +1,3 @@
-import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { cp, mkdir, readdir, stat } from "node:fs/promises"
 import { diretorioDeSessoes } from "./sessao-sdk"
@@ -64,7 +63,7 @@ async function sessoesReferenciadas(conversas: string): Promise<string[]> {
   return ids
 }
 
-async function copiarSessoes(origem: string, dados: string, home: string): Promise<number> {
+async function copiarSessoes(origem: string, dados: string, home?: string): Promise<number> {
   const de = diretorioDeSessoes(origem, home)
   const para = diretorioDeSessoes(dados, home)
   let copiadas = 0
@@ -93,7 +92,7 @@ export interface Preparo {
 }
 
 export async function prepararDados(opcoes: Preparo): Promise<boolean> {
-  const { dados, modelos, origem, home = homedir() } = opcoes
+  const { dados, modelos, origem, home } = opcoes
   if (await existe(join(dados, MARCADOR))) return false
 
   await mkdir(dados, { recursive: true })

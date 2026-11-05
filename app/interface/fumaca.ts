@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { subirAmbiente } from "./ambiente"
-import type { Regra } from "./falsos/roteiro"
+import type { PedidoRecebido, Regra } from "./falsos/roteiro"
 
 const PRAZO_MS = 60_000
 
@@ -45,14 +45,20 @@ try {
       responde: [{ ferramenta: "Bash", entrada: { command: `echo fumaca > ${alvo}`, description: "fumaça" } }],
     },
     { nome: "alfred-conclui", quando: { resultadoDe: "Bash" }, responde: [{ texto: "feito" }] },
-    { nome: "fundo", quando: {}, responde: [{ texto: "ok" }], fundo: true },
   ]
   await fetch(`${ambiente.modelo}/_controle/roteiro`, {
     method: "POST",
     body: JSON.stringify({ cena: "fumaca", regras }),
   })
 
-  await falar(ambiente)
+  let erroDaConversa: unknown
+  await falar(ambiente).catch((erro) => {
+    erroDaConversa = erro
+  })
+  const pedidos = (await (await fetch(`${ambiente.modelo}/_controle/pedidos?cena=fumaca`)).json()) as PedidoRecebido[]
+  if (!pedidos.some((p) => p.sistema.includes("Alfred") && p.ferramentas.includes("Bash")))
+    throw new Error("o modelo falso não recebeu pedido do Alfred com Bash")
+  if (erroDaConversa) throw erroDaConversa
 
   const conteudo = (await readFile(alvo, "utf8").catch(() => "")).trim()
   if (conteudo !== "fumaca") throw new Error(`fumaca.txt com conteúdo inesperado: "${conteudo}"`)

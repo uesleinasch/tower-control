@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { join } from "node:path"
 import { servirModeloFalso } from "./falsos/modelo"
@@ -13,6 +13,22 @@ export interface Ambiente {
   ticktask: string
   log: { servidor: string }
   encerrar(): Promise<void>
+}
+
+const HERDADAS = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER", "SHELL"]
+
+export function ambienteDoServidor(base: Record<string, string | undefined>, extras: Record<string, string>): Record<string, string> {
+  const herdadas: Record<string, string> = {}
+  for (const nome of HERDADAS) {
+    const valor = base[nome]
+    if (valor !== undefined) herdadas[nome] = valor
+  }
+  return { ...herdadas, ...extras }
+}
+
+async function fimDoLog(log: string): Promise<string> {
+  const texto = await readFile(log, "utf8").catch(() => "")
+  return texto.split("\n").slice(-40).join("\n")
 }
 
 const RAIZ_DO_APP = join(import.meta.dir, "..")
@@ -41,7 +57,7 @@ async function esperarEnderecos(servidor: string, processo: { exitCode: number |
   throw new Error(`servidor de teste não respondeu em 30 s, veja ${log}`)
 }
 
-export async function subirAmbiente(pasta: string): Promise<Ambiente> {
+export async function subirAmbiente(pasta: string, aoIniciar?: (encerrar: () => Promise<void>) => void): Promise<Ambiente> {
   const dados = join(pasta, "dados")
   const claude = join(pasta, "claude")
   await mkdir(dados, { recursive: true })
@@ -59,8 +75,7 @@ export async function subirAmbiente(pasta: string): Promise<Ambiente> {
     cwd: RAIZ_DO_APP,
     stdout: Bun.file(logServidor),
     stderr: Bun.file(logServidor),
-    env: {
-      ...process.env,
+    env: ambienteDoServidor(process.env, {
       CT_DADOS: dados,
       TOWER_PORTA: String(porta),
       CT_TICKTASK_CONFIG: configTickTask,
@@ -69,7 +84,7 @@ export async function subirAmbiente(pasta: string): Promise<Ambiente> {
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${modelo.porta}`,
       ANTHROPIC_API_KEY: "sk-falsa",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-    },
+    }),
   })
 
   const servidor = `http://127.0.0.1:${porta}`
@@ -84,11 +99,14 @@ export async function subirAmbiente(pasta: string): Promise<Ambiente> {
     await rm(pasta, { recursive: true, force: true })
   }
 
+  aoIniciar?.(encerrar)
+
   try {
     await esperarEnderecos(servidor, processo, logServidor)
   } catch (erro) {
+    const fim = await fimDoLog(logServidor)
     await encerrar()
-    throw erro
+    throw new Error(`${(erro as Error).message}\n--- fim do servidor.log ---\n${fim}`)
   }
 
   return {
