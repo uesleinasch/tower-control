@@ -351,6 +351,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
     mensageiro.showSnackBar(SnackBar(
       content: Text(texto),
       duration: const Duration(seconds: 4),
+      persist: false,
       action: desfazerPara == null
           ? null
           : SnackBarAction(label: 'Desfazer', onPressed: () => widget.estado.aplicar((_) => desfazerPara)),

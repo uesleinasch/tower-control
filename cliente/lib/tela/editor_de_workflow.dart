@@ -50,6 +50,7 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
     mensageiro.showSnackBar(SnackBar(
       content: Text(texto),
       duration: const Duration(seconds: 4),
+      persist: false,
       action: desfazer ? SnackBarAction(label: 'Desfazer', onPressed: _e.desfazer) : null,
     ));
   }
