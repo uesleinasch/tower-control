@@ -372,8 +372,9 @@ export function atividade(dados: DadosDoPainel, personaDaExecucao: (id: number) 
   for (const r of dados.registrosRecentes) {
     const tipo = TIPO_DO_REGISTRO[r.tipo]
     if (!tipo) continue
-    const prefixo = r.tipo === "aprovado" ? "aprovou: " : r.tipo === "mudanca" ? "pediu mudança: " : ""
-    itens.push({ em: r.em, tipo, quem: r.autor, texto: cortar(prefixo + r.texto, 300), tarefaId: r.tarefa, equipe: r.equipe })
+    const rotulo = r.tipo === "aprovado" ? "aprovou" : r.tipo === "mudanca" ? "pediu mudança" : ""
+    const texto = !rotulo ? r.texto : r.texto === rotulo ? rotulo : `${rotulo}: ${r.texto}`
+    itens.push({ em: r.em, tipo, quem: r.autor, texto: cortar(texto, 300), tarefaId: r.tarefa, equipe: r.equipe })
   }
   for (const a of dados.auditoria) {
     const execucao = a.quem.match(/^execucao:(\d+)$/)
@@ -454,6 +455,7 @@ export class AssinaturaDoPainel<C> {
 
   assinar(cliente: C): void {
     this.assinantes.add(cliente)
+    this.ultimo = this.relogio()
     this.mandar(cliente, this.montar())
   }
 

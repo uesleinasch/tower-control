@@ -1729,6 +1729,7 @@ describe("painel de controle", () => {
           { ...registro(1, "entrega", "alfred", "fiz", "2026-11-05T09:00:00Z"), equipe: "casa" },
           { ...registro(1, "status", "orquestra", "a fazer → em andamento", "2026-11-05T09:30:00Z"), equipe: "casa" },
           { ...registro(7, "mudanca", "nati", "faltou o teste", "2026-11-05T09:40:00Z"), equipe: "casa" },
+          { ...registro(1, "aprovado", "ueslei", "aprovou", "2026-11-05T09:45:00Z"), equipe: "casa" },
         ],
         auditoria: [{ id: 1, em: "2026-11-05T09:50:00Z", quem: "execucao:4", acao: "delegou direto", alvo: "tarefa:5", detalhe: "" }],
         disparos: [{ id: 1, equipe: "casa", rotina: "plano", origem: "cron", horario: null, em: "2026-11-05T09:55:00Z", resultado: "criada", motivo: "", tarefa: 1 }],
@@ -1738,6 +1739,7 @@ describe("painel de controle", () => {
     expect(itens.map((a) => [a.tipo, a.quem, a.texto, a.tarefaId])).toEqual([
       ["disparo", "Plano do dia", "cron: criou a #1", 1],
       ["auditoria", "nati", "delegou direto · tarefa:5", 5],
+      ["decisao", "ueslei", "aprovou", 1],
       ["decisao", "nati", "pediu mudança: faltou o teste", 7],
       ["entrega", "alfred", "fiz", 1],
     ])
@@ -1762,28 +1764,31 @@ describe("painel de controle", () => {
         return montarRetrato(dados({ comandos: [], tarefas: [], rotinas: [] }))
       },
       (cliente) => recebidos.push(cliente),
-      40,
+      100,
     )
     assinatura.mudou()
-    await Bun.sleep(60)
+    await Bun.sleep(30)
     expect(montagens).toBe(0)
     assinatura.assinar("web")
     expect(recebidos).toEqual(["web"])
     assinatura.mudou()
     assinatura.mudou()
     assinatura.mudou()
-    await Bun.sleep(20)
-    expect(recebidos).toEqual(["web", "web"])
-    assinatura.mudou()
-    await Bun.sleep(10)
+    await Bun.sleep(30)
+    expect(recebidos).toHaveLength(1)
+    await Bun.sleep(100)
     expect(recebidos).toHaveLength(2)
-    await Bun.sleep(60)
+    assinatura.mudou()
+    await Bun.sleep(30)
+    expect(recebidos).toHaveLength(2)
+    await Bun.sleep(100)
     expect(recebidos).toHaveLength(3)
     assinatura.sair("web")
     assinatura.mudou()
-    await Bun.sleep(60)
+    await Bun.sleep(130)
     expect(recebidos).toHaveLength(3)
   })
+
 })
 
 describe("conselheiro e executor", () => {
