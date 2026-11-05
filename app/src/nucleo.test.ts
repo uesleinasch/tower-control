@@ -38,7 +38,16 @@ import {
   validarEquipe,
   validarPersona,
 } from "./orquestra/equipe"
-import { carregarElenco, definirElenco, gravarEquipe, lerElenco, migrarParaPersonas } from "./orquestra/elenco"
+import {
+  carregarElenco,
+  conferirVersao,
+  definirElenco,
+  devolverAosArquivos,
+  gravarEquipe,
+  lerElenco,
+  migrarParaPersonas,
+  versaoNoDisco,
+} from "./orquestra/elenco"
 import { criarPersona, excluirPersona, lerPedidoDePersona, novaPersona } from "./orquestra/personas"
 import { montarSystemPrompt as promptDaPosicao } from "./prompt"
 import { lerNovaTarefa, podeMudar } from "./orquestra/tarefa"
@@ -51,7 +60,7 @@ import { Orquestra } from "./orquestra/runtime"
 import { lerCron, menorIntervaloEmMinutos, proximoHorario, proximosHorarios, ultimoHorarioEntre } from "./orquestra/cron"
 import { LIMITE_DO_CORPO, descricaoComDados, horarioDevido, planoDoDisparo, tituloDaTarefa, validarRotina } from "./orquestra/rotinas"
 import { Agendador } from "./orquestra/agendador"
-import { avaliar, corrente, etapasDaCorrente, interpolar, validarValores, validarWorkflow } from "./orquestra/workflow"
+import { avaliar, corrente, errosDoWorkflow, etapasDaCorrente, interpolar, validarValores, validarWorkflow } from "./orquestra/workflow"
 import { Motor, SEM_DEVOLUCAO } from "./orquestra/motor"
 import { AssinaturaDoPainel, atividade, cartoesDePersonas, itensDeAtencao, montarRetrato, motivoDaEspera, type DadosDoPainel } from "./orquestra/painel"
 import type { Registro, Tarefa } from "./orquestra/tarefa"
@@ -1884,6 +1893,59 @@ describe("workflows em grafo", () => {
     expect(erroDe((w) => w.nos.push({ id: "espera", tipo: "espera", duracao: "1h", sinal: "x" } as never))).toContain(
       "use exatamente um de duracao, ate e sinal",
     )
+  })
+
+  test("os casos compartilhados com o editor do desktop", async () => {
+    const casos = (await Bun.file(join(import.meta.dir, "../../docs/workflows-casos.json")).json()) as {
+      personas: string[]
+      equipes: Record<string, unknown>
+      bases: Record<string, unknown>
+      casos: { nome: string; base: string; equipe?: string; mudar?: Record<string, unknown>[]; erros: string[] }[]
+    }
+    const equipes = Object.fromEntries(
+      Object.entries(casos.equipes).map(([id, e]) => [id, validarEquipe(e, new Set(casos.personas))]),
+    )
+    const lugar = (erro: string) => /^workflow [^:]*: caixa ([a-z][a-z0-9-]*):/.exec(erro)?.[1] ?? "workflow"
+    for (const caso of casos.casos) {
+      const w = aplicarMudancas(structuredClone(casos.bases[caso.base]), caso.mudar ?? [])
+      const erros = errosDoWorkflow(w, equipes[caso.equipe ?? "casa"]!)
+      const lugares = new Set(erros.map(lugar))
+      if (!caso.erros.length) expect({ caso: caso.nome, erros }).toEqual({ caso: caso.nome, erros: [] })
+      for (const esperado of caso.erros) expect({ caso: caso.nome, tem: lugares.has(esperado), erros }).toMatchObject({ tem: true })
+    }
+  })
+
+  test("chave que o formato não conhece sobrevive à validação", () => {
+    const w = exemplo() as Record<string, unknown>
+    w.descricao = "à mão"
+    ;(w.nos as Record<string, unknown>[])[0]!.cor = "azul"
+    const lido = validarWorkflow(w, equipe) as unknown as Record<string, unknown>
+    expect(lido.descricao).toBe("à mão")
+    expect((lido.nos as Record<string, unknown>[])[0]).toMatchObject({ id: "plano", cor: "azul", posicao: "conselho-nati" })
+  })
+
+  test("salvar confere a versão aberta e devolve os textos aos arquivos", () => {
+    const disco = { id: "w", versao: 3, nos: [{ id: "plano", instrucao: "@plano.md", criterio: "curto" }, { id: "b", pauta: "@b.md" }] }
+    expect(() => conferirVersao(disco, "w", 3)).not.toThrow()
+    expect(() => conferirVersao(disco, "w", 2)).toThrow("mudou desde que você abriu (versão 3 no disco, 2 no editor)")
+    expect(() => conferirVersao(disco, "w", undefined)).toThrow("já existe um workflow com o id w")
+    expect(() => conferirVersao(null, "w", 0)).not.toThrow()
+    expect(() => conferirVersao(null, "w", 4)).toThrow("o workflow w não existe mais")
+    expect(versaoNoDisco({ id: "w" })).toBe(1)
+    const { json, arquivos } = devolverAosArquivos(disco, {
+      id: "w",
+      nos: [
+        { id: "plano", instrucao: "Plano novo", criterio: "longo" },
+        { id: "b", pauta: "@b.md" },
+        { id: "c", instrucao: "texto novo" },
+      ],
+    })
+    expect(json.nos).toEqual([
+      { id: "plano", instrucao: "@plano.md", criterio: "longo" },
+      { id: "b", pauta: "@b.md" },
+      { id: "c", instrucao: "texto novo" },
+    ])
+    expect(arquivos).toEqual([{ nome: "plano.md", texto: "Plano novo\n" }])
   })
 
   test("valores: troca no texto, avalia regras e confere a devolutiva pelos tipos", () => {
@@ -4191,3 +4253,27 @@ describe("lembretes: motor", () => {
       }
     }))
 })
+
+function aplicarMudancas(alvo: unknown, mudancas: Record<string, unknown>[]): unknown {
+  const passos = (caminho: string) => caminho.split(".").map((p) => (/^\d+$/.test(p) ? Number(p) : p))
+  const ate = (caminho: string) => {
+    const ps = passos(caminho)
+    let atual = alvo as Record<string | number, unknown>
+    for (const p of ps.slice(0, -1)) atual = atual[p] as Record<string | number, unknown>
+    return { pai: atual, chave: ps.at(-1)! }
+  }
+  for (const m of mudancas) {
+    if (typeof m.definir === "string") {
+      const { pai, chave } = ate(m.definir)
+      pai[chave] = structuredClone(m.valor)
+    } else if (typeof m.acrescentar === "string") {
+      const { pai, chave } = ate(m.acrescentar)
+      ;(pai[chave] as unknown[]).push(structuredClone(m.valor))
+    } else if (typeof m.remover === "string") {
+      const { pai, chave } = ate(m.remover)
+      if (Array.isArray(pai)) pai.splice(chave as number, 1)
+      else delete pai[chave]
+    }
+  }
+  return alvo
+}

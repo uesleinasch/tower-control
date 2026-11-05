@@ -1,0 +1,237 @@
+{
+  "sobre": "Casos de validação de workflow rodados no bun test (validarWorkflow) e no flutter test (espelho do editor). Cada caso parte de uma base, aplica as mudanças em ordem e lista onde precisa haver erro: \"workflow\" ou o id da caixa. Lista vazia: o workflow é aceito. Mudanças: definir (caminho, valor), acrescentar (lista, valor) e remover (caminho); o caminho separa chaves e índices por ponto.",
+  "personas": ["alfred", "nati", "pami", "lucas"],
+  "equipes": {
+    "casa": {
+      "id": "casa",
+      "nome": "Casa",
+      "posicoes": [
+        { "id": "executor", "titulo": "executor", "persona": "alfred", "capacidades": ["arquivos"] },
+        { "id": "conselho-nati", "titulo": "engenheira", "persona": "nati", "capacidades": ["arquivos", "board"] },
+        { "id": "conselho-pami", "titulo": "projetista", "persona": "pami", "capacidades": ["arquivos", "board"] },
+        { "id": "vaga", "titulo": "vaga", "persona": null, "capacidades": ["arquivos"] }
+      ]
+    },
+    "sem-board": {
+      "id": "sem-board",
+      "nome": "Sem board",
+      "posicoes": [
+        { "id": "executor", "titulo": "executor", "persona": "alfred", "capacidades": ["arquivos"] },
+        { "id": "conselho-nati", "titulo": "engenheira", "persona": "nati", "capacidades": ["arquivos"] },
+        { "id": "conselho-pami", "titulo": "projetista", "persona": "pami", "capacidades": ["arquivos"] }
+      ]
+    }
+  },
+  "bases": {
+    "exemplo": {
+      "id": "mudanca-com-plano",
+      "nome": "Mudança com plano",
+      "entrada": { "pedido": "texto" },
+      "inicio": "plano",
+      "nos": [
+        { "id": "plano", "tipo": "executar", "posicao": "conselho-nati", "instrucao": "Escreva um plano para: {{entrada.pedido}}", "criterio": "Passos numerados e os riscos.", "saidas": { "plano": "texto", "risco": { "escolha": ["baixo", "alto"] } } },
+        { "id": "risco", "tipo": "condicao", "regras": [{ "campo": "plano.risco", "op": "igual", "valor": "alto", "saida": "alto" }] },
+        { "id": "ok", "tipo": "decisao_humana", "pergunta": "Risco alto. Seguir?", "opcoes": ["seguir", "parar"] },
+        { "id": "frente", "tipo": "paralelo" },
+        { "id": "executa", "tipo": "executar", "posicao": "executor", "instrucao": "Execute: {{plano.plano}}" },
+        { "id": "revisa", "tipo": "revisar", "de": "executa", "por": { "posicao": "conselho-nati" } },
+        { "id": "nota", "tipo": "executar", "posicao": "conselho-pami", "instrucao": "Escreva a nota de mudança de: {{plano.plano}}" },
+        { "id": "junta", "tipo": "juncao" },
+        { "id": "fim", "tipo": "fim" },
+        { "id": "parou", "tipo": "fim", "resultado": "cancelado pelo Ueslei" }
+      ],
+      "arestas": [
+        { "de": "plano", "para": "risco" },
+        { "de": "risco", "para": "ok", "quando": "alto" },
+        { "de": "risco", "para": "frente", "quando": "senao" },
+        { "de": "ok", "para": "frente", "quando": "seguir" },
+        { "de": "ok", "para": "parou", "quando": "parar" },
+        { "de": "frente", "para": "executa" },
+        { "de": "frente", "para": "nota" },
+        { "de": "executa", "para": "revisa" },
+        { "de": "revisa", "para": "junta", "quando": "aprovado" },
+        { "de": "nota", "para": "junta" },
+        { "de": "junta", "para": "fim" }
+      ]
+    },
+    "laco": {
+      "id": "texto-com-nota",
+      "nome": "Texto até ficar bom",
+      "entrada": { "pedido": "texto" },
+      "inicio": "rascunho",
+      "nos": [
+        { "id": "rascunho", "tipo": "executar", "posicao": "conselho-nati", "instrucao": "Escreva: {{entrada.pedido}}", "saidas": { "nota": "numero", "pronto": "booleano" } },
+        { "id": "volta", "tipo": "laco", "maxVoltas": 3, "enquanto": { "campo": "rascunho.nota", "op": "menor", "valor": 8 } },
+        { "id": "fim", "tipo": "fim" }
+      ],
+      "arestas": [
+        { "de": "rascunho", "para": "volta" },
+        { "de": "volta", "para": "rascunho", "quando": "repetir" },
+        { "de": "volta", "para": "fim", "quando": "sair" }
+      ]
+    }
+  },
+  "casos": [
+    { "nome": "o exemplo da fase 9 é aceito", "base": "exemplo", "erros": [] },
+    { "nome": "o laço com nota é aceito", "base": "laco", "erros": [] },
+    { "nome": "chave desconhecida é aceita", "base": "exemplo", "mudar": [{ "definir": "descricao", "valor": "escrito à mão" }, { "definir": "nos.0.cor", "valor": "azul" }], "erros": [] },
+    { "nome": "prazo, espera com prazo e board com opções são aceitos", "base": "exemplo", "mudar": [
+      { "definir": "nos.0.prazo", "valor": "2h" },
+      { "acrescentar": "nos", "valor": { "id": "aguarda", "tipo": "espera", "sinal": "deploy", "prazo": "1d" } },
+      { "acrescentar": "nos", "valor": { "id": "conselho", "tipo": "board", "pauta": "Vale seguir com {{plano.plano}}?", "opcoes": ["sim", "não"] } },
+      { "definir": "arestas.10.para", "valor": "aguarda" },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "conselho", "quando": "pronto" } },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "fim", "quando": "prazo" } },
+      { "acrescentar": "arestas", "valor": { "de": "conselho", "para": "fim", "quando": "sim" } },
+      { "acrescentar": "arestas", "valor": { "de": "conselho", "para": "parou", "quando": "não" } }
+    ], "erros": [] },
+    { "nome": "revisão pelo board e aprovação do Ueslei são aceitas", "base": "exemplo", "mudar": [
+      { "definir": "nos.5.por", "valor": { "board": true } },
+      { "acrescentar": "nos", "valor": { "id": "aprova", "tipo": "aprovar", "de": "executa", "por": { "ueslei": true } } },
+      { "definir": "arestas.8.para", "valor": "aprova" },
+      { "acrescentar": "arestas", "valor": { "de": "aprova", "para": "junta", "quando": "aprovado" } }
+    ], "erros": [] },
+
+    { "nome": "id do workflow inválido", "base": "exemplo", "mudar": [{ "definir": "id", "valor": "Mudança" }], "erros": ["workflow"] },
+    { "nome": "nome vazio", "base": "exemplo", "mudar": [{ "definir": "nome", "valor": "  " }], "erros": ["workflow"] },
+    { "nome": "entrada com tipo inválido", "base": "exemplo", "mudar": [{ "definir": "entrada.prazo", "valor": "data" }], "erros": ["workflow"] },
+    { "nome": "entrada com nome de campo inválido", "base": "exemplo", "mudar": [{ "definir": "entrada.pra-zo", "valor": "texto" }], "erros": ["workflow"] },
+    { "nome": "início inexistente", "base": "exemplo", "mudar": [{ "definir": "inicio", "valor": "comeco" }], "erros": ["workflow"] },
+    { "nome": "sem caixas", "base": "exemplo", "mudar": [{ "definir": "nos", "valor": [] }, { "definir": "arestas", "valor": [] }], "erros": ["workflow"] },
+    { "nome": "id de caixa inválido", "base": "exemplo", "mudar": [{ "definir": "nos.9.id", "valor": "Parou" }], "erros": ["workflow"] },
+    { "nome": "id de caixa repetido", "base": "exemplo", "mudar": [{ "definir": "nos.9.id", "valor": "fim" }], "erros": ["fim"] },
+    { "nome": "id de caixa reservado", "base": "exemplo", "mudar": [{ "acrescentar": "nos", "valor": { "id": "entrada", "tipo": "fim" } }, { "definir": "arestas.10.para", "valor": "entrada" }], "erros": ["entrada"] },
+    { "nome": "tipo de caixa desconhecido", "base": "exemplo", "mudar": [{ "definir": "nos.9.tipo", "valor": "parar" }], "erros": ["parou"] },
+    { "nome": "prazo inválido", "base": "exemplo", "mudar": [{ "definir": "nos.0.prazo", "valor": "2 horas" }], "erros": ["plano"] },
+
+    { "nome": "executar sem instrução", "base": "exemplo", "mudar": [{ "definir": "nos.4.instrucao", "valor": "" }], "erros": ["executa"] },
+    { "nome": "executar com posição inexistente", "base": "exemplo", "mudar": [{ "definir": "nos.4.posicao", "valor": "fantasma" }], "erros": ["executa"] },
+    { "nome": "saída com tipo inválido", "base": "exemplo", "mudar": [{ "definir": "nos.0.saidas.risco", "valor": { "escolha": ["alto"] } }], "erros": ["plano"] },
+    { "nome": "saída com nome inválido", "base": "exemplo", "mudar": [{ "definir": "nos.0.saidas.meu risco", "valor": "texto" }], "erros": ["plano"] },
+    { "nome": "saída devolutiva é reservada", "base": "exemplo", "mudar": [{ "definir": "nos.0.saidas.devolutiva", "valor": "texto" }], "erros": ["plano"] },
+
+    { "nome": "revisar sem quem decide", "base": "exemplo", "mudar": [{ "definir": "nos.5.por", "valor": {} }], "erros": ["revisa"] },
+    { "nome": "revisar pelo Ueslei não existe", "base": "exemplo", "mudar": [{ "definir": "nos.5.por", "valor": { "ueslei": true } }], "erros": ["revisa"] },
+    { "nome": "revisar com de que não é executar", "base": "exemplo", "mudar": [{ "definir": "nos.5.de", "valor": "frente" }], "erros": ["revisa"] },
+    { "nome": "revisar que não vem logo depois do executar", "base": "exemplo", "mudar": [{ "definir": "nos.5.de", "valor": "nota" }], "erros": ["revisa"] },
+    { "nome": "revisar por posição inexistente", "base": "exemplo", "mudar": [{ "definir": "nos.5.por", "valor": { "posicao": "fantasma" } }], "erros": ["revisa"] },
+    { "nome": "revisão pela mesma persona que executa", "base": "exemplo", "mudar": [{ "definir": "nos.5.por", "valor": { "posicao": "executor" } }], "erros": ["revisa"] },
+    { "nome": "revisão pelo board sem membros", "base": "exemplo", "equipe": "sem-board", "mudar": [{ "definir": "nos.5.por", "valor": { "board": true } }], "erros": ["revisa"] },
+    { "nome": "duas aprovações na corrente", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aprova", "tipo": "aprovar", "de": "executa", "por": { "ueslei": true } } },
+      { "acrescentar": "nos", "valor": { "id": "aprova2", "tipo": "aprovar", "de": "executa", "por": { "posicao": "conselho-pami" } } },
+      { "definir": "arestas.8.para", "valor": "aprova" },
+      { "acrescentar": "arestas", "valor": { "de": "aprova", "para": "aprova2", "quando": "aprovado" } },
+      { "acrescentar": "arestas", "valor": { "de": "aprova2", "para": "junta", "quando": "aprovado" } }
+    ], "erros": ["executa"] },
+    { "nome": "aprovação que não é a última da corrente", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aprova", "tipo": "aprovar", "de": "executa", "por": { "ueslei": true } } },
+      { "definir": "arestas.7.para", "valor": "aprova" },
+      { "acrescentar": "arestas", "valor": { "de": "aprova", "para": "revisa", "quando": "aprovado" } }
+    ], "erros": ["executa"] },
+
+    { "nome": "decisão humana sem pergunta", "base": "exemplo", "mudar": [{ "definir": "nos.2.pergunta", "valor": "" }], "erros": ["ok"] },
+    { "nome": "decisão humana com uma opção só", "base": "exemplo", "mudar": [{ "definir": "nos.2.opcoes", "valor": ["seguir"] }], "erros": ["ok"] },
+    { "nome": "decisão humana com opções repetidas", "base": "exemplo", "mudar": [{ "definir": "nos.2.opcoes", "valor": ["seguir", "seguir"] }], "erros": ["ok"] },
+    { "nome": "opção sem ligação", "base": "exemplo", "mudar": [{ "remover": "arestas.4" }], "erros": ["ok"] },
+    { "nome": "ligação de saída repetida", "base": "exemplo", "mudar": [{ "acrescentar": "arestas", "valor": { "de": "ok", "para": "fim", "quando": "parar" } }], "erros": ["ok"] },
+
+    { "nome": "condição sem regras", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras", "valor": [] }], "erros": ["risco"] },
+    { "nome": "regra com saída senao", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras.0.saida", "valor": "senao" }], "erros": ["risco"] },
+    { "nome": "regra com op inválida", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras.0.op", "valor": "parecido" }], "erros": ["risco"] },
+    { "nome": "regra sem valor", "base": "exemplo", "mudar": [{ "remover": "nos.1.regras.0.valor" }], "erros": ["risco"] },
+    { "nome": "regra com campo inválido", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras.0.campo", "valor": "risco" }], "erros": ["risco"] },
+    { "nome": "regra com caixa inexistente", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras.0.campo", "valor": "orcamento.risco" }], "erros": ["risco"] },
+    { "nome": "regra com valor fora das escolhas", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras.0.valor", "valor": "médio" }], "erros": ["risco"] },
+    { "nome": "maior em campo que não é número", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras.0.op", "valor": "maior" }], "erros": ["risco"] },
+    { "nome": "regra vazio sem valor é aceita", "base": "exemplo", "mudar": [{ "definir": "nos.1.regras.0", "valor": { "campo": "plano.plano", "op": "vazio", "saida": "alto" } }], "erros": [] },
+    { "nome": "quando inválido na saída da condição", "base": "exemplo", "mudar": [{ "definir": "arestas.1.quando", "valor": "talvez" }], "erros": ["risco"] },
+    { "nome": "condição sem a ligação senao", "base": "exemplo", "mudar": [{ "remover": "arestas.2" }], "erros": ["risco"] },
+
+    { "nome": "paralelo com uma ligação só", "base": "exemplo", "mudar": [{ "remover": "arestas.6" }], "erros": ["frente"] },
+    { "nome": "paralelo com quando", "base": "exemplo", "mudar": [{ "definir": "arestas.5.quando", "valor": "a" }], "erros": ["frente"] },
+    { "nome": "junção com uma ligação entrando", "base": "exemplo", "mudar": [{ "definir": "arestas.9.para", "valor": "fim" }], "erros": ["junta"] },
+    { "nome": "executar sem ligação de saída", "base": "exemplo", "mudar": [{ "remover": "arestas.9" }], "erros": ["nota"] },
+    { "nome": "fim com ligação saindo", "base": "exemplo", "mudar": [{ "acrescentar": "arestas", "valor": { "de": "parou", "para": "fim" } }], "erros": ["parou"] },
+    { "nome": "ligação de caixa inexistente", "base": "exemplo", "mudar": [{ "acrescentar": "arestas", "valor": { "de": "fantasma", "para": "fim" } }], "erros": ["workflow"] },
+    { "nome": "ligação para caixa inexistente", "base": "exemplo", "mudar": [{ "acrescentar": "arestas", "valor": { "de": "parou", "para": "fantasma" } }], "erros": ["workflow"] },
+    { "nome": "caixa inalcançável", "base": "exemplo", "mudar": [{ "acrescentar": "nos", "valor": { "id": "solta", "tipo": "fim" } }], "erros": ["solta"] },
+    { "nome": "ciclo que não passa por laço", "base": "exemplo", "mudar": [
+      { "definir": "nos.8", "valor": { "id": "fim", "tipo": "executar", "posicao": "executor", "instrucao": "De novo" } },
+      { "acrescentar": "arestas", "valor": { "de": "fim", "para": "plano" } }
+    ], "erros": ["workflow"] },
+
+    { "nome": "texto que usa caixa que não vem antes", "base": "exemplo", "mudar": [{ "definir": "nos.4.instrucao", "valor": "Execute: {{nota.devolutiva}}" }], "erros": ["executa"] },
+    { "nome": "texto que usa a própria caixa", "base": "exemplo", "mudar": [{ "definir": "nos.4.instrucao", "valor": "Execute: {{executa.devolutiva}}" }], "erros": ["executa"] },
+    { "nome": "texto que usa saída não declarada", "base": "exemplo", "mudar": [{ "definir": "nos.4.instrucao", "valor": "Execute: {{plano.custo}}" }], "erros": ["executa"] },
+    { "nome": "texto que usa entrada inexistente", "base": "exemplo", "mudar": [{ "definir": "nos.0.criterio", "valor": "Até {{entrada.prazo}}" }], "erros": ["plano"] },
+    { "nome": "texto que usa caixa inexistente", "base": "exemplo", "mudar": [{ "definir": "nos.2.pergunta", "valor": "Seguir com {{orcamento.valor}}?" }], "erros": ["ok"] },
+    { "nome": "texto que usa saída de caixa sem saídas", "base": "exemplo", "mudar": [{ "definir": "nos.6.instrucao", "valor": "Nota de {{plano.plano}} ({{risco.x}})" }], "erros": ["nota"] },
+
+    { "nome": "laço sem maxVoltas", "base": "laco", "mudar": [{ "remover": "nos.1.maxVoltas" }], "erros": ["volta"] },
+    { "nome": "laço com maxVoltas acima de 20", "base": "laco", "mudar": [{ "definir": "nos.1.maxVoltas", "valor": 30 }], "erros": ["volta"] },
+    { "nome": "laço sem enquanto", "base": "laco", "mudar": [{ "remover": "nos.1.enquanto" }], "erros": ["volta"] },
+    { "nome": "laço sem a ligação sair", "base": "laco", "mudar": [{ "remover": "arestas.2" }], "erros": ["volta"] },
+    { "nome": "valor de número escrito como texto", "base": "laco", "mudar": [{ "definir": "nos.1.enquanto.valor", "valor": "8" }], "erros": ["volta"] },
+    { "nome": "valor de sim/não escrito como texto", "base": "laco", "mudar": [{ "definir": "nos.1.enquanto", "valor": { "campo": "rascunho.pronto", "op": "igual", "valor": "sim" } }], "erros": ["volta"] },
+    { "nome": "paralelo e junção dentro do laço", "base": "laco", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "leque", "tipo": "paralelo" } },
+      { "acrescentar": "nos", "valor": { "id": "a", "tipo": "executar", "posicao": "executor", "instrucao": "A" } },
+      { "acrescentar": "nos", "valor": { "id": "b", "tipo": "executar", "posicao": "conselho-pami", "instrucao": "B" } },
+      { "acrescentar": "nos", "valor": { "id": "junta", "tipo": "juncao" } },
+      { "definir": "arestas.0.para", "valor": "leque" },
+      { "acrescentar": "arestas", "valor": { "de": "leque", "para": "a" } },
+      { "acrescentar": "arestas", "valor": { "de": "leque", "para": "b" } },
+      { "acrescentar": "arestas", "valor": { "de": "a", "para": "junta" } },
+      { "acrescentar": "arestas", "valor": { "de": "b", "para": "junta" } },
+      { "acrescentar": "arestas", "valor": { "de": "junta", "para": "volta" } }
+    ], "erros": ["leque", "junta"] },
+
+    { "nome": "espera com duas formas", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aguarda", "tipo": "espera", "duracao": "1h", "sinal": "x" } },
+      { "definir": "arestas.10.para", "valor": "aguarda" },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "fim", "quando": "pronto" } }
+    ], "erros": ["aguarda"] },
+    { "nome": "espera sem forma", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aguarda", "tipo": "espera" } },
+      { "definir": "arestas.10.para", "valor": "aguarda" },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "fim", "quando": "pronto" } }
+    ], "erros": ["aguarda"] },
+    { "nome": "espera com duração inválida", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aguarda", "tipo": "espera", "duracao": "1 semana" } },
+      { "definir": "arestas.10.para", "valor": "aguarda" },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "fim", "quando": "pronto" } }
+    ], "erros": ["aguarda"] },
+    { "nome": "espera com horário inválido", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aguarda", "tipo": "espera", "ate": "25:00" } },
+      { "definir": "arestas.10.para", "valor": "aguarda" },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "fim", "quando": "pronto" } }
+    ], "erros": ["aguarda"] },
+    { "nome": "espera com sinal vazio", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aguarda", "tipo": "espera", "sinal": " " } },
+      { "definir": "arestas.10.para", "valor": "aguarda" },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "fim", "quando": "pronto" } }
+    ], "erros": ["aguarda"] },
+    { "nome": "espera com prazo sem a ligação prazo", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "aguarda", "tipo": "espera", "sinal": "deploy", "prazo": "1d" } },
+      { "definir": "arestas.10.para", "valor": "aguarda" },
+      { "acrescentar": "arestas", "valor": { "de": "aguarda", "para": "fim", "quando": "pronto" } }
+    ], "erros": ["aguarda"] },
+
+    { "nome": "board sem pauta", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "conselho", "tipo": "board", "pauta": "" } },
+      { "definir": "arestas.10.para", "valor": "conselho" },
+      { "acrescentar": "arestas", "valor": { "de": "conselho", "para": "fim" } }
+    ], "erros": ["conselho"] },
+    { "nome": "board sem membros", "base": "exemplo", "equipe": "sem-board", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "conselho", "tipo": "board", "pauta": "Seguir?" } },
+      { "definir": "arestas.10.para", "valor": "conselho" },
+      { "acrescentar": "arestas", "valor": { "de": "conselho", "para": "fim" } }
+    ], "erros": ["conselho"] },
+    { "nome": "board com opções sem ligação de cada uma", "base": "exemplo", "mudar": [
+      { "acrescentar": "nos", "valor": { "id": "conselho", "tipo": "board", "pauta": "Seguir?", "opcoes": ["sim", "não"] } },
+      { "definir": "arestas.10.para", "valor": "conselho" },
+      { "acrescentar": "arestas", "valor": { "de": "conselho", "para": "fim", "quando": "sim" } }
+    ], "erros": ["conselho"] }
+  ]
+}

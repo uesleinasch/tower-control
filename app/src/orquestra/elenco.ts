@@ -205,8 +205,62 @@ export async function validarWorkflowDaEquipe(raiz: string, equipe: Equipe, brut
   return validarWorkflow(await comTextos(raiz, equipe.id, id, bruto), equipe)
 }
 
-export async function gravarWorkflow(raiz: string, equipe: string, bruto: Record<string, unknown>): Promise<void> {
-  await gravarJson(caminhoDoWorkflow(raiz, equipe, String(bruto.id)), bruto)
+export async function lerWorkflowDoDisco(raiz: string, equipe: string, id: string): Promise<Record<string, unknown> | null> {
+  const arquivo = Bun.file(caminhoDoWorkflow(raiz, equipe, id))
+  if (!(await arquivo.exists())) return null
+  return (await arquivo.json()) as Record<string, unknown>
+}
+
+export function versaoNoDisco(disco: Record<string, unknown> | null): number {
+  if (!disco) return 0
+  return typeof disco.versao === "number" && Number.isInteger(disco.versao) && disco.versao > 0 ? disco.versao : 1
+}
+
+export function conferirVersao(disco: Record<string, unknown> | null, id: string, base: unknown): void {
+  const noDisco = versaoNoDisco(disco)
+  const aberta = typeof base === "number" && Number.isInteger(base) && base > 0 ? base : 0
+  if (noDisco && !aberta) throw new Error(`já existe um workflow com o id ${id}`)
+  if (!noDisco && aberta) throw new Error(`o workflow ${id} não existe mais`)
+  if (noDisco !== aberta) throw new Error(`o workflow ${id} mudou desde que você abriu (versão ${noDisco} no disco, ${aberta} no editor)`)
+}
+
+// O cliente recebe o texto lido do @arquivo.md e devolve texto: o que era arquivo continua arquivo.
+export function devolverAosArquivos(
+  disco: Record<string, unknown> | null,
+  novo: Record<string, unknown>,
+): { json: Record<string, unknown>; arquivos: { nome: string; texto: string }[] } {
+  const antigas = new Map<string, Record<string, unknown>>()
+  for (const no of Array.isArray(disco?.nos) ? disco.nos : []) {
+    if (no && typeof no === "object") antigas.set(String((no as { id?: unknown }).id), no as Record<string, unknown>)
+  }
+  const arquivos: { nome: string; texto: string }[] = []
+  const nos = (Array.isArray(novo.nos) ? novo.nos : []).map((no) => {
+    if (!no || typeof no !== "object") return no
+    const copia = { ...(no as Record<string, unknown>) }
+    const antiga = antigas.get(String(copia.id))
+    for (const campo of CAMPOS_DE_TEXTO) {
+      const era = antiga?.[campo]
+      const m = typeof era === "string" ? ARQUIVO_DE_TEXTO.exec(era.trim()) : null
+      const valor = copia[campo]
+      if (!m || typeof valor !== "string" || ARQUIVO_DE_TEXTO.test(valor.trim())) continue
+      arquivos.push({ nome: m[1]!, texto: valor.endsWith("\n") ? valor : `${valor}\n` })
+      copia[campo] = `@${m[1]}`
+    }
+    return copia
+  })
+  return { json: { ...novo, nos }, arquivos }
+}
+
+export async function gravarWorkflow(
+  raiz: string,
+  equipe: string,
+  bruto: Record<string, unknown>,
+  disco: Record<string, unknown> | null = null,
+): Promise<void> {
+  const id = String(bruto.id)
+  const { json, arquivos } = devolverAosArquivos(disco, bruto)
+  for (const { nome, texto } of arquivos) await Bun.write(join(raiz, "equipes", equipe, "workflows", id, nome), texto)
+  await gravarJson(caminhoDoWorkflow(raiz, equipe, id), json)
 }
 
 export async function apagarWorkflow(raiz: string, equipe: string, id: string): Promise<void> {

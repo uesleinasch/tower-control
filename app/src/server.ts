@@ -11,7 +11,10 @@ import {
   gravarEquipe,
   gravarPersona,
   gravarRotina,
+  conferirVersao,
   gravarWorkflow,
+  lerWorkflowDoDisco,
+  versaoNoDisco,
   lerRotinas,
   lerWorkflows,
   migrarParaPersonas,
@@ -360,10 +363,14 @@ function publicarFluxos(): void {
 async function salvarWorkflow(equipeId: unknown, bruto: unknown): Promise<void> {
   const equipe = equipeDaRotina(equipeId)
   if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) throw new Error("workflow inválido")
-  const antes = MOTOR.definicao(equipe.id, String((bruto as { id?: unknown }).id ?? ""))
-  const cru = { ...(bruto as Record<string, unknown>), versao: (antes?.versao ?? 0) + 1 }
+  const { equipe: _equipe, ...recebido } = bruto as Record<string, unknown>
+  const id = String(recebido.id ?? "")
+  const disco = slugValido(id) ? await lerWorkflowDoDisco(RAIZ, equipe.id, id) : null
+  conferirVersao(disco, id, recebido.versao)
+  const antes = MOTOR.definicao(equipe.id, id)
+  const cru = { ...recebido, versao: versaoNoDisco(disco) + 1 }
   const workflow = await validarWorkflowDaEquipe(RAIZ, equipe, cru)
-  await gravarWorkflow(RAIZ, equipe.id, cru)
+  await gravarWorkflow(RAIZ, equipe.id, cru, disco)
   MOTOR.definir(equipe.id, workflow)
   await registrarNoGit(RAIZ, `workflow ${workflow.nome} ${antes ? "editado" : "criado"} (versão ${workflow.versao})`)
   publicarFluxos()

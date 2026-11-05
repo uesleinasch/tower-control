@@ -212,7 +212,23 @@ function lerOpcoes(bruto: unknown, onde: string): string[] {
   return opcoes
 }
 
+const CHAVES_DO_WORKFLOW = new Set(["id", "nome", "versao", "entrada", "inicio", "nos", "arestas", "layout", "equipe"])
+const CHAVES_DE_CAIXA = new Set([
+  "id", "tipo", "titulo", "prazo", "posicao", "instrucao", "criterio", "saidas", "de", "por", "pergunta", "opcoes",
+  "regras", "maxVoltas", "enquanto", "duracao", "ate", "sinal", "pauta", "resultado",
+])
+
+// Chaves que o formato não conhece voltam ao cliente e ao disco como vieram: o editor do desktop
+// não pode apagar o que foi escrito à mão.
+function desconhecidas(bruto: Record<string, unknown>, conhecidas: Set<string>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(bruto).filter(([k]) => !conhecidas.has(k)))
+}
+
 function lerNo(bruto: unknown): No {
+  return { ...desconhecidas(objeto(bruto), CHAVES_DE_CAIXA), ...lerCaixa(bruto) } as No
+}
+
+function lerCaixa(bruto: unknown): No {
   const n = objeto(bruto)
   if (!slugValido(n.id)) throw new Error(`caixa: id inválido (${String(n.id)})`)
   const onde = `caixa ${n.id}`
@@ -358,8 +374,18 @@ export function etapasDaCorrente(cadeia: No[]): Etapa[] {
 }
 
 export function validarWorkflow(bruto: unknown, equipe: Equipe): Workflow {
+  const { erros, workflow } = analisarWorkflow(bruto, equipe)
+  if (erros.length || !workflow) throw new Error(erros.join("; "))
+  return workflow
+}
+
+export function errosDoWorkflow(bruto: unknown, equipe: Equipe): string[] {
+  return analisarWorkflow(bruto, equipe).erros
+}
+
+function analisarWorkflow(bruto: unknown, equipe: Equipe): { erros: string[]; workflow: Workflow | null } {
   const w = objeto(bruto)
-  if (!slugValido(w.id)) throw new Error(`workflow: id inválido (${String(w.id)})`)
+  if (!slugValido(w.id)) return { erros: [`workflow: id inválido (${String(w.id)})`], workflow: null }
   const onde = `workflow ${w.id}`
   const erros: string[] = []
   const nome = texto(w.nome)
@@ -498,14 +524,14 @@ export function validarWorkflow(bruto: unknown, equipe: Equipe): Workflow {
     }
   }
 
-  if (erros.length) throw new Error(erros.join("; "))
+  if (erros.length) return { erros, workflow: null }
   const versao = typeof w.versao === "number" && Number.isInteger(w.versao) && w.versao > 0 ? w.versao : 1
   const layout: Workflow["layout"] = {}
   for (const [id, ponto] of Object.entries(objeto(w.layout))) {
     const xy = objeto(ponto)
     if (porId.has(id) && typeof xy.x === "number" && typeof xy.y === "number") layout[id] = { x: xy.x, y: xy.y }
   }
-  return { id: w.id, nome, versao, entrada, inicio, nos, arestas, layout }
+  return { erros, workflow: { ...desconhecidas(w, CHAVES_DO_WORKFLOW), id: w.id, nome, versao, entrada, inicio, nos, arestas, layout } }
 }
 
 // ── valores ────────────────────────────────────────────────────────
