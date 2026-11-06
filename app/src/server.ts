@@ -172,6 +172,11 @@ const ESTATICOS: Record<string, string> = {
   "/icone.svg": "icone.svg",
   "/icone-192.png": "icone-192.png",
   "/icone-512.png": "icone-512.png",
+  "/fontes/Inter-Regular.ttf": "fontes/Inter-Regular.ttf",
+  "/fontes/Inter-Medium.ttf": "fontes/Inter-Medium.ttf",
+  "/fontes/Inter-SemiBold.ttf": "fontes/Inter-SemiBold.ttf",
+  "/fontes/JetBrainsMono-Regular.ttf": "fontes/JetBrainsMono-Regular.ttf",
+  "/fontes/JetBrainsMono-Medium.ttf": "fontes/JetBrainsMono-Medium.ttf",
 }
 
 type Cliente = ServerWebSocket<undefined>
