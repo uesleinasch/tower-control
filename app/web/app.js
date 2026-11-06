@@ -1548,7 +1548,7 @@ function svgDoOrganograma(equipe) {
     return (
       `<g class="no-org${estado.posicaoVista === p.id ? " escolhido" : ""}" data-posicao="${escapar(p.id)}" tabindex="0">` +
       `<rect x="${x}" y="${y}" width="${LARGURA_NO}" height="${ALTURA_NO}" rx="10" />` +
-      `<circle cx="${x + 22}" cy="${y + 26}" r="12" fill="${persona?.cor ?? "var(--borda)"}" />` +
+      `<circle cx="${x + 22}" cy="${y + 26}" r="12" fill="${persona?.cor ?? "var(--ct-cor-outline-variant)"}" />` +
       `<text class="inicial" x="${x + 22}" y="${y + 30}">${escapar(persona?.inicial ?? "?")}</text>` +
       `<text class="titulo-no" x="${x + 42}" y="${y + 24}">${escapar(p.titulo)}</text>` +
       `<text class="persona-no" x="${x + 42}" y="${y + 42}">${escapar(p.personaNome ?? "vaga")}</text>` +
