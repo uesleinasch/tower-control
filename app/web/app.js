@@ -793,6 +793,16 @@ function nomeDaRotina(criadaPor) {
   return estado.rotinas.find((r) => r.equipe === equipe && r.id === id)?.nome ?? id
 }
 
+async function mudarStatusDaTarefa(tarefa, para) {
+  const caixa = para === "cancelada" ? caixaViva(tarefa) : null
+  if (!caixa) {
+    enviar({ tipo: "tarefa-status", id: tarefa.id, status: para })
+    return
+  }
+  const escopo = await escolherEscopoDoCancelamento(tarefa, caixa)
+  if (escopo) enviar({ tipo: "tarefa-status", id: tarefa.id, status: para, escopo })
+}
+
 function renderTarefa() {
   const { tarefa, registros, execucoes = [], custoUSD = 0 } = estado.detalhe
   estado.tarefaId = tarefa.id
@@ -814,13 +824,15 @@ function renderTarefa() {
     tarefa.descricao,
   ]
   adicionarMensagem("perfil-msg documento", formatar(linhas.filter(Boolean).join("\n\n")))
+  const parada = caixaParadaDa(tarefa)
+  if (parada) el.mensagens.appendChild(pedidoDeCaixaParada(parada.fluxo, parada.ficha))
   if (tarefa.politica?.length) el.mensagens.appendChild(trilhaDaTarefa(tarefa))
   const acoes = document.createElement("div")
   acoes.className = "acoes-tarefa"
   for (const para of TRANSICOES_TAREFA[tarefa.status] ?? []) {
     const botao = document.createElement("button")
     botao.textContent = `→ ${NOMES_STATUS[para]}`
-    botao.onclick = () => enviar({ tipo: "tarefa-status", id: tarefa.id, status: para })
+    botao.onclick = () => mudarStatusDaTarefa(tarefa, para)
     acoes.appendChild(botao)
   }
   if (tarefa.status === "em_revisao" && planoPendente(registros)) {
@@ -949,6 +961,78 @@ function linhaDoFluxo(tarefa) {
   return `Caixa ${no?.titulo ?? no?.id ?? "?"} do workflow ${fluxo.definicao.nome} (execução #${fluxo.id})`
 }
 
+function fichaDaTarefa(tarefa) {
+  const fluxo = tarefa.fluxo ? estado.workflows.fluxos.find((f) => f.id === tarefa.fluxo) : null
+  const ficha = fluxo?.fichas.find((f) => f.id === tarefa.ficha)
+  return fluxo && ficha ? { fluxo, ficha } : null
+}
+
+function caixaViva(tarefa) {
+  const achada = fichaDaTarefa(tarefa)
+  return achada && achada.fluxo.status === "rodando" && achada.ficha.status === "esperando" ? achada : null
+}
+
+function caixaParadaDa(tarefa) {
+  const achada = fichaDaTarefa(tarefa)
+  return achada && achada.fluxo.status === "rodando" && achada.ficha.status === "parada" ? achada : null
+}
+
+function nomeDaCaixaDa(fluxo, ficha) {
+  const no = fluxo.definicao.nos.find((n) => n.id === ficha.no)
+  return no?.titulo ?? ficha.no
+}
+
+const ITEM_DE_CAIXA_PARADA = "parada"
+
+function pedidoDeCaixaParada(fluxo, ficha) {
+  const item = {
+    tipo: ITEM_DE_CAIXA_PARADA,
+    titulo: `Caixa parada no workflow #${fluxo.id}`,
+    detalhe: `A tarefa #${ficha.tarefa} da caixa "${nomeDaCaixaDa(fluxo, ficha)}" foi cancelada. O workflow "${fluxo.definicao.nome}" está esperando você decidir.`,
+    desde: ficha.concluidaEm ?? ficha.criadaEm,
+    acoes: ["recriar", "cancelar-fluxo"],
+    fluxo: fluxo.id,
+    ficha: ficha.id,
+    tarefaId: ficha.tarefa,
+  }
+  return cartaoDeAtencao(item)
+}
+
+const cancelarTarefa = document.getElementById("cancelar-tarefa")
+let responderCancelamento = null
+
+function fecharCancelamento(escopo) {
+  if (!responderCancelamento) return
+  const responder = responderCancelamento
+  responderCancelamento = null
+  cancelarTarefa.hidden = true
+  responder(escopo)
+}
+
+function escolherEscopoDoCancelamento(tarefa, { fluxo, ficha }) {
+  fecharCancelamento(null)
+  const caixa = nomeDaCaixaDa(fluxo, ficha)
+  document.getElementById("cancelar-tarefa-titulo").textContent = `Cancelar a tarefa #${tarefa.id}?`
+  document.getElementById("cancelar-tarefa-texto").textContent =
+    `Ela faz parte do workflow "${fluxo.definicao.nome}" (#${fluxo.id}), na caixa "${caixa}".`
+  document.getElementById("cancelar-tarefa-so").textContent =
+    `O workflow para na caixa "${caixa}" e espera você escolher: recriar a tarefa ou cancelar o workflow.`
+  document.getElementById("cancelar-tarefa-fluxo").textContent =
+    `Cancela o workflow #${fluxo.id} e todas as tarefas abertas dele. O que já foi feito fica registrado.`
+  cancelarTarefa.querySelector('input[value="tarefa"]').checked = true
+  cancelarTarefa.hidden = false
+  return new Promise((resolve) => {
+    responderCancelamento = resolve
+  })
+}
+
+document.getElementById("cancelar-tarefa-sim").onclick = () =>
+  fecharCancelamento(cancelarTarefa.querySelector('input[name="escopo-do-cancelamento"]:checked')?.value ?? "tarefa")
+document.getElementById("cancelar-tarefa-voltar").onclick = () => fecharCancelamento(null)
+cancelarTarefa.addEventListener("click", (ev) => {
+  if (ev.target === cancelarTarefa) fecharCancelamento(null)
+})
+
 // Níveis: busca em profundidade a partir do início, sem as voltas de laço, e o maior caminho em cada caixa.
 function layoutDoWorkflow(w) {
   const saida = new Map()
@@ -1006,6 +1090,7 @@ function svgDoWorkflow(w, fichas) {
   const statusDe = (id) => {
     const delas = (fichas ?? []).filter((f) => f.no === id)
     if (delas.some((f) => f.status === "esperando")) return "esperando"
+    if (delas.some((f) => f.status === "parada")) return "parada"
     if (delas.some((f) => f.status === "concluida")) return "concluida"
     if (delas.some((f) => f.status === "cancelada")) return "cancelada"
     return ""
@@ -1075,6 +1160,9 @@ function secaoDoGrafo() {
   }
   secao.appendChild(rolagem)
   if (fluxo?.erro || fluxo?.resultado) secao.appendChild(vazio(fluxo.erro ?? fluxo.resultado))
+  if (fluxo?.status === "rodando") {
+    for (const ficha of fluxo.fichas.filter((f) => f.status === "parada")) secao.appendChild(pedidoDeCaixaParada(fluxo, ficha))
+  }
   const no = w.nos.find((n) => n.id === estado.caixaVista)
   if (no) {
     const fichas = (fluxo?.fichas ?? []).filter((f) => f.no === no.id)
@@ -1179,7 +1267,7 @@ function secaoDeFluxosDoPainel(fluxos) {
   ul.className = "lista-decisoes"
   for (const f of fluxos) {
     const li = document.createElement("li")
-    const ativas = f.ativas.map((a) => `${a.titulo} (${NOMES_DE_CAIXA[a.tipo] ?? a.tipo})`).join(", ")
+    const ativas = f.ativas.map((a) => `${a.titulo} (${a.parada ? "parada" : (NOMES_DE_CAIXA[a.tipo] ?? a.tipo)})`).join(", ")
     li.innerHTML = `<span class="status em_andamento">#${f.fluxo}</span>${escapar(f.nome)}<small>desde ${quando(f.desde)}${ativas ? ` · em ${escapar(ativas)}` : ""}</small>`
     const acoes = document.createElement("div")
     acoes.className = "acoes-tarefa"
@@ -1223,6 +1311,8 @@ const ROTULO_ACAO = {
   liberar: "Liberar",
   abrir: "Abrir",
   sinalizar: "Sinalizar",
+  recriar: "Recriar a tarefa",
+  "cancelar-fluxo": "Cancelar o workflow",
 }
 
 function abrirPainel() {
@@ -1273,6 +1363,14 @@ function agirNoPainel(item, acao) {
     case "sinalizar":
       enviar({ tipo: "workflow-sinal", execucao: item.fluxo, ficha: item.ficha })
       return
+    case "recriar":
+      enviar({ tipo: "workflow-recriar", execucao: item.fluxo, ficha: item.ficha })
+      return
+    case "cancelar-fluxo":
+      if (confirm(`Cancelar o workflow #${item.fluxo}? As tarefas abertas dele são canceladas.`)) {
+        enviar({ tipo: "workflow-cancelar", execucao: item.fluxo })
+      }
+      return
     case "abrir":
       if (item.tarefaId) abrirTarefaDoPainel(item.tarefaId, item.equipe)
       else if (item.fluxo) abrirGrafo({ fluxo: item.fluxo })
@@ -1298,36 +1396,39 @@ function secaoDeAtencao(itens) {
   const secao = document.createElement("section")
   secao.appendChild(tituloDeSecao(itens.length ? `Precisa de você · ${itens.length}` : "Precisa de você"))
   if (!itens.length) secao.appendChild(vazio("Nada esperando você."))
-  for (const item of itens) {
-    const div = document.createElement("div")
-    div.className = `msg perfil-msg item-atencao ${item.tipo}`
-    div.innerHTML = `<strong>${escapar(item.titulo)}</strong> <small>${quando(item.desde)}</small><br>${escapar(item.detalhe)}`
-    const acoes = document.createElement("div")
-    acoes.className = "acoes-tarefa"
-    for (const acao of item.acoes) {
-      if (acao === "decidir") {
-        for (const opcao of item.opcoes ?? []) {
-          const botao = document.createElement("button")
-          botao.textContent = opcao
-          botao.onclick = () => {
-            const comentario = prompt(`Comentário para "${opcao}" (opcional)`) ?? null
-            if (comentario === null) return
-            enviar({ tipo: "workflow-decidir", execucao: item.fluxo, ficha: item.ficha, opcao, comentario: comentario.trim() })
-          }
-          acoes.appendChild(botao)
-        }
-        continue
-      }
-      const botao = document.createElement("button")
-      botao.textContent = ROTULO_ACAO[acao] ?? acao
-      if (acao === "aprovar" || acao === "aprovar-plano") botao.className = "aprovar-plano"
-      botao.onclick = () => agirNoPainel(item, acao)
-      acoes.appendChild(botao)
-    }
-    div.appendChild(acoes)
-    secao.appendChild(div)
-  }
+  for (const item of itens) secao.appendChild(cartaoDeAtencao(item))
   return secao
+}
+
+function cartaoDeAtencao(item) {
+  const div = document.createElement("div")
+  div.className = `msg perfil-msg item-atencao ${item.tipo}`
+  div.innerHTML = `<strong>${escapar(item.titulo)}</strong> <small>${quando(item.desde)}</small><br>${escapar(item.detalhe)}`
+  const acoes = document.createElement("div")
+  acoes.className = "acoes-tarefa"
+  for (const acao of item.acoes) {
+    if (acao === "decidir") {
+      for (const opcao of item.opcoes ?? []) {
+        const botao = document.createElement("button")
+        botao.textContent = opcao
+        botao.onclick = () => {
+          const comentario = prompt(`Comentário para "${opcao}" (opcional)`) ?? null
+          if (comentario === null) return
+          enviar({ tipo: "workflow-decidir", execucao: item.fluxo, ficha: item.ficha, opcao, comentario: comentario.trim() })
+        }
+        acoes.appendChild(botao)
+      }
+      continue
+    }
+    const botao = document.createElement("button")
+    botao.textContent = ROTULO_ACAO[acao] ?? acao
+    if (acao === "aprovar" || acao === "aprovar-plano" || acao === "recriar") botao.className = "aprovar-plano"
+    if (acao === "cancelar-fluxo") botao.className = "perigo"
+    botao.onclick = () => agirNoPainel(item, acao)
+    acoes.appendChild(botao)
+  }
+  div.appendChild(acoes)
+  return div
 }
 
 function secaoAgora({ rodando, naFila }) {
@@ -1548,7 +1649,7 @@ function svgDoOrganograma(equipe) {
     return (
       `<g class="no-org${estado.posicaoVista === p.id ? " escolhido" : ""}" data-posicao="${escapar(p.id)}" tabindex="0">` +
       `<rect x="${x}" y="${y}" width="${LARGURA_NO}" height="${ALTURA_NO}" rx="10" />` +
-      `<circle cx="${x + 22}" cy="${y + 26}" r="12" fill="${persona?.cor ?? "var(--borda)"}" />` +
+      `<circle cx="${x + 22}" cy="${y + 26}" r="12" fill="${persona?.cor ?? "var(--ct-cor-outline-variant)"}" />` +
       `<text class="inicial" x="${x + 22}" y="${y + 30}">${escapar(persona?.inicial ?? "?")}</text>` +
       `<text class="titulo-no" x="${x + 42}" y="${y + 24}">${escapar(p.titulo)}</text>` +
       `<text class="persona-no" x="${x + 42}" y="${y + 42}">${escapar(p.personaNome ?? "vaga")}</text>` +

@@ -70,7 +70,8 @@ class EstadoTarefas extends ChangeNotifier {
   void criar({required String posicao, required String titulo, String porque = ''}) =>
       _enviar(CriarTarefa(equipe: equipe, posicao: posicao, titulo: titulo, porque: porque));
 
-  void mudarStatus(int id, String status) => _enviar(MudarStatusTarefa(id, status));
+  void mudarStatus(int id, String status, {EscopoDoCancelamento? escopo}) =>
+      _enviar(MudarStatusTarefa(id, status, escopo: escopo));
 
   void aprovarPlano(int id) => _enviar(AprovarPlano(id));
 

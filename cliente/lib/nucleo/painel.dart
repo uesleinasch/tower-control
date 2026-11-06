@@ -1,3 +1,4 @@
+import 'design.dart';
 import 'modelos.dart';
 import 'protocolo.dart';
 import 'tarefas.dart';
@@ -71,7 +72,7 @@ class ItemDeAtencao {
   );
 }
 
-typedef CaixaAtiva = ({int ficha, String no, String titulo, String tipo, int? tarefaId});
+typedef CaixaAtiva = ({int ficha, String no, String titulo, String tipo, int? tarefaId, bool parada});
 
 class FluxoNoPainel {
   const FluxoNoPainel({
@@ -106,6 +107,7 @@ class FluxoNoPainel {
           titulo: _textoOuNulo(a['titulo']) ?? _texto(a['no']),
           tipo: _texto(a['tipo']),
           tarefaId: _inteiroOuNulo(a['tarefaId']),
+          parada: a['parada'] == true,
         ),
       ),
     );
@@ -340,6 +342,7 @@ const rotulosDeAtencao = {
   'plano': 'plano',
   'entrega': 'entrega',
   'sinal': 'sinal',
+  'parada': 'caixa parada',
   'bloqueada': 'bloqueada',
   'atrasada': 'atrasada',
   'backlog': 'backlog',
@@ -358,6 +361,8 @@ const rotulosDeAcao = {
   'abrir': 'Abrir',
   'decidir': 'Decidir',
   'sinalizar': 'Sinalizar',
+  'recriar': 'Recriar a tarefa',
+  'cancelar-fluxo': 'Cancelar o workflow',
 };
 
 const rotulosDeEstado = {
@@ -421,6 +426,8 @@ EfeitoDaAcao? efeitoDaAcao(ItemDeAtencao item, String acao, {String? texto, Stri
       DecidirWorkflow(fluxo, ficha, opcao, comentario: comentario.isEmpty ? null : comentario),
     ),
     'sinalizar' when fluxo != null && ficha != null => MandarSaida(SinalizarWorkflow(fluxo, ficha)),
+    'recriar' when fluxo != null && ficha != null => MandarSaida(RecriarCaixa(fluxo, ficha)),
+    'cancelar-fluxo' when fluxo != null => MandarSaida(CancelarWorkflow(fluxo)),
     'aprovar' when item.tipo == 'comando' && permissao != null => MandarSaida(
       RespostaDePermissao(permissao, permitido: true),
     ),
@@ -484,3 +491,21 @@ String haQuanto(DateTime? desde, DateTime agora) {
   if (d.inDays < 1) return 'há ${d.inHours} h';
   return 'há ${d.inDays} d';
 }
+
+int colunasDoPainel(ClasseDeJanela classe) => switch (classe) {
+  ClasseDeJanela.compact => 1,
+  ClasseDeJanela.medium || ClasseDeJanela.expanded => 2,
+  ClasseDeJanela.large || ClasseDeJanela.extraLarge => 3,
+};
+
+List<List<T>> emColunas<T>(List<T> itens, int colunas) => [
+  for (var c = 0; c < colunas; c++) [for (var i = c; i < itens.length; i += colunas) itens[i]],
+];
+
+enum EnfaseDaAcao { principal, secundaria, baixa }
+
+EnfaseDaAcao enfaseDaAcao(String acao, {required int indice, required int total}) => switch (acao) {
+  'abrir' => total == 1 ? EnfaseDaAcao.secundaria : EnfaseDaAcao.baixa,
+  _ when indice == 0 => EnfaseDaAcao.principal,
+  _ => EnfaseDaAcao.secundaria,
+};

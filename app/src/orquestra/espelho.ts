@@ -9,6 +9,7 @@ export const TIPOS_ESPELHAVEIS = [
   "entrega",
   "decisao",
   "sinal",
+  "parada",
   "bloqueada",
   "backlog",
   "atrasada",
@@ -17,7 +18,7 @@ export const TIPOS_ESPELHAVEIS = [
   "vaga",
 ] as const
 export type TipoEspelhavel = (typeof TIPOS_ESPELHAVEIS)[number]
-export const TIPOS_PADRAO: TipoEspelhavel[] = ["aprovacao", "plano", "entrega", "decisao", "sinal", "bloqueada"]
+export const TIPOS_PADRAO: TipoEspelhavel[] = ["aprovacao", "plano", "entrega", "decisao", "sinal", "parada", "bloqueada"]
 
 export interface ConfigDoEspelho {
   ativo: boolean
@@ -77,6 +78,7 @@ export function chaveDo(item: ItemDeAtencao): string | null {
       return item.tarefaId === undefined ? null : `${item.tipo}:${item.tarefaId}`
     case "decisao":
     case "sinal":
+    case "parada":
     case "atrasada":
       return item.fluxo === undefined || item.ficha === undefined ? null : `${item.tipo}:${item.fluxo}:${item.ficha}`
     case "orcamento":
@@ -125,7 +127,9 @@ export function nomeNoTickTask(item: ItemDeAtencao): string {
 
 export function descricaoNoTickTask(item: ItemDeAtencao, endereco: string | null): string {
   const acao = acaoDo(item)
-  return [item.detalhe, O_QUE_FINALIZAR_FAZ[acao.tipo], endereco ? `control-tower: ${endereco}` : ""].filter(Boolean).join("\n\n")
+  const finalizar =
+    item.tipo === "parada" ? `Recriar a tarefa ou cancelar o workflow só pelo control-tower. ${O_QUE_FINALIZAR_FAZ.nenhuma}` : O_QUE_FINALIZAR_FAZ[acao.tipo]
+  return [item.detalhe, finalizar, endereco ? `control-tower: ${endereco}` : ""].filter(Boolean).join("\n\n")
 }
 
 // ── linhas e a volta ───────────────────────────────────────────────

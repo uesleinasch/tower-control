@@ -50,13 +50,13 @@ import type { trabalhar } from "../sessions"
 import type { RegistroDeUso } from "../uso"
 import type { ResultadoDaRevisao, RevisaoDoBoard } from "../board"
 import { validarValores, type Saidas, type Valor } from "./workflow"
-import { SEM_DEVOLUCAO } from "./motor"
+import { SEM_DEVOLUCAO, type EscopoDoCancelamento } from "./motor"
 
 export interface GanchosDoFluxo {
   aoEntregar: (tarefa: Tarefa, entrega: string, devolvido?: Record<string, Valor>) => boolean
   saidasDa: (tarefa: Tarefa) => Saidas | undefined
   aoConcluir: (id: number) => void
-  aoCancelar: (id: number) => void
+  aoCancelar: (id: number, escopo: EscopoDoCancelamento) => void
 }
 
 export interface Ambiente {
@@ -148,7 +148,7 @@ export class Orquestra {
     if (tarefa.status === "a_fazer") this.acordar(tarefa.id, "atribuicao")
   }
 
-  aoMudarStatus(id: number, de: StatusTarefa, para: StatusTarefa): void {
+  aoMudarStatus(id: number, de: StatusTarefa, para: StatusTarefa, escopo: EscopoDoCancelamento = "fluxo"): void {
     if (de === "em_andamento" || de === "em_revisao") this.interromper(id)
     if (para !== "em_revisao") this.repo.marcarRetorno(id, null, 0)
     if (para === "cancelada" || para === "backlog") {
@@ -160,7 +160,7 @@ export class Orquestra {
       this.acordarDependentes(id)
       this.amb.fluxo?.aoConcluir(id)
     }
-    if (para === "cancelada") this.amb.fluxo?.aoCancelar(id)
+    if (para === "cancelada") this.amb.fluxo?.aoCancelar(id, escopo)
   }
 
   aoComentar(id: number): void {

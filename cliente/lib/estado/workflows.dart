@@ -61,6 +61,8 @@ class EstadoWorkflows extends ChangeNotifier {
 
   void cancelar(int fluxo) => _enviar(CancelarWorkflow(fluxo));
 
+  void recriar(int fluxo, int ficha) => _enviar(RecriarCaixa(fluxo, ficha));
+
   void verDefinicao(Workflow w) {
     vendo = (equipe: w.equipe, workflow: w.id, fluxo: null);
     caixa = null;

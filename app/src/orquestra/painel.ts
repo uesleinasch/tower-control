@@ -15,13 +15,25 @@ export type TipoDeAtencao =
   | "plano"
   | "entrega"
   | "sinal"
+  | "parada"
   | "bloqueada"
   | "atrasada"
   | "backlog"
   | "orcamento"
   | "rotina"
   | "vaga"
-export type AcaoDoPainel = "aprovar" | "negar" | "pedir-mudanca" | "aprovar-plano" | "concluir" | "liberar" | "abrir" | "decidir" | "sinalizar"
+export type AcaoDoPainel =
+  | "aprovar"
+  | "negar"
+  | "pedir-mudanca"
+  | "aprovar-plano"
+  | "concluir"
+  | "liberar"
+  | "abrir"
+  | "decidir"
+  | "sinalizar"
+  | "recriar"
+  | "cancelar-fluxo"
 
 export interface ItemDeAtencao {
   tipo: TipoDeAtencao
@@ -46,7 +58,7 @@ export interface FluxoNoPainel {
   workflow: string
   nome: string
   desde: string
-  ativas: { ficha: number; no: string; titulo: string; tipo: string; tarefaId: number | null }[]
+  ativas: { ficha: number; no: string; titulo: string; tipo: string; tarefaId: number | null; parada?: true }[]
 }
 
 export interface ExecucaoViva {
@@ -166,12 +178,13 @@ const PRIORIDADE: Record<TipoDeAtencao, number> = {
   plano: 4,
   entrega: 5,
   sinal: 6,
-  bloqueada: 7,
-  atrasada: 8,
-  backlog: 9,
-  orcamento: 10,
-  rotina: 11,
-  vaga: 12,
+  parada: 7,
+  bloqueada: 8,
+  atrasada: 9,
+  backlog: 10,
+  orcamento: 11,
+  rotina: 12,
+  vaga: 13,
 }
 
 export function cortar(texto: string, limite = LIMITE_DO_DETALHE): string {
@@ -297,12 +310,24 @@ export function itensDeAtencao(dados: DadosDoPainel): ItemDeAtencao[] {
     const contexto: Contexto = { entrada: fluxo.entrada }
     for (const f of fichas) if (f.status === "concluida") contexto[f.no] = f.saidas
     for (const ficha of fichas) {
-      if (ficha.status !== "esperando") continue
+      if (ficha.status !== "esperando" && ficha.status !== "parada") continue
       const no = fluxo.definicao.nos.find((n) => n.id === ficha.no)
       if (!no) continue
       const caixa = no.titulo ?? no.id
       const base = { fluxo: fluxo.id, ficha: ficha.id, equipe: fluxo.equipe, desde: ficha.criadaEm }
-      if (no.tipo === "decisao_humana") {
+      if (ficha.status === "parada") {
+        itens.push({
+          ...base,
+          tipo: "parada",
+          titulo: `Caixa parada no workflow #${fluxo.id}`,
+          detalhe: cortar(
+            `A tarefa #${ficha.tarefa ?? "?"} da caixa "${caixa}" foi cancelada. O workflow "${fluxo.definicao.nome}" está esperando você decidir.`,
+          ),
+          desde: ficha.concluidaEm ?? ficha.criadaEm,
+          acoes: ["recriar", "cancelar-fluxo"],
+          ...(ficha.tarefa ? { tarefaId: ficha.tarefa } : {}),
+        })
+      } else if (no.tipo === "decisao_humana") {
         itens.push({
           ...base,
           tipo: "decisao",
@@ -508,10 +533,17 @@ export function montarRetrato(dados: DadosDoPainel, personaDaExecucao: (id: numb
         nome: fluxo.definicao.nome,
         desde: fluxo.criadoEm,
         ativas: fichas
-          .filter((f) => f.status === "esperando")
+          .filter((f) => f.status === "esperando" || f.status === "parada")
           .map((f) => {
             const no = fluxo.definicao.nos.find((n) => n.id === f.no)
-            return { ficha: f.id, no: f.no, titulo: no?.titulo ?? f.no, tipo: no?.tipo ?? "", tarefaId: f.tarefa }
+            return {
+              ficha: f.id,
+              no: f.no,
+              titulo: no?.titulo ?? f.no,
+              tipo: no?.tipo ?? "",
+              tarefaId: f.tarefa,
+              ...(f.status === "parada" ? { parada: true as const } : {}),
+            }
           }),
       })),
   }

@@ -798,12 +798,14 @@ void main() {
         ..decidir(9, 3, 'seguir', '  ')
         ..decidir(9, 3, 'parar', 'arriscado')
         ..sinalizar(9, 4)
-        ..cancelar(9);
+        ..cancelar(9)
+        ..recriar(9, 5);
       expect(enviados, [
         {'tipo': 'workflow-decidir', 'execucao': 9, 'ficha': 3, 'opcao': 'seguir'},
         {'tipo': 'workflow-decidir', 'execucao': 9, 'ficha': 3, 'opcao': 'parar', 'comentario': 'arriscado'},
         {'tipo': 'workflow-sinal', 'execucao': 9, 'ficha': 4},
         {'tipo': 'workflow-cancelar', 'execucao': 9},
+        {'tipo': 'workflow-recriar', 'execucao': 9, 'ficha': 5},
       ]);
     });
 

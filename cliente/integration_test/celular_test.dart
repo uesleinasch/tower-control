@@ -5,7 +5,8 @@ import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/sistema/servico_avisos.dart';
 import 'package:control_tower/tela/chat.dart';
 import 'package:control_tower/tela/conversas.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -123,7 +124,7 @@ Future<void> _respostaNoChat(WidgetTester t, {required String cena, required Str
   expect(pedido.tarefaId, isNull);
   expect(find.text(comando), findsOneWidget);
 
-  await tocar(t, find.widgetWithText(permitir ? FilledButton : TextButton, permitir ? 'Permitir' : 'Negar'));
+  await tocar(t, find.widgetWithText(permitir ? FilledButton : OutlinedButton, permitir ? 'Permitir' : 'Negar'));
   await esperarAte(
     t,
     () => escuta.resolvida(pedido.id) != null,
@@ -280,7 +281,7 @@ void main() {
 
     await _abrirNova(t, 'Alfred');
     final conversa = await _enviar(t, mensagem);
-    await tocar(t, find.byIcon(Icons.arrow_back), descricao: 'a seta que fecha o chat');
+    await tocar(t, find.byIcon(Symbols.arrow_back), descricao: 'a seta que fecha o chat');
     await esperarAte(t, () => sala.tela == Tela.conversas, descricao: 'a lista no lugar do chat');
 
     final aviso = await avisoNaBandeja(
@@ -348,7 +349,7 @@ void main() {
     expect([for (final r in sala.chat.itens.whereType<Registro>()) r.comando], [comum]);
     expect(find.text(comum), findsOneWidget);
 
-    await tocar(t, find.widgetWithText(TextButton, 'Negar'));
+    await tocar(t, find.widgetWithText(OutlinedButton, 'Negar'));
     final pedido = escuta.pedidos.single;
     await esperarAte(
       t,

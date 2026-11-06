@@ -347,36 +347,47 @@ final _slugDaRotina = RegExp(r'^[a-z][a-z0-9-]{0,47}$');
 List<Workflow> workflowsParaRotina(List<Workflow> workflows, String equipe) =>
     [for (final w in workflows) if (w.equipe == equipe && aceitaRotina(w)) w];
 
-List<String> errosDaRotina(Rotina r, EquipeResumo equipe, {List<Workflow> workflows = const []}) {
-  if (!_slugDaRotina.hasMatch(r.id)) return ['rotina: id inválido (${r.id})'];
-  final onde = 'rotina ${r.id}';
-  final erros = <String>[];
-  if (r.nome.trim().isEmpty) erros.add('$onde: nome obrigatório');
+enum CampoDaRotina { id, nome, workflow, titulo, posicao, concorrencia, perdidos, cron }
+
+String? erroDoCronDaRotina(String expressao) {
+  final cron = expressao.trim();
+  if (cron.isEmpty) return null;
+  try {
+    if (menorIntervaloEmMinutos(lerCron(cron)) < intervaloMinimoEmMinutos) {
+      return 'o cron dispara com menos de $intervaloMinimoEmMinutos minutos de intervalo';
+    }
+    return null;
+  } on ErroDeCron catch (e) {
+    return 'cron inválido (${e.mensagem})';
+  }
+}
+
+Map<CampoDaRotina, String> errosDosCamposDaRotina(Rotina r, EquipeResumo equipe, {List<Workflow> workflows = const []}) {
+  if (!_slugDaRotina.hasMatch(r.id)) return {CampoDaRotina.id: 'id inválido (${r.id})'};
+  final erros = <CampoDaRotina, String>{};
+  if (r.nome.trim().isEmpty) erros[CampoDaRotina.nome] = 'nome obrigatório';
   if (r.iniciaWorkflow) {
     final w = workflows.where((w) => w.equipe == equipe.id && w.id == r.workflow).firstOrNull;
     if (w == null) {
-      erros.add('$onde: workflow inexistente (${r.workflow})');
+      erros[CampoDaRotina.workflow] = 'workflow inexistente (${r.workflow})';
     } else if (!aceitaRotina(w)) {
-      erros.add('$onde: o workflow ${r.workflow} pede entrada que a rotina não dá (só "dados" em texto)');
+      erros[CampoDaRotina.workflow] = 'o workflow ${r.workflow} pede entrada que a rotina não dá (só "dados" em texto)';
     }
   } else {
-    if (r.titulo.trim().isEmpty) erros.add('$onde: título da tarefa obrigatório');
+    if (r.titulo.trim().isEmpty) erros[CampoDaRotina.titulo] = 'título da tarefa obrigatório';
     final posicao = r.posicao.trim();
-    if (equipe.posicao(posicao) == null) erros.add('$onde: posição inexistente ($posicao)');
+    if (equipe.posicao(posicao) == null) erros[CampoDaRotina.posicao] = 'posição inexistente ($posicao)';
   }
-  if (!concorrencias.containsKey(r.concorrencia)) erros.add('$onde: concorrência inválida');
-  if (!perdidosDaRotina.containsKey(r.perdidos)) erros.add('$onde: perdidos inválido');
-  final cron = r.cron.trim();
-  if (cron.isNotEmpty) {
-    try {
-      if (menorIntervaloEmMinutos(lerCron(cron)) < intervaloMinimoEmMinutos) {
-        erros.add('$onde: o cron dispara com menos de $intervaloMinimoEmMinutos minutos de intervalo');
-      }
-    } on ErroDeCron catch (e) {
-      erros.add('$onde: cron inválido (${e.mensagem})');
-    }
-  }
+  if (!concorrencias.containsKey(r.concorrencia)) erros[CampoDaRotina.concorrencia] = 'concorrência inválida';
+  if (!perdidosDaRotina.containsKey(r.perdidos)) erros[CampoDaRotina.perdidos] = 'perdidos inválido';
+  if (erroDoCronDaRotina(r.cron) case final cron?) erros[CampoDaRotina.cron] = cron;
   return erros;
+}
+
+List<String> errosDaRotina(Rotina r, EquipeResumo equipe, {List<Workflow> workflows = const []}) {
+  final erros = errosDosCamposDaRotina(r, equipe, workflows: workflows);
+  if (erros[CampoDaRotina.id] case final id?) return ['rotina: $id'];
+  return [for (final e in erros.values) 'rotina ${r.id}: $e'];
 }
 
 String _dois(int n) => n.toString().padLeft(2, '0');
@@ -384,6 +395,11 @@ String _dois(int n) => n.toString().padLeft(2, '0');
 String tituloDaTarefa(String modelo, DateTime quando) => modelo
     .replaceAll('{data}', '${_dois(quando.day)}/${_dois(quando.month)}')
     .replaceAll('{hora}', '${_dois(quando.hour)}:${_dois(quando.minute)}');
+
+String previaDoCron(String expressao, DateTime agora) {
+  final proximos = proximosDoCron(expressao, agora);
+  return proximos.isEmpty ? '' : 'Próximas: ${proximos.map(horarioCurto).join(' · ')}';
+}
 
 List<DateTime> proximosDoCron(String expressao, DateTime agora, [int quantos = 3]) {
   try {

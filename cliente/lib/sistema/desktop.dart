@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tray_manager/tray_manager.dart' as bandeja;
 import 'package:window_manager/window_manager.dart';
 

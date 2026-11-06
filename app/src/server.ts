@@ -112,7 +112,7 @@ try {
   if (await migrarParaPersonas(RAIZ)) await registrarNoGit(RAIZ, "personas como dados e equipe Casa")
   await carregarElenco(RAIZ)
   await garantirIgnorado(RAIZ, "orquestra/")
-  if (await garantirManifesto(RAIZ, DONO_CASA)) await registrarNoGit(RAIZ, "skills: biblioteca da Casa")
+  if (await garantirManifesto(RAIZ, DONO_CASA)) await registrarNoGit(RAIZ, "skills: biblioteca de skills")
 } catch (erro) {
   console.error(`não consegui preparar a pasta de dados ${RAIZ}: ${(erro as Error).message}`)
   process.exit(1)
@@ -172,6 +172,11 @@ const ESTATICOS: Record<string, string> = {
   "/icone.svg": "icone.svg",
   "/icone-192.png": "icone-192.png",
   "/icone-512.png": "icone-512.png",
+  "/fontes/Inter-Regular.ttf": "fontes/Inter-Regular.ttf",
+  "/fontes/Inter-Medium.ttf": "fontes/Inter-Medium.ttf",
+  "/fontes/Inter-SemiBold.ttf": "fontes/Inter-SemiBold.ttf",
+  "/fontes/JetBrainsMono-Regular.ttf": "fontes/JetBrainsMono-Regular.ttf",
+  "/fontes/JetBrainsMono-Medium.ttf": "fontes/JetBrainsMono-Medium.ttf",
 }
 
 type Cliente = ServerWebSocket<undefined>
@@ -358,7 +363,7 @@ function exigirDono(bruto: unknown): string {
 }
 
 function ondeDaSkill(dono: string): string {
-  return dono === DONO_CASA ? "na Casa" : `de ${elenco().nome(dono)}`
+  return dono === DONO_CASA ? `na ${elenco().casa.nome}` : `de ${elenco().nome(dono)}`
 }
 
 async function salvarSkill(donoBruto: unknown, bruto: unknown, nova: boolean): Promise<void> {
@@ -959,7 +964,7 @@ const ORQUESTRA = new Orquestra({
     aoEntregar: (tarefa, entrega, devolvido) => MOTOR.aoEntregar(tarefa, entrega, devolvido),
     saidasDa: (tarefa) => MOTOR.saidasDa(tarefa),
     aoConcluir: (id) => MOTOR.aoConcluir(id),
-    aoCancelar: (id) => MOTOR.aoCancelar(id),
+    aoCancelar: (id, escopo) => MOTOR.aoCancelar(id, escopo),
   },
 })
 
@@ -1311,6 +1316,10 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       MOTOR.cancelar(idDeFluxo(msg.execucao))
       return
     }
+    case "workflow-recriar": {
+      MOTOR.recriar(idDeFluxo(msg.execucao), idDeFluxo(msg.ficha))
+      return
+    }
     case "workflow-salvar": {
       await salvarWorkflow(msg.equipe, msg.workflow)
       return
@@ -1412,7 +1421,7 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const de = TAREFAS.exigir(id).status
       TAREFAS.mudarStatus(id, msg.status, "ueslei")
       publicarTarefa(id)
-      ORQUESTRA.aoMudarStatus(id, de, msg.status)
+      ORQUESTRA.aoMudarStatus(id, de, msg.status, msg.escopo === "tarefa" ? "tarefa" : "fluxo")
       return
     }
     case "tarefa-comentar": {
