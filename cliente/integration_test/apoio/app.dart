@@ -105,7 +105,6 @@ Future<void> verAba(WidgetTester t, AbaDaEquipe aba) async {
     AbaDaEquipe.organograma: 'Organograma',
     AbaDaEquipe.rotinas: 'Rotinas',
     AbaDaEquipe.workflows: 'Workflows',
-    AbaDaEquipe.skills: 'Skills',
   };
   final seletor = find.byWidgetPredicate((w) => w is SegmentedButton<AbaDaEquipe>);
   await tocar(t, find.descendant(of: seletor, matching: botao(rotulos[aba]!)));

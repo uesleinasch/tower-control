@@ -97,7 +97,7 @@ void main() {
   });
 
   testWidgets('skill: salvar vazio marca os campos e não envia', (t) async {
-    final sala = await _montar(t, 900, (s) => PainelDeSkills(sala: s));
+    final sala = await _montar(t, 900, (s) => TelaSkills(sala: s));
     sala.skills.nova('casa');
     await t.pump();
     await t.tap(find.widgetWithText(FilledButton, 'Salvar'));

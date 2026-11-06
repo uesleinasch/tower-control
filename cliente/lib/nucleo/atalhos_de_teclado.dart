@@ -24,6 +24,7 @@ const grupoGlobal = GrupoDeAtalhos('Em qualquer tela', [
   AtalhoDeTeclado([['Ctrl', '5']], 'Ir para o Board'),
   AtalhoDeTeclado([['Ctrl', '6']], 'Ir para Decisões'),
   AtalhoDeTeclado([['Ctrl', '7']], 'Ir para Personas'),
+  AtalhoDeTeclado([['Ctrl', '8']], 'Ir para Skills'),
   AtalhoDeTeclado([['Ctrl', 'N']], 'Começar uma conversa nova'),
   AtalhoDeTeclado([['Ctrl', 'K']], 'Buscar decisões, na tela de Decisões'),
   AtalhoDeTeclado([['Esc']], 'Fechar o detalhe ou o painel lateral aberto'),

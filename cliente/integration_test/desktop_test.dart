@@ -407,9 +407,8 @@ void main() {
       await c.fechar();
     });
     await subirDesktop(t, ambiente);
-    await escolherEquipe(t, 'casa', 'Casa');
 
-    await verAba(t, AbaDaEquipe.skills);
+    await irPara(t, 'Skills');
     await tocar(t, botao('Nova skill'));
     await tocar(t, find.text('Na biblioteca da Casa'));
     await digitar(t, campoRotulado('Id'), 'checklist');

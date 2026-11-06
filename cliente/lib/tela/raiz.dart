@@ -18,6 +18,7 @@ import 'equipes.dart';
 import 'paineis.dart';
 import 'painel.dart';
 import 'personas.dart';
+import 'skills.dart';
 import 'tarefas.dart';
 
 class Raiz extends StatefulWidget {
@@ -159,6 +160,7 @@ class _RaizState extends State<Raiz> {
         Tela.tarefas => TelaTarefas(sala: sala),
         Tela.equipes => TelaEquipes(sala: sala),
         Tela.personas => TelaPersonas(sala: sala),
+        Tela.skills => TelaSkills(sala: sala),
         Tela.configuracao when widget.configuracao != null => widget.configuracao!(context),
         Tela.conversas when compacto => ListaConversas(sala: sala),
         _ => TelaChat(sala: sala, compacto: compacto),
@@ -268,6 +270,7 @@ const _destinos = [
   _Destino(Tela.tarefas, Symbols.task_alt, 'Tarefas'),
   _Destino(Tela.equipes, Symbols.account_tree, 'Equipes'),
   _Destino(Tela.personas, Symbols.person, 'Personas'),
+  _Destino(Tela.skills, Symbols.extension, 'Skills'),
   _Destino(Tela.board, Symbols.gavel, 'Board'),
   _Destino(Tela.decisoes, Symbols.fact_check, 'Decisões'),
 ];
@@ -282,6 +285,7 @@ const _teclasDosDestinos = [
   LogicalKeyboardKey.digit3,
   LogicalKeyboardKey.digit4,
   LogicalKeyboardKey.digit7,
+  LogicalKeyboardKey.digit8,
   LogicalKeyboardKey.digit5,
   LogicalKeyboardKey.digit6,
 ];
