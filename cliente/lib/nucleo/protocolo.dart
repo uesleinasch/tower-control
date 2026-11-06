@@ -559,6 +559,22 @@ class SalvarOrcamento extends Saida {
       };
 }
 
+class SalvarDadosDaPersona extends Saida {
+  const SalvarDadosDaPersona(this.id, {required this.nome, required this.modelo, this.cor, this.mudarCor = false});
+  final String id;
+  final String nome;
+  final String? modelo;
+  final String? cor;
+  final bool mudarCor;
+
+  @override
+  String get tipo => 'persona-salvar';
+  @override
+  Map<String, Object?> get campos => {
+        'persona': {'id': id, 'nome': nome, 'modelo': modelo, if (mudarCor) 'cor': cor},
+      };
+}
+
 class Pausar extends Saida {
   const Pausar(this.alvo);
   final String alvo;

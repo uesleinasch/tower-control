@@ -1,3 +1,4 @@
+import 'modelos.dart';
 import 'tarefas.dart';
 
 const capacidadesDePosicao = ['arquivos', 'comandos', 'ticktask', 'memoria', 'board'];
@@ -124,6 +125,43 @@ EquipeResumo soltar(EquipeResumo e, String id) => _trocar(e, id, (p) => p.copiar
   }
   return (naEquipe: naEquipe, disponiveis: [for (final id in todas) if (!naEquipe.containsKey(id)) id]);
 }
+
+EquipeResumo removerPersona(EquipeResumo e, String persona) {
+  var resultado = e;
+  for (final p in e.posicoes) {
+    if (p.persona == persona) resultado = removerPosicao(resultado, p.id);
+  }
+  return resultado;
+}
+
+String tituloAoEntrar(Perfil p) => p.papel.trim().isEmpty ? p.nome : p.papel.trim();
+
+List<({EquipeResumo equipe, List<String> posicoes})> equipesDaPersona(Iterable<EquipeResumo> equipes, String persona) => [
+      for (final e in equipes)
+        if ([for (final p in e.posicoes) if (p.persona == persona) p.titulo] case final titulos when titulos.isNotEmpty)
+          (equipe: e, posicoes: titulos),
+    ];
+
+int contarPosicoes(Iterable<EquipeResumo> equipes, String persona) =>
+    equipesDaPersona(equipes, persona).fold(0, (soma, x) => soma + x.posicoes.length);
+
+Set<String> personasRodando(Iterable<Tarefa> tarefas, Iterable<EquipeResumo> equipes) {
+  final porId = {for (final e in equipes) e.id: e};
+  final rodando = <String>{};
+  for (final t in tarefas.where((t) => t.rodando)) {
+    final etapa = t.etapaAtual;
+    final posicao = etapa == null ? t.posicao : etapa.posicao;
+    final persona = posicao == null ? null : porId[t.equipe]?.posicao(posicao)?.persona;
+    if (persona != null) rodando.add(persona);
+  }
+  return rodando;
+}
+
+String juntarComE(List<String> nomes) => switch (nomes.length) {
+      0 => '',
+      1 => nomes.single,
+      _ => '${nomes.sublist(0, nomes.length - 1).join(', ')} e ${nomes.last}',
+    };
 
 EquipeResumo removerPosicao(EquipeResumo e, String id) {
   final alvo = e.posicao(id);
