@@ -5,7 +5,7 @@ import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/nucleo/editor_de_workflow.dart';
 import 'package:control_tower/tela/workflows.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../apoio/acoes.dart';

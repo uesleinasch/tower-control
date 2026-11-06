@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 const _acento = Color(0xFF5B8DEF);
 const perigo = Color(0xFFE05A5A);

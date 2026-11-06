@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+// O flutter_markdown_plus ainda lê o ThemeData do material antigo, publicado pela ponte em main.dart.
+import 'package:flutter/material.dart' as legado show Theme;
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -413,7 +415,7 @@ class TextoMarkdown extends StatelessWidget {
     final tema = Theme.of(context);
     return MarkdownBody(
       data: texto,
-      styleSheet: MarkdownStyleSheet.fromTheme(tema).copyWith(
+      styleSheet: MarkdownStyleSheet.fromTheme(legado.Theme.of(context)).copyWith(
         p: tema.textTheme.bodyMedium?.copyWith(height: 1.45),
         code: TextStyle(
           fontFamily: 'monospace',
