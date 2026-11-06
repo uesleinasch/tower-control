@@ -1665,6 +1665,128 @@ class _PainelDePersonas extends StatelessWidget {
     if (confirmacao != null) estado.excluirPersona(p.chave, confirmacao);
   }
 
+  List<Widget> _secoes(BuildContext context, TextStyle? secundario, TextStyle? numeros, CoresSemanticas semanticas) {
+    final equipe = estado.atual;
+    if (equipe == null) return [for (final p in Perfil.todos) _linha(context, p, secundario, numeros, semanticas)];
+    final porChave = {for (final p in Perfil.todos) p.chave: p};
+    final grupos = personasDaEquipe(equipe, porChave.keys);
+    final titulo = Theme.of(context).textTheme.labelLarge;
+    return [
+      Text('Nesta equipe', style: titulo),
+      if (grupos.naEquipe.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp2),
+          child: Text('Nenhuma persona nesta equipe ainda.', style: secundario),
+        ),
+      for (final MapEntry(key: chave, value: posicoes) in grupos.naEquipe.entries)
+        if (porChave[chave] case final p?) _linha(context, p, secundario, numeros, semanticas, posicoes: posicoes),
+      const SizedBox(height: Espacos.esp4),
+      Text('Disponíveis', style: titulo),
+      if (grupos.disponiveis.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp2),
+          child: Text('Todas as personas já estão nesta equipe.', style: secundario),
+        ),
+      for (final chave in grupos.disponiveis)
+        _linha(context, porChave[chave]!, secundario, numeros, semanticas, adicionar: gerenciar),
+    ];
+  }
+
+  Widget _linha(
+    BuildContext context,
+    Perfil p,
+    TextStyle? secundario,
+    TextStyle? numeros,
+    CoresSemanticas semanticas, {
+    List<String> posicoes = const [],
+    bool adicionar = false,
+  }) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Espacos.esp2),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Avatar.doPerfil(p.chave, tamanho: 28),
+        const SizedBox(width: Espacos.esp3),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(p.nome, style: tema.textTheme.titleSmall),
+            Text(
+              [p.papel, p.modelo, if (p.gerandoPerfil) 'gerando perfil…']
+                  .whereType<String>()
+                  .where((s) => s.isNotEmpty)
+                  .join(' · '),
+              style: secundario,
+            ),
+            if (posicoes.isNotEmpty)
+              Text('Ocupa: ${posicoes.join(', ')}', style: secundario?.copyWith(color: cores.onSurface)),
+            if (adicionar)
+              Padding(
+                padding: const EdgeInsets.only(top: Espacos.esp1),
+                child: FilledButton.tonalIcon(
+                  onPressed: () => estado.colocarNaEquipe(p.chave, p.papel.trim().isEmpty ? p.nome : p.papel),
+                  icon: const Icon(Symbols.group_add, size: 18),
+                  label: const Text('Adicionar à equipe'),
+                ),
+              ),
+            if (estadoDaPausa(p.pausa) case final estadoDaPersona?)
+              Padding(
+                padding: const EdgeInsets.only(top: Espacos.esp1),
+                child: RotuloDeEstado(estado: estadoDaPersona, rotulo: nomesDePausa[p.pausa] ?? p.pausa!),
+              ),
+            Text(
+              'tarefas no mês: US\$ ${p.gastoMesUSD.toStringAsFixed(2)}'
+              '${p.orcamentoMensalUSD != null ? ' de US\$ ${p.orcamentoMensalUSD!.toStringAsFixed(2)}' : ' · sem limite'}',
+              style: numeros,
+            ),
+            Text(
+              'tokens no mês: ${formatarTokens(p.tokensMes)}'
+              '${p.orcamentoMensalTokens != null ? ' de ${formatarTokens(p.orcamentoMensalTokens!)}' : ' · sem limite'}',
+              style: numeros,
+            ),
+            if (p.proporcaoDoOrcamento case final proporcao?)
+              Padding(
+                padding: const EdgeInsets.only(top: Espacos.esp1),
+                child: LinearProgressIndicator(
+                  value: proporcao,
+                  backgroundColor: cores.surfaceContainerHighest,
+                  color: proporcao >= 1
+                      ? cores.error
+                      : proporcao >= 0.8
+                          ? semanticas.aviso.cor
+                          : semanticas.sucesso.cor,
+                ),
+              ),
+            if (gerenciar || skillsDaPersona(skills.lista, p).isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: Espacos.esp2),
+                child: SecaoDeSkills(
+                  itens: skillsDaPersona(skills.lista, p),
+                  anexaveis: anexaveis(skills.lista, p.skills),
+                  aoAnexar: gerenciar ? (id) => skills.anexarNaPersona(p.chave, id) : null,
+                  aoTirar: gerenciar ? (id) => skills.tirarDaPersona(p.chave, id) : null,
+                ),
+              ),
+          ]),
+        ),
+        IconButton(
+          tooltip: p.pausa == 'ueslei' ? 'Retomar ${p.nome}' : 'Pausar ${p.nome}',
+          icon: Icon(p.pausa == 'ueslei' ? Symbols.play_arrow : Symbols.pause),
+          onPressed: () => p.pausa == 'ueslei' ? estado.retomar(p.chave) : estado.pausar(p.chave),
+        ),
+        if (gerenciar)
+          IconButton(tooltip: 'Orçamento', icon: const Icon(Symbols.savings), onPressed: () => _orcamento(context, p)),
+        if (gerenciar && p.excluivel)
+          IconButton(
+            tooltip: 'Excluir ${p.nome}',
+            color: cores.error,
+            icon: const Icon(Symbols.person_remove),
+            onPressed: () => _excluir(context, p),
+          ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
@@ -1692,78 +1814,7 @@ class _PainelDePersonas extends StatelessWidget {
           child: Text('Clique num cartão para editar a posição.', style: secundario),
         ),
       const SizedBox(height: Espacos.esp2),
-      for (final p in Perfil.todos)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: Espacos.esp2),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Avatar.doPerfil(p.chave, tamanho: 28),
-            const SizedBox(width: Espacos.esp3),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(p.nome, style: tema.textTheme.titleSmall),
-                Text(
-                  [p.papel, p.modelo, if (p.gerandoPerfil) 'gerando perfil…']
-                      .whereType<String>()
-                      .where((s) => s.isNotEmpty)
-                      .join(' · '),
-                  style: secundario,
-                ),
-                if (estadoDaPausa(p.pausa) case final estadoDaPersona?)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Espacos.esp1),
-                    child: RotuloDeEstado(estado: estadoDaPersona, rotulo: nomesDePausa[p.pausa] ?? p.pausa!),
-                  ),
-                Text(
-                  'tarefas no mês: US\$ ${p.gastoMesUSD.toStringAsFixed(2)}'
-                  '${p.orcamentoMensalUSD != null ? ' de US\$ ${p.orcamentoMensalUSD!.toStringAsFixed(2)}' : ' · sem limite'}',
-                  style: numeros,
-                ),
-                Text(
-                  'tokens no mês: ${formatarTokens(p.tokensMes)}'
-                  '${p.orcamentoMensalTokens != null ? ' de ${formatarTokens(p.orcamentoMensalTokens!)}' : ' · sem limite'}',
-                  style: numeros,
-                ),
-                if (p.proporcaoDoOrcamento case final proporcao?)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Espacos.esp1),
-                    child: LinearProgressIndicator(
-                      value: proporcao,
-                      backgroundColor: cores.surfaceContainerHighest,
-                      color: proporcao >= 1
-                          ? cores.error
-                          : proporcao >= 0.8
-                              ? semanticas.aviso.cor
-                              : semanticas.sucesso.cor,
-                    ),
-                  ),
-                if (gerenciar || skillsDaPersona(skills.lista, p).isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Espacos.esp2),
-                    child: SecaoDeSkills(
-                      itens: skillsDaPersona(skills.lista, p),
-                      anexaveis: anexaveis(skills.lista, p.skills),
-                      aoAnexar: gerenciar ? (id) => skills.anexarNaPersona(p.chave, id) : null,
-                      aoTirar: gerenciar ? (id) => skills.tirarDaPersona(p.chave, id) : null,
-                    ),
-                  ),
-              ]),
-            ),
-            IconButton(
-              tooltip: p.pausa == 'ueslei' ? 'Retomar ${p.nome}' : 'Pausar ${p.nome}',
-              icon: Icon(p.pausa == 'ueslei' ? Symbols.play_arrow : Symbols.pause),
-              onPressed: () => p.pausa == 'ueslei' ? estado.retomar(p.chave) : estado.pausar(p.chave),
-            ),
-            if (gerenciar)
-              IconButton(tooltip: 'Orçamento', icon: const Icon(Symbols.savings), onPressed: () => _orcamento(context, p)),
-            if (gerenciar && p.excluivel)
-              IconButton(
-                tooltip: 'Excluir ${p.nome}',
-                color: cores.error,
-                icon: const Icon(Symbols.person_remove),
-                onPressed: () => _excluir(context, p),
-              ),
-          ]),
-        ),
+      ..._secoes(context, secundario, numeros, semanticas),
     ]);
   }
 }

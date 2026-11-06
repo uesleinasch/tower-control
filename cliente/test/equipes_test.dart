@@ -1,6 +1,7 @@
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/estado/servidor.dart';
+import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/organograma.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/tela/equipes.dart';
@@ -128,5 +129,23 @@ void main() {
     await _tocarNoCartao(t, 'revisora');
     expect(estado.selecionada, 'revisora');
     expect(find.text('Responde a'), findsOneWidget);
+  });
+
+  testWidgets('equipe nova começa sem personas e "Adicionar à equipe" cria a posição da persona', (t) async {
+    final estado = await _montar(t, 1300);
+    estado.novaEquipe('Pesquisa');
+    await t.pump();
+
+    expect(estado.atual!.posicoes, isEmpty);
+    expect(find.text('Nenhuma persona nesta equipe ainda.'), findsOneWidget);
+    expect(find.text('Adicionar à equipe'), findsWidgets);
+
+    final escolhida = Perfil.todos.first;
+    await t.tap(find.text('Adicionar à equipe').first);
+    await t.pump();
+
+    expect(estado.atual!.posicoes.single.persona, escolhida.chave);
+    expect(find.text('Nenhuma persona nesta equipe ainda.'), findsNothing);
+    expect(find.text('Ocupa: ${escolhida.papel.trim().isEmpty ? escolhida.nome : escolhida.papel}'), findsOneWidget);
   });
 }

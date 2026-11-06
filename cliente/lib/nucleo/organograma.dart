@@ -108,6 +108,23 @@ EquipeResumo soltar(EquipeResumo e, String id) => _trocar(e, id, (p) => p.copiar
   );
 }
 
+({EquipeResumo equipe, String id}) adicionarPersona(EquipeResumo e, String persona, String titulo) {
+  final r = adicionarPosicao(e, titulo);
+  return (equipe: _trocar(r.equipe, r.id, (p) => p.copiar(persona: () => persona)), id: r.id);
+}
+
+({Map<String, List<String>> naEquipe, List<String> disponiveis}) personasDaEquipe(
+  EquipeResumo e,
+  Iterable<String> todas,
+) {
+  final naEquipe = <String, List<String>>{};
+  for (final p in e.posicoes) {
+    final persona = p.persona;
+    if (persona != null) (naEquipe[persona] ??= []).add(p.titulo);
+  }
+  return (naEquipe: naEquipe, disponiveis: [for (final id in todas) if (!naEquipe.containsKey(id)) id]);
+}
+
 EquipeResumo removerPosicao(EquipeResumo e, String id) {
   final alvo = e.posicao(id);
   if (alvo == null) throw ErroDeOrganograma('a posição $id não existe');

@@ -107,6 +107,14 @@ class EstadoEquipes extends ChangeNotifier {
     notifyListeners();
   }
 
+  void colocarNaEquipe(String persona, String titulo) {
+    final base = atual;
+    if (base == null) return;
+    rascunho = adicionarPersona(base, persona, titulo).equipe;
+    erro = null;
+    notifyListeners();
+  }
+
   void novaSubordinada(String chefe, String titulo) {
     final base = atual;
     if (base == null) return;
