@@ -225,13 +225,15 @@ void cenaDosModelos() {
     expect(jsonEncode(modelo), contains('"conselho-nati"'));
 
     await tocar(t, botao('Importar modelo…'));
-    await aparecer(t, find.text('PERSONAS'), descricao: 'a prévia da importação');
+    await aparecer(t, find.text('Personas'), descricao: 'a prévia da importação');
     final importacao = sala.importacao;
     await esperarAte(t, () => importacao.previa != null && !importacao.pendente, descricao: 'a prévia pronta');
     expect(importacao.escolhas.equipeId ?? importacao.previa!.escolhas.equipeId, 'casa-2');
-    final linhaDaNati = find.ancestor(of: find.text('Nati'), matching: find.byType(Wrap)).first;
-    await tocar(t, find.descendant(of: linhaDaNati, matching: find.byType(DropdownButton<OpcaoDePersona>)));
-    await tocar(t, find.text(rotulosDeOpcaoDePersona[OpcaoDePersona.criarComNome]!).last);
+    final linhaDaNati = find.ancestor(of: find.text('Nati'), matching: find.byType(Card)).first;
+    await tocar(
+      t,
+      find.descendant(of: linhaDaNati, matching: find.text(rotulosDeOpcaoDePersona[OpcaoDePersona.criarComNome]!)),
+    );
     await digitar(t, campoRotulado('Nome da persona nova'), 'Natália');
     await esperarAte(t, () {
       if (importacao.escolhas.personas['nati']?.nome == 'Natália' && !importacao.pendente && importacao.podeImportar) return true;
