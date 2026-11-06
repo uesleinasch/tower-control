@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { readdir, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
@@ -64,8 +64,23 @@ async function esperarGrupoSumir(pid: number, prazoMs: number): Promise<boolean>
   return !grupoVivo(pid)
 }
 
+async function guardarParaORelatorio(pasta: string, arquivo: string): Promise<void> {
+  const rodada = process.env.CT_PASTA_DA_RODADA
+  if (!rodada || !existsSync(arquivo)) return
+  const { logServidor, modelo } = JSON.parse(readFileSync(arquivo, "utf8"))
+  if (existsSync(logServidor)) copyFileSync(logServidor, join(rodada, `${basename(pasta)}.servidor.log`))
+  const soltos = await fetch(`${modelo}/_controle/sem-regra`).then((r) => r.text()).catch((erro) => `${erro}`)
+  writeFileSync(join(rodada, `${basename(pasta)}.sem-regra.json`), soltos)
+}
+
 export async function subirCena(semear?: (amb: Ambiente) => Promise<void>): Promise<() => Promise<void>> {
-  const pasta = mkdtempSync(join(tmpdir(), "ct-web-"))
+  const dePe = process.env.CT_AMBIENTE_DE_PE
+  if (dePe) {
+    process.env.CT_AMBIENTE = dePe
+    await semear?.(ambiente())
+    return async () => {}
+  }
+  const pasta = mkdtempSync(join(process.env.CT_PASTA_DA_RODADA ?? tmpdir(), "ct-web-"))
   const arquivo = join(pasta, "ambiente.json")
   let saida = ""
   const processo: ChildProcess = spawn("bun", ["run", "interface/subir.ts", pasta], {
@@ -76,8 +91,10 @@ export async function subirCena(semear?: (amb: Ambiente) => Promise<void>): Prom
   processo.stdout?.on("data", (d) => (saida += d))
   processo.stderr?.on("data", (d) => (saida += d))
   const pid = processo.pid!
+  writeFileSync(join(pasta, "subir.pid"), String(pid))
 
   const descer = async () => {
+    await guardarParaORelatorio(pasta, arquivo)
     const pidDoServidor = existsSync(arquivo) ? Number(JSON.parse(readFileSync(arquivo, "utf8")).pidDoServidor) : NaN
     if (grupoVivo(pid)) {
       process.kill(-pid, "SIGTERM")
@@ -138,6 +155,23 @@ export async function conferirSemRegra(): Promise<void> {
 
 export async function encontro(nome: string, lado: string, lados: string[]): Promise<void> {
   await controle("/_controle/encontro", { nome, lado, lados })
+}
+
+const PRAZO_DA_CONJUNTA_MS = 10 * 60_000
+
+export function ladosDaConjunta(): string[] {
+  return (process.env.CT_LADOS ?? "").split(",").filter(Boolean)
+}
+
+export async function encontroDaConjunta(nome: string, lado: string): Promise<void> {
+  const limite = Date.now() + PRAZO_DA_CONJUNTA_MS
+  while (true) {
+    try {
+      return await encontro(nome, lado, ladosDaConjunta())
+    } catch (erro) {
+      if (!(erro as Error).message.includes("respondeu 408") || Date.now() > limite) throw erro
+    }
+  }
 }
 
 export function deQuem(pedido: PedidoRecebido, cabecalho: string): boolean {

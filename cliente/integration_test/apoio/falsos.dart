@@ -43,6 +43,22 @@ Future<void> encontro(String nome, String lado, List<String> lados) async {
   await _controle('/_controle/encontro', {'nome': nome, 'lado': lado, 'lados': lados});
 }
 
+const _ladosDaConjunta = String.fromEnvironment('CT_LADOS');
+const prazoDaConjunta = Duration(minutes: 15);
+
+List<String> get ladosDaConjunta => _ladosDaConjunta.split(',').where((l) => l.isNotEmpty).toList();
+
+Future<void> encontroDaConjunta(String nome, String lado) async {
+  final limite = DateTime.now().add(const Duration(minutes: 10));
+  while (true) {
+    try {
+      return await encontro(nome, lado, ladosDaConjunta);
+    } on StateError catch (erro) {
+      if (!erro.message.contains('respondeu 408') || DateTime.now().isAfter(limite)) rethrow;
+    }
+  }
+}
+
 bool deQuem(Map pedido, String cabecalho) => '${pedido['sistema']}'.contains(cabecalho);
 
 class Conexao {

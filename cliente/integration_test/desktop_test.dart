@@ -13,6 +13,7 @@ import 'apoio/ambiente.dart';
 import 'apoio/app.dart';
 import 'apoio/esperas.dart';
 import 'apoio/falsos.dart';
+import 'cenas/conjuntas.dart';
 import 'cenas/espelho_e_modelos.dart';
 import 'cenas/workflows.dart';
 
@@ -454,4 +455,5 @@ void main() {
   cenasDeWorkflows();
   cenaDoEspelho();
   cenaDosModelos();
+  cenasConjuntas(lado: 'desktop', subir: (t) => subirDesktop(t, ambiente), ir: irPara);
 }

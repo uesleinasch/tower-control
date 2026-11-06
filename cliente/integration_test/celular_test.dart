@@ -15,6 +15,7 @@ import 'apoio/app.dart' show aparecer, aparecerNoPainel, aprovarNoPainel, botao,
 import 'apoio/celular.dart';
 import 'apoio/esperas.dart';
 import 'apoio/falsos.dart';
+import 'cenas/conjuntas.dart';
 
 const _prazoDoModelo = Duration(seconds: 60);
 const _prazoDaEntrega = Duration(seconds: 90);
@@ -207,8 +208,11 @@ Future<Map> _esperarFluxo(WidgetTester t, Conexao c, int id, bool Function(Map f
   return fluxo;
 }
 
+Future<void> _irPelaBarra(WidgetTester t, String destino) =>
+    tocar(t, find.descendant(of: find.byType(NavigationBar), matching: find.text(destino)), descricao: '"$destino" na barra');
+
 Future<void> _irParaOPainel(WidgetTester t) async {
-  await tocar(t, find.descendant(of: find.byType(NavigationBar), matching: find.text('Painel')));
+  await _irPelaBarra(t, 'Painel');
   await esperarAte(t, () => salaDe(t).tela == Tela.painel, descricao: 'o painel na tela');
 }
 
@@ -478,6 +482,8 @@ void main() {
     expect(_ficha(concluido, 'fim-parar'), isNull);
     await esperarAte(t, () => pergunta.evaluate().isEmpty, descricao: 'a decisão sair do painel do celular');
   });
+
+  cenasConjuntas(lado: 'celular', subir: (t) => subirCelular(t, ambiente), ir: _irPelaBarra);
 }
 
 Future<Map<String, dynamic>> _conversaNoServidorPorFora(String id) async {
