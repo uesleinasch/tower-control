@@ -226,6 +226,10 @@ A `larguraDupla = 840` de `raiz.dart` passa a ser o corte `expanded`. A janela d
 
 O menu marca o destino atual e mostra badges de pendência como a barra. Ao escolher um destino, ele fecha e a barra fica sem item selecionado. Em medium e acima não há menu hambúrguer: o rail mostra os seis destinos.
 
+**Trilho no desktop** (pedido do Ueslei, 06/11/2026):
+- Um botão no topo recolhe e expande o trilho em qualquer largura a partir de medium. A escolha fica salva e vale nas próximas aberturas. Sem escolha, o trilho fica estendido a partir de large.
+- A Configuração fica no fim do trilho e sempre mostra o nome: ao lado do ícone com o trilho expandido e abaixo dele com o trilho recolhido, como os outros destinos.
+
 ### 10.2 Layout por tela
 
 | Tela | Padrão canônico | Comportamento ao estreitar |
