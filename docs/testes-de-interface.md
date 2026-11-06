@@ -127,6 +127,8 @@ Rodados no aparelho `0088238899`, cada sabotagem num ambiente novo e só com o t
 | cena 6 (celular): aprovação final do Ueslei pelo celular | celular | o Aprovar do painel conclui a tarefa | `case "tarefa-decidir"` (`server.ts`) sem o `ORQUESTRA.decidir` | 05/11/2026 | `prazo de 30000 ms estourado esperando #1 concluída no servidor` |
 | cena 9 (celular): decisão humana tomada no celular termina o fluxo | celular | a opção tocada no celular é a que o fluxo segue | `MOTOR.decidir` (`motor.ts`) usa `no.opcoes[0]` no lugar de `opcao` | 05/11/2026 | `Expected: contains pair 'opcao' => 'seguir'` (saiu `parar`) |
 
+Pendente no celular: a spec pede que a cena 1 também anexe um arquivo no celular, e esse passo ainda não existe. O anexo só tem cena na web. No app, o anexo passa por `escolherArquivos` (`lib/sistema/arquivos.dart`), chamado em `lib/tela/anexar.dart`, e esse caminho segue sem vermelho no celular. Falta escrever o passo: trocar `escolherArquivos` por um arquivo do aparelho, enviar, conferir em `pedidos` o caminho em `conversations/anexos/` e sabotar o `resolverAnexos`. Ele entra na próxima bateria com o aparelho.
+
 ### Conjuntas (web, desktop e celular num ambiente só)
 
 | Cena | Plataforma | O que prova | Sabotagem | Data | Primeira linha vermelha |
