@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 
 import '../nucleo/organograma.dart' show Vista, deslocarVista, escalaMaxima, escalaMinima, zoomEm;
@@ -79,10 +80,10 @@ class ControlesDeZoom extends StatelessWidget {
   Widget build(BuildContext context) => Card(
         elevation: 3,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(tooltip: 'Afastar (Ctrl + roda)', onPressed: escala > escalaMinima ? aoAfastar : null, icon: const Icon(Icons.remove)),
+          IconButton(tooltip: 'Afastar (Ctrl + roda)', onPressed: escala > escalaMinima ? aoAfastar : null, icon: const Icon(Symbols.remove)),
           TextButton(onPressed: aoTamanhoReal, child: Text('${(escala * 100).round()}%')),
-          IconButton(tooltip: 'Aproximar (Ctrl + roda)', onPressed: escala < escalaMaxima ? aoAproximar : null, icon: const Icon(Icons.add)),
-          IconButton(tooltip: 'Ajustar à tela', onPressed: aoAjustar, icon: const Icon(Icons.fit_screen_outlined)),
+          IconButton(tooltip: 'Aproximar (Ctrl + roda)', onPressed: escala < escalaMaxima ? aoAproximar : null, icon: const Icon(Symbols.add)),
+          IconButton(tooltip: 'Ajustar à tela', onPressed: aoAjustar, icon: const Icon(Symbols.fit_screen)),
         ]),
       );
 }

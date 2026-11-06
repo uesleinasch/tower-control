@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../conexao/http.dart';
@@ -29,7 +30,7 @@ class TelaConfiguracao extends StatelessWidget {
   Widget build(BuildContext context) => Column(children: [
         Material(
           color: Theme.of(context).colorScheme.surface,
-          child: const ListTile(leading: Icon(Icons.settings_outlined), title: Text('Configuração')),
+          child: const ListTile(leading: Icon(Symbols.settings), title: Text('Configuração')),
         ),
         const Divider(),
         Expanded(
@@ -69,7 +70,7 @@ class TelaConfiguracaoCelular extends StatelessWidget {
           child: SafeArea(
             bottom: false,
             child: ListTile(
-              leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => sala.ir(Tela.conversas)),
+              leading: IconButton(icon: const Icon(Symbols.arrow_back), onPressed: () => sala.ir(Tela.conversas)),
               title: const Text('Configuração'),
             ),
           ),
@@ -127,7 +128,7 @@ class _BlocoAvisosState extends State<_BlocoAvisos> {
   @override
   Widget build(BuildContext context) => BlocoDeConfiguracao(
         titulo: 'Avisos',
-        icone: Icons.notifications_outlined,
+        icone: Symbols.notifications,
         acao: _Etiqueta(_rodando ? 'escutando' : 'parado', _rodando ? _verde : _ambar),
         filhos: [
           SwitchListTile(
@@ -300,8 +301,8 @@ class _BlocoServidorState extends State<_BlocoServidor> {
     final ativo = _ativo == 'active';
     return BlocoDeConfiguracao(
       titulo: 'Servidor',
-      icone: Icons.dns_outlined,
-      acao: IconButton(tooltip: 'Atualizar', icon: const Icon(Icons.refresh), onPressed: _consultar),
+      icone: Symbols.dns,
+      acao: IconButton(tooltip: 'Atualizar', icon: const Icon(Symbols.refresh), onPressed: _consultar),
       filhos: [
         Wrap(spacing: 8, runSpacing: 8, children: [
           _Etiqueta(ativo ? 'rodando' : _ativo, ativo ? _verde : (_ativo == '…' ? _ambar : _vermelho)),
@@ -318,17 +319,17 @@ class _BlocoServidorState extends State<_BlocoServidor> {
         Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
           FilledButton.tonalIcon(
             onPressed: _ocupado || ativo ? null : () => _executar(VerboServico.iniciar),
-            icon: const Icon(Icons.play_arrow),
+            icon: const Icon(Symbols.play_arrow),
             label: const Text('Iniciar'),
           ),
           FilledButton.tonalIcon(
             onPressed: _ocupado || !ativo ? null : () => _executar(VerboServico.parar),
-            icon: const Icon(Icons.stop),
+            icon: const Icon(Symbols.stop),
             label: const Text('Parar'),
           ),
           FilledButton.tonalIcon(
             onPressed: _ocupado ? null : () => _executar(VerboServico.reiniciar),
-            icon: const Icon(Icons.restart_alt),
+            icon: const Icon(Symbols.restart_alt),
             label: const Text('Reiniciar'),
           ),
           if (_ocupado) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -377,7 +378,7 @@ class _BlocoInicializacaoState extends State<_BlocoInicializacao> {
   @override
   Widget build(BuildContext context) => BlocoDeConfiguracao(
         titulo: 'Inicialização',
-        icone: Icons.power_settings_new,
+        icone: Symbols.power_settings_new,
         filhos: [
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -448,7 +449,7 @@ class _BlocoEspelhoState extends State<_BlocoEspelho> {
           final ligadoSalvo = _e.config?.ativo ?? false;
           return BlocoDeConfiguracao(
             titulo: 'Espelho no TickTask',
-            icone: Icons.sync_alt,
+            icone: Symbols.sync_alt,
             acao: _Etiqueta(_e.resumo, _corDoResumo()),
             filhos: [
               Text(
@@ -526,7 +527,7 @@ class _BlocoEspelhoState extends State<_BlocoEspelho> {
               Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 FilledButton.tonalIcon(
                   onPressed: ligadoSalvo && !_e.sincronizando ? _e.sincronizar : null,
-                  icon: const Icon(Icons.sync),
+                  icon: const Icon(Symbols.sync),
                   label: const Text('Sincronizar agora'),
                 ),
                 if (_e.sincronizando)
@@ -583,14 +584,14 @@ class _BlocoRedeState extends State<_BlocoRede> {
               ? null
               : IconButton(
                   tooltip: 'Copiar',
-                  icon: const Icon(Icons.copy, size: 18),
+                  icon: const Icon(Symbols.content_copy, size: 18),
                   onPressed: () => copiar(context, 'http://$host:$porta'),
                 ),
         );
     return BlocoDeConfiguracao(
       titulo: 'Rede',
-      icone: Icons.lan_outlined,
-      acao: IconButton(tooltip: 'Atualizar', icon: const Icon(Icons.refresh), onPressed: _carregar),
+      icone: Symbols.lan,
+      acao: IconButton(tooltip: 'Atualizar', icon: const Icon(Symbols.refresh), onPressed: _carregar),
       filhos: [
         if (_carregando)
           const LinearProgressIndicator()
@@ -711,7 +712,7 @@ class _BlocoCelularState extends State<_BlocoCelular> {
     final cores = Theme.of(context).colorScheme;
     return BlocoDeConfiguracao(
       titulo: 'Celular',
-      icone: Icons.phone_android,
+      icone: Symbols.phone_android,
       filhos: [
         Text(
           'Conecte o celular no cabo com a depuração USB ligada. "Instalar e conectar" instala o app '
@@ -724,14 +725,14 @@ class _BlocoCelularState extends State<_BlocoCelular> {
         else if (_dispositivos.isEmpty)
           const ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.usb_off),
+            leading: Icon(Symbols.usb_off),
             title: Text('Nenhum aparelho no cabo'),
           )
         else
           for (final d in _dispositivos)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.smartphone),
+              leading: const Icon(Symbols.smartphone),
               title: Text(d.modelo),
               subtitle: Text(switch (d.estado) {
                 'device' => d.serial,
@@ -813,16 +814,16 @@ class _BlocoLogsState extends State<_BlocoLogs> {
     final visiveis = f.isEmpty ? _linhas : _linhas.where((l) => l.toLowerCase().contains(f)).toList();
     return BlocoDeConfiguracao(
       titulo: 'Logs do servidor',
-      icone: Icons.receipt_long_outlined,
+      icone: Symbols.receipt_long,
       acao: IconButton(
         tooltip: 'Copiar',
-        icon: const Icon(Icons.copy, size: 18),
+        icon: const Icon(Symbols.content_copy, size: 18),
         onPressed: () => copiar(context, visiveis.join('\n')),
       ),
       filhos: [
         TextField(
           onChanged: (v) => setState(() => _filtro = v),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list), hintText: 'Filtrar'),
+          decoration: const InputDecoration(prefixIcon: Icon(Symbols.filter_list), hintText: 'Filtrar'),
         ),
         const SizedBox(height: 8),
         if (_erro != null) _Saida(_erro!, erro: true),

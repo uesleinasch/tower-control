@@ -6,6 +6,7 @@ import 'package:control_tower/sistema/servico_avisos.dart';
 import 'package:control_tower/tela/chat.dart';
 import 'package:control_tower/tela/conversas.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -280,7 +281,7 @@ void main() {
 
     await _abrirNova(t, 'Alfred');
     final conversa = await _enviar(t, mensagem);
-    await tocar(t, find.byIcon(Icons.arrow_back), descricao: 'a seta que fecha o chat');
+    await tocar(t, find.byIcon(Symbols.arrow_back), descricao: 'a seta que fecha o chat');
     await esperarAte(t, () => sala.tela == Tela.conversas, descricao: 'a lista no lugar do chat');
 
     final aviso = await avisoNaBandeja(

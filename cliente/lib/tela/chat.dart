@@ -4,6 +4,7 @@ import 'dart:io';
 // O flutter_markdown_plus ainda lê o ThemeData do material antigo, publicado pela ponte em main.dart.
 import 'package:flutter/material.dart' as legado show Theme;
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -126,7 +127,7 @@ class _Cabecalho extends StatelessWidget {
           child: Row(
             children: [
               if (compacto)
-                IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => sala.ir(Tela.conversas))
+                IconButton(icon: const Icon(Symbols.arrow_back), onPressed: () => sala.ir(Tela.conversas))
               else
                 const SizedBox(width: 12),
               Avatar.doPerfil(chat.perfil!, tamanho: 32),
@@ -170,7 +171,7 @@ class _Cabecalho extends StatelessWidget {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Text(chat.executor && chat.auto ? modeloDoAuto : chat.modelo,
                         style: TextStyle(color: cores.onSurfaceVariant)),
-                    Icon(Icons.expand_more, size: 18, color: cores.onSurfaceVariant),
+                    Icon(Symbols.expand_more, size: 18, color: cores.onSurfaceVariant),
                   ]),
                 ),
               ),
@@ -223,13 +224,13 @@ class _Mensagens extends StatelessWidget {
         DoUsuario() => _BalaoUsuario(item: item, endereco: sala.canal.endereco),
         BalaoPerfil() =>
           _BalaoPerfil(perfil: item.perfil, texto: item.texto, primeiro: item.primeiro, ts: item.ts, aoCitar: aoCitar),
-        Registro(:final comando) => _Linha(icone: Icons.terminal, texto: comando, mono: true),
-        AvisoChat(:final texto) => _Linha(icone: Icons.info_outline, texto: texto),
+        Registro(:final comando) => _Linha(icone: Symbols.terminal, texto: comando, mono: true),
+        AvisoChat(:final texto) => _Linha(icone: Symbols.info, texto: texto),
         ErroChat(:final texto) =>
-          _Linha(icone: Icons.error_outline, texto: texto, cor: Theme.of(context).colorScheme.error),
+          _Linha(icone: Symbols.error, texto: texto, cor: Theme.of(context).colorScheme.error),
         Permissao(:final situacao) when situacao == SituacaoPermissao.pendente => null,
         Permissao(:final comando, :final situacao) => _Linha(
-            icone: situacao == SituacaoPermissao.permitido ? Icons.check_circle_outline : Icons.block,
+            icone: situacao == SituacaoPermissao.permitido ? Symbols.check_circle : Symbols.block,
             texto: '${switch (situacao) {
               SituacaoPermissao.permitido => 'permitido',
               SituacaoPermissao.negado => 'negado',
@@ -336,7 +337,7 @@ class _AnexoEnviado extends StatelessWidget {
   }
 
   Widget _chip(BuildContext context, VoidCallback abrir) => ActionChip(
-        avatar: Icon(anexo.tipo == TipoAnexo.pdf ? Icons.picture_as_pdf_outlined : Icons.description_outlined, size: 18),
+        avatar: Icon(anexo.tipo == TipoAnexo.pdf ? Symbols.picture_as_pdf : Symbols.description, size: 18),
         label: Text('${anexo.nome} · ${formatarBytes(anexo.bytes)}'),
         onPressed: abrir,
       );
@@ -370,8 +371,8 @@ class _BalaoPerfil extends StatelessWidget {
           Flexible(
             child: MenuDeToque(
               itens: () => [
-                (Icons.reply, 'Responder a este trecho', () => aoCitar(texto)),
-                (Icons.copy, 'Copiar', () => copiar(context, texto)),
+                (Symbols.reply, 'Responder a este trecho', () => aoCitar(texto)),
+                (Symbols.content_copy, 'Copiar', () => copiar(context, texto)),
               ],
               child: Container(
                 padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
@@ -503,7 +504,7 @@ class _CartaoPermissaoState extends State<_CartaoPermissao> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
-            const Icon(Icons.shield_outlined, size: 18, color: Color(0xFFE0A458)),
+            const Icon(Symbols.shield, size: 18, color: Color(0xFFE0A458)),
             const SizedBox(width: 8),
             const Expanded(child: Text('Alfred quer rodar um comando', style: TextStyle(fontWeight: FontWeight.w600))),
             Text('${segundos}s', style: TextStyle(color: cores.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()])),
@@ -558,17 +559,17 @@ class _Compositor extends StatelessWidget {
       builder: (context) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
-            leading: const Icon(Icons.photo_camera_outlined),
+            leading: const Icon(Symbols.photo_camera),
             title: const Text('Câmera'),
             onTap: () => Navigator.pop(context, FonteAnexo.camera),
           ),
           ListTile(
-            leading: const Icon(Icons.photo_library_outlined),
+            leading: const Icon(Symbols.photo_library),
             title: const Text('Galeria'),
             onTap: () => Navigator.pop(context, FonteAnexo.galeria),
           ),
           ListTile(
-            leading: const Icon(Icons.attach_file),
+            leading: const Icon(Symbols.attach_file),
             title: const Text('Arquivo'),
             onTap: () => Navigator.pop(context, FonteAnexo.arquivo),
           ),
@@ -612,7 +613,7 @@ class _Compositor extends StatelessWidget {
                       child: Text(chat.citacao!,
                           maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: cores.onSurfaceVariant)),
                     ),
-                    IconButton(icon: const Icon(Icons.close, size: 18), onPressed: chat.limparCitacao),
+                    IconButton(icon: const Icon(Symbols.close, size: 18), onPressed: chat.limparCitacao),
                   ]),
                 ),
               if (chat.anexos.isNotEmpty || chat.subindo > 0)
@@ -623,9 +624,9 @@ class _Compositor extends StatelessWidget {
                       InputChip(
                         avatar: Icon(
                             switch (a.tipo) {
-                              TipoAnexo.imagem => Icons.image_outlined,
-                              TipoAnexo.pdf => Icons.picture_as_pdf_outlined,
-                              TipoAnexo.texto => Icons.description_outlined,
+                              TipoAnexo.imagem => Symbols.image,
+                              TipoAnexo.pdf => Symbols.picture_as_pdf,
+                              TipoAnexo.texto => Symbols.description,
                             },
                             size: 18),
                         label: Text('${a.nome} · ${formatarBytes(a.bytes)}'),
@@ -659,7 +660,7 @@ class _Compositor extends StatelessWidget {
                 children: [
                   IconButton(
                     tooltip: 'Anexar',
-                    icon: const Icon(Icons.attach_file),
+                    icon: const Icon(Symbols.attach_file),
                     onPressed: conectado ? () => _clipe(context) : null,
                   ),
                   Expanded(
@@ -693,7 +694,7 @@ class _Compositor extends StatelessWidget {
                   const SizedBox(width: 4),
                   IconButton.filled(
                     tooltip: 'Enviar',
-                    icon: const Icon(Icons.arrow_upward),
+                    icon: const Icon(Symbols.arrow_upward),
                     onPressed: podeEnviar ? aoEnviar : null,
                   ),
                 ],

@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/sala.dart';
 import '../nucleo/modelos.dart';
@@ -291,13 +292,13 @@ class _Workflows extends StatelessWidget {
                     children: [
                       TextButton.icon(
                         onPressed: () => sala.abrirFluxo(f.fluxo, equipe: f.equipe),
-                        icon: const Icon(Icons.alt_route, size: 18),
+                        icon: const Icon(Symbols.alt_route, size: 18),
                         label: const Text('Ver'),
                       ),
                       TextButton.icon(
                         style: TextButton.styleFrom(foregroundColor: cores.error),
                         onPressed: () => cancelarFluxo(context, sala.workflows, f.fluxo, f.nome),
-                        icon: const Icon(Icons.cancel_outlined, size: 18),
+                        icon: const Icon(Symbols.cancel, size: 18),
                         label: const Text('Cancelar'),
                       ),
                     ],
@@ -329,7 +330,7 @@ class _Agora extends StatelessWidget {
         for (final e in retrato.rodando)
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            leading: Icon(Icons.play_circle_outline, color: corDoEstado(context, 'em_andamento')),
+            leading: Icon(Symbols.play_circle, color: corDoEstado(context, 'em_andamento')),
             title: Text('#${e.tarefaId} ${e.titulo}'),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,7 +353,7 @@ class _Agora extends StatelessWidget {
         for (final e in retrato.naFila)
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            leading: Icon(Icons.schedule, color: cores.onSurfaceVariant),
+            leading: Icon(Symbols.schedule, color: cores.onSurfaceVariant),
             title: Text('#${e.tarefaId} ${e.titulo}'),
             subtitle: Text(_juntar([e.persona, e.motivo]), style: secundario),
             onTap: () => sala.abrirTarefa(e.tarefaId),
@@ -525,7 +526,7 @@ class _ProximasRotinas extends StatelessWidget {
           ListTile(
             dense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            leading: Icon(Icons.schedule, color: cores.onSurfaceVariant),
+            leading: Icon(Symbols.schedule, color: cores.onSurfaceVariant),
             title: Text(r.nome.isEmpty ? r.id : r.nome),
             subtitle: Text(
               _juntar([r.equipe, if (r.proximo case final p?) horarioCurto(p)]),

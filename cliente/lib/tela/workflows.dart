@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 
 import '../estado/sala.dart';
@@ -98,17 +99,17 @@ class _ListaDeWorkflows extends StatelessWidget {
         if (editar) ...[
           OutlinedButton.icon(
             onPressed: () => importarModelo(context, sala, destino: equipe.id),
-            icon: const Icon(Icons.file_open_outlined),
+            icon: const Icon(Symbols.file_open),
             label: const Text('Importar workflow…'),
           ),
           const SizedBox(width: 8),
           FilledButton.tonalIcon(
             onPressed: () => _novo(context),
-            icon: const Icon(Icons.add),
+            icon: const Icon(Symbols.add),
             label: const Text('Novo workflow'),
           ),
         ],
-        IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: estado.carregar),
+        IconButton(tooltip: 'Recarregar', icon: const Icon(Symbols.refresh), onPressed: estado.carregar),
       ]),
       if (!estado.carregada)
         const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
@@ -170,28 +171,28 @@ class _CartaoDoWorkflow extends StatelessWidget {
             child: Wrap(spacing: 8, runSpacing: 4, children: [
               FilledButton.tonalIcon(
                 onPressed: () => abrirIniciarWorkflow(context, estado, w),
-                icon: const Icon(Icons.play_arrow, size: 18),
+                icon: const Icon(Symbols.play_arrow, size: 18),
                 label: const Text('Iniciar'),
               ),
               OutlinedButton.icon(
                 onPressed: () => estado.verDefinicao(w),
-                icon: const Icon(Icons.alt_route, size: 18),
+                icon: const Icon(Symbols.alt_route, size: 18),
                 label: const Text('Ver'),
               ),
               if (editar) ...[
                 OutlinedButton.icon(
                   onPressed: () => sala.editorDeWorkflow.abrir(w, equipe),
-                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  icon: const Icon(Symbols.edit, size: 18),
                   label: const Text('Editar'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => sala.editorDeWorkflow.duplicar(w, equipe, estado.daEquipe(equipe.id).map((x) => x.id)),
-                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  icon: const Icon(Symbols.content_copy, size: 18),
                   label: const Text('Duplicar'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => exportarWorkflowComoModelo(context, sala, equipe.id, w.id),
-                  icon: const Icon(Icons.ios_share, size: 18),
+                  icon: const Icon(Symbols.ios_share, size: 18),
                   label: const Text('Exportar como modelo…'),
                 ),
               ],
@@ -240,7 +241,7 @@ class _LinhaDoFluxo extends StatelessWidget {
       trailing: f.aberto
           ? IconButton(
               tooltip: 'Cancelar',
-              icon: const Icon(Icons.cancel_outlined),
+              icon: const Icon(Symbols.cancel),
               onPressed: () => cancelarFluxo(context, sala.workflows, f.id, f.nome),
             )
           : null,
@@ -359,7 +360,7 @@ class _VistaDoGrafo extends StatelessWidget {
     final cabecalho = Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
       child: Row(children: [
-        IconButton(tooltip: 'Voltar', icon: const Icon(Icons.arrow_back), onPressed: aoVoltar ?? estado.fecharGrafo),
+        IconButton(tooltip: 'Voltar', icon: const Icon(Symbols.arrow_back), onPressed: aoVoltar ?? estado.fecharGrafo),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(w?.nome ?? 'Workflow', style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
@@ -381,13 +382,13 @@ class _VistaDoGrafo extends StatelessWidget {
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(foregroundColor: cores.error),
             onPressed: () => cancelarFluxo(context, estado, f.id, f.nome),
-            icon: const Icon(Icons.cancel_outlined, size: 18),
+            icon: const Icon(Symbols.cancel, size: 18),
             label: const Text('Cancelar'),
           )
         else if (f == null && w != null)
           FilledButton.tonalIcon(
             onPressed: () => abrirIniciarWorkflow(context, estado, w),
-            icon: const Icon(Icons.play_arrow, size: 18),
+            icon: const Icon(Symbols.play_arrow, size: 18),
             label: const Text('Iniciar'),
           ),
       ]),
@@ -451,7 +452,7 @@ class _DetalheDaCaixa extends StatelessWidget {
     return ListView(padding: const EdgeInsets.all(16), children: [
       Row(children: [
         Expanded(child: Text(caixa.rotulo, style: Theme.of(context).textTheme.titleSmall)),
-        IconButton(tooltip: 'Fechar', icon: const Icon(Icons.close), onPressed: () => sala.workflows.selecionarCaixa(null)),
+        IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: () => sala.workflows.selecionarCaixa(null)),
       ]),
       Text(
         [caixa.nomeDoTipo, if (caixa.detalhe.isNotEmpty) caixa.detalhe, if (caixa.prazo case final p?) 'prazo $p'].join(' · '),
@@ -561,7 +562,7 @@ class _CaixasEmLista extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 if (c.id == workflow.inicio)
-                  Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.play_arrow, size: 16, color: cores.primary)),
+                  Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Symbols.play_arrow, size: 16, color: cores.primary)),
                 Expanded(child: Text(c.rotulo, style: const TextStyle(fontWeight: FontWeight.w600))),
               ]),
               Text([c.nomeDoTipo, if (c.detalhe.isNotEmpty) c.detalhe].join(' · '), style: pequeno),
@@ -602,17 +603,17 @@ class EdicaoDoGrafo {
 }
 
 const iconesDeCaixa = {
-  'executar': Icons.engineering_outlined,
-  'revisar': Icons.rate_review_outlined,
-  'aprovar': Icons.verified_outlined,
-  'board': Icons.groups_outlined,
-  'decisao_humana': Icons.help_outline,
-  'condicao': Icons.call_split,
-  'paralelo': Icons.device_hub,
-  'juncao': Icons.merge_type,
-  'laco': Icons.loop,
-  'espera': Icons.hourglass_empty,
-  'fim': Icons.flag_outlined,
+  'executar': Symbols.engineering,
+  'revisar': Symbols.rate_review,
+  'aprovar': Symbols.verified,
+  'board': Symbols.groups,
+  'decisao_humana': Symbols.help,
+  'condicao': Symbols.call_split,
+  'paralelo': Symbols.device_hub,
+  'juncao': Symbols.merge_type,
+  'laco': Symbols.loop,
+  'espera': Symbols.hourglass_empty,
+  'fim': Symbols.flag,
 };
 
 class CanvasDoGrafo extends StatefulWidget {
@@ -1019,10 +1020,10 @@ class _CaixaDoGrafo extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
         Row(children: [
-          if (inicio) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(Icons.play_arrow, size: 14, color: cores.primary)),
+          if (inicio) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(Symbols.play_arrow, size: 14, color: cores.primary)),
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: Icon(iconesDeCaixa[caixa.tipo] ?? Icons.crop_square, size: 12, color: cores.onSurfaceVariant),
+            child: Icon(iconesDeCaixa[caixa.tipo] ?? Symbols.crop_square, size: 12, color: cores.onSurfaceVariant),
           ),
           Expanded(
             child: Text(
@@ -1032,7 +1033,7 @@ class _CaixaDoGrafo extends StatelessWidget {
               style: TextStyle(color: cores.onSurfaceVariant, fontSize: 10, letterSpacing: 0.8),
             ),
           ),
-          if (comErro) Icon(Icons.error_outline, size: 14, color: cores.error),
+          if (comErro) Icon(Symbols.error, size: 14, color: cores.error),
           if (estado case final e?)
             Text(nomesDeStatusDaFicha[e] ?? e, style: TextStyle(color: cor, fontSize: 10, fontWeight: FontWeight.w600)),
         ]),

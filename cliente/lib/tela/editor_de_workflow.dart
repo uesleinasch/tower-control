@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/editor_de_workflow.dart';
 import '../estado/sala.dart';
@@ -246,7 +247,7 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(children: [
-          IconButton(tooltip: 'Fechar o editor', icon: const Icon(Icons.close), onPressed: _fechar),
+          IconButton(tooltip: 'Fechar o editor', icon: const Icon(Symbols.close), onPressed: _fechar),
           Flexible(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(w.nome, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -274,27 +275,27 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
                 IconButton(
                   tooltip: 'Desfazer (Ctrl+Z)',
                   onPressed: _e.podeDesfazer ? _e.desfazer : null,
-                  icon: const Icon(Icons.undo),
+                  icon: const Icon(Symbols.undo),
                 ),
                 IconButton(
                   tooltip: 'Refazer (Ctrl+Shift+Z)',
                   onPressed: _e.podeRefazer ? _e.refazer : null,
-                  icon: const Icon(Icons.redo),
+                  icon: const Icon(Symbols.redo),
                 ),
-                acao(Icons.account_tree_outlined, 'Organizar', _organizar),
-                if (salvo != null && !_e.alterado) acao(Icons.play_arrow, 'Iniciar', () => _iniciar(salvo)),
+                acao(Symbols.account_tree, 'Organizar', _organizar),
+                if (salvo != null && !_e.alterado) acao(Symbols.play_arrow, 'Iniciar', () => _iniciar(salvo)),
                 acao(
-                  Icons.save_outlined,
+                  Symbols.save,
                   _e.salvando ? 'Salvando…' : (_e.alterado ? 'Salvar' : 'Salvo'),
                   _e.podeSalvar ? _e.salvar : null,
                   principal: true,
                 ),
-                if (_e.mudou) acao(Icons.restore, 'Descartar', _e.descartar),
+                if (_e.mudou) acao(Symbols.restore, 'Descartar', _e.descartar),
                 if (!_e.novo)
                   IconButton(
                     tooltip: 'Excluir workflow',
                     onPressed: _e.salvando ? null : _excluir,
-                    icon: const Icon(Icons.delete_outline),
+                    icon: const Icon(Symbols.delete),
                   ),
               ],
             ),
@@ -308,7 +309,7 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
     final n = _e.problemas;
     if (n == 0) {
       return const Chip(
-        avatar: Icon(Icons.check_circle_outline, size: 18, color: Color(0xFF4FAE7C)),
+        avatar: Icon(Symbols.check_circle, size: 18, color: Color(0xFF4FAE7C)),
         label: Text('sem problemas'),
         visualDensity: VisualDensity.compact,
       );
@@ -319,7 +320,7 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
         for (final MapEntry(key: lugar, value: mensagens) in _e.erros.entries)
           for (final m in mensagens)
             MenuItemButton(
-              leadingIcon: Icon(Icons.error_outline, size: 18, color: cores.error),
+              leadingIcon: Icon(Symbols.error, size: 18, color: cores.error),
               onPressed: () => _irPara(lugar),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 460),
@@ -328,7 +329,7 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
             ),
       ],
       builder: (context, controle, _) => ActionChip(
-        avatar: Icon(Icons.error_outline, size: 18, color: cores.error),
+        avatar: Icon(Symbols.error, size: 18, color: cores.error),
         label: Text(n == 1 ? '1 problema' : '$n problemas'),
         visualDensity: VisualDensity.compact,
         onPressed: () => controle.isOpen ? controle.close() : controle.open(),
@@ -412,7 +413,7 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
               right: 12,
               child: FilledButton.tonalIcon(
                 onPressed: () => setState(() => _painelDoWorkflow = true),
-                icon: const Icon(Icons.tune),
+                icon: const Icon(Symbols.tune),
                 label: const Text('Workflow'),
               ),
             ),
@@ -502,7 +503,7 @@ class _ListaDeErros extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(Icons.error_outline, size: 16, color: cor),
+            Icon(Symbols.error, size: 16, color: cor),
             const SizedBox(width: 6),
             Expanded(child: Text(e, style: TextStyle(color: cor, fontSize: 12))),
           ]),
@@ -572,7 +573,7 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Icon(iconesDeCaixa[tipo] ?? Icons.crop_square, size: 20),
+          Icon(iconesDeCaixa[tipo] ?? Symbols.crop_square, size: 20),
           const SizedBox(width: 8),
           Expanded(child: Text(nomesDeCaixa[tipo] ?? tipo, style: Theme.of(context).textTheme.titleSmall)),
           if (r['inicio'] == _caixa)
@@ -585,7 +586,7 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
             itemBuilder: (_) => _itensDoMenuDaCaixa(r['inicio'] == _caixa),
             onSelected: widget.aoAcao,
           ),
-          IconButton(tooltip: 'Fechar', icon: const Icon(Icons.close), onPressed: () => _e.selecionar(null)),
+          IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: () => _e.selecionar(null)),
         ]),
         Text(descricoesDeCaixa[tipo] ?? '', style: pequeno),
         _ListaDeErros(erros: _e.erros[_caixa] ?? const []),
@@ -599,7 +600,7 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
             helperText: 'aparece nas referências {{id.saída}}; Enter renomeia',
             errorText: _erroDoId,
             errorMaxLines: 3,
-            suffixIcon: IconButton(tooltip: 'Renomear', icon: const Icon(Icons.check), onPressed: _renomear),
+            suffixIcon: IconButton(tooltip: 'Renomear', icon: const Icon(Symbols.check), onPressed: _renomear),
           ),
           onSubmitted: (_) => _renomear(),
           onChanged: (_) {
@@ -686,7 +687,7 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: () => _campo('opcoes', ['aprovar', 'rejeitar']),
-                icon: const Icon(Icons.list),
+                icon: const Icon(Symbols.list),
                 label: const Text('Dar opções ao board'),
               ),
             ),
@@ -707,19 +708,19 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
                     IconButton(
                       tooltip: 'Subir',
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.arrow_upward, size: 18),
+                      icon: const Icon(Symbols.arrow_upward, size: 18),
                       onPressed: i == 0 ? null : () => _e.aplicar((w) => moverRegra(w, _caixa, i, i - 1)),
                     ),
                     IconButton(
                       tooltip: 'Descer',
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.arrow_downward, size: 18),
+                      icon: const Icon(Symbols.arrow_downward, size: 18),
                       onPressed: i == regras.length - 1 ? null : () => _e.aplicar((w) => moverRegra(w, _caixa, i, i + 1)),
                     ),
                     IconButton(
                       tooltip: 'Remover regra',
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.close, size: 18),
+                      icon: const Icon(Symbols.close, size: 18),
                       onPressed: () => _e.aplicar((w) => removerRegra(w, _caixa, i)),
                     ),
                   ]),
@@ -739,7 +740,7 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               onPressed: () => _e.aplicar((w) => acrescentarRegra(w, _caixa)),
-              icon: const Icon(Icons.add),
+              icon: const Icon(Symbols.add),
               label: const Text('Acrescentar regra'),
             ),
           ),
@@ -900,19 +901,19 @@ class _Opcoes extends StatelessWidget {
           IconButton(
             tooltip: 'Subir',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.arrow_upward, size: 18),
+            icon: const Icon(Symbols.arrow_upward, size: 18),
             onPressed: i == 0 ? null : () => editor.aplicar((w) => moverOpcao(w, caixa, i, i - 1)),
           ),
           IconButton(
             tooltip: 'Descer',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.arrow_downward, size: 18),
+            icon: const Icon(Symbols.arrow_downward, size: 18),
             onPressed: i == opcoes.length - 1 ? null : () => editor.aplicar((w) => moverOpcao(w, caixa, i, i + 1)),
           ),
           IconButton(
             tooltip: 'Remover opção',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, size: 18),
+            icon: const Icon(Symbols.close, size: 18),
             onPressed: () => editor.aplicar((w) => removerOpcao(w, caixa, i)),
           ),
         ]),
@@ -920,7 +921,7 @@ class _Opcoes extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
           onPressed: () => editor.aplicar((w) => acrescentarOpcao(w, caixa, 'opção ${opcoes.length + 1}')),
-          icon: const Icon(Icons.add),
+          icon: const Icon(Symbols.add),
           label: const Text('Acrescentar opção'),
         ),
       ),
@@ -991,7 +992,7 @@ class _CamposTipadosState extends State<_CamposTipados> {
           IconButton(
             tooltip: 'Remover campo',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, size: 18),
+            icon: const Icon(Symbols.close, size: 18),
             onPressed: () => _mudar([...campos]..removeAt(i)),
           ),
         ]),
@@ -1011,7 +1012,7 @@ class _CamposTipadosState extends State<_CamposTipados> {
             ...campos,
             (nome: nomeDeCampoLivre([...campos.map((c) => c.nome), ...widget.implicitas.keys]), tipo: 'texto'),
           ]),
-          icon: const Icon(Icons.add),
+          icon: const Icon(Symbols.add),
           label: const Text('Acrescentar campo'),
         ),
       ),
@@ -1166,7 +1167,7 @@ class _PainelDoWorkflow extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(child: Text('Workflow', style: Theme.of(context).textTheme.titleSmall)),
-          IconButton(tooltip: 'Fechar', icon: const Icon(Icons.close), onPressed: aoFechar),
+          IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: aoFechar),
         ]),
         Text('Clique numa caixa para editá-la.', style: pequeno),
         _ListaDeErros(erros: e.erros[lugarDoWorkflow] ?? const []),
@@ -1274,7 +1275,7 @@ class _CampoDeTextoState extends State<_CampoDeTexto> {
             Tooltip(
               message: 'No disco este texto fica em $arquivo; ao salvar, ele volta para o arquivo.',
               child: Chip(
-                avatar: const Icon(Icons.description_outlined, size: 16),
+                avatar: const Icon(Symbols.description, size: 16),
                 label: Text('em $arquivo'),
                 visualDensity: VisualDensity.compact,
               ),
@@ -1313,7 +1314,7 @@ class _InserirValor extends StatelessWidget {
             ],
       builder: (context, controle, _) => TextButton.icon(
         onPressed: () => controle.isOpen ? controle.close() : controle.open(),
-        icon: const Icon(Icons.data_object, size: 18),
+        icon: const Icon(Symbols.data_object, size: 18),
         label: const Text('Inserir valor'),
       ),
     );

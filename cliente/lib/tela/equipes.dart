@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 
 import '../estado/equipes.dart';
@@ -103,7 +104,7 @@ class TelaEquipes extends StatelessWidget {
           right: 12,
           child: FilledButton.tonalIcon(
             onPressed: () => estado.alternarPersonas(false),
-            icon: const Icon(Icons.people_alt_outlined),
+            icon: const Icon(Symbols.people_alt),
             label: const Text('Personas'),
           ),
         ),
@@ -195,20 +196,20 @@ class _Topo extends StatelessWidget {
             IconButton(
               tooltip: estado.vendoRotinas ? 'Organograma' : 'Rotinas',
               isSelected: estado.vendoRotinas,
-              icon: const Icon(Icons.schedule),
+              icon: const Icon(Symbols.schedule),
               onPressed: () => estado.alternarAba(AbaDaEquipe.rotinas),
             ),
             IconButton(
               tooltip: estado.vendoWorkflows ? 'Organograma' : 'Workflows',
               isSelected: estado.vendoWorkflows,
-              icon: const Icon(Icons.alt_route),
+              icon: const Icon(Symbols.alt_route),
               onPressed: () => estado.alternarAba(AbaDaEquipe.workflows),
             ),
           ],
           if (!editar && estado.aba == AbaDaEquipe.organograma)
             IconButton(
               tooltip: 'Personas',
-              icon: const Icon(Icons.people_alt_outlined),
+              icon: const Icon(Symbols.people_alt),
               onPressed: () => showModalBottomSheet<void>(
                 context: context,
                 isScrollControlled: true,
@@ -249,30 +250,30 @@ class _Topo extends StatelessWidget {
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-              acao(Icons.schedule, 'Rotinas', () => estado.alternarAba(AbaDaEquipe.rotinas), marcado: estado.vendoRotinas),
-              acao(Icons.alt_route, 'Workflows', () => estado.alternarAba(AbaDaEquipe.workflows),
+              acao(Symbols.schedule, 'Rotinas', () => estado.alternarAba(AbaDaEquipe.rotinas), marcado: estado.vendoRotinas),
+              acao(Symbols.alt_route, 'Workflows', () => estado.alternarAba(AbaDaEquipe.workflows),
                   marcado: estado.vendoWorkflows),
-              acao(Icons.extension_outlined, 'Skills', () => estado.alternarAba(AbaDaEquipe.skills),
+              acao(Symbols.extension, 'Skills', () => estado.alternarAba(AbaDaEquipe.skills),
                   marcado: estado.vendoSkills),
-              acao(Icons.group_add_outlined, 'Nova equipe', () => _novaEquipe(context)),
-              acao(Icons.file_open_outlined, 'Importar modelo…', () => importarModelo(context, sala)),
+              acao(Symbols.group_add, 'Nova equipe', () => _novaEquipe(context)),
+              acao(Symbols.file_open, 'Importar modelo…', () => importarModelo(context, sala)),
               if (estado.aba == AbaDaEquipe.organograma) ...[
-                acao(Icons.add_box_outlined, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
-                acao(Icons.account_tree_outlined, 'Organizar',
+                acao(Symbols.add_box, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
+                acao(Symbols.account_tree, 'Organizar',
                     equipe == null || equipe.posicoes.isEmpty ? null : () => estado.aplicar(organizar)),
-                acao(Icons.people_alt_outlined, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
+                acao(Symbols.people_alt, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
               ],
-              acao(Icons.save_outlined, estado.alterada ? 'Salvar' : 'Salvo', estado.alterada && !estado.salvando ? estado.salvar : null,
+              acao(Symbols.save, estado.alterada ? 'Salvar' : 'Salvo', estado.alterada && !estado.salvando ? estado.salvar : null,
                   principal: true),
-              if (estado.alterada) acao(Icons.undo, 'Descartar', estado.descartar),
+              if (estado.alterada) acao(Symbols.undo, 'Descartar', estado.descartar),
               if (equipe != null && ids.contains(equipe.id))
                 IconButton(
                   tooltip: 'Exportar como modelo…',
                   onPressed: () => exportarEquipeComoModelo(context, sala, equipe, alterada: estado.alterada),
-                  icon: const Icon(Icons.ios_share),
+                  icon: const Icon(Symbols.ios_share),
                 ),
               if (equipe != null && equipe.id != 'casa')
-                IconButton(tooltip: 'Excluir equipe', onPressed: () => _excluirEquipe(context, equipe), icon: const Icon(Icons.delete_outline)),
+                IconButton(tooltip: 'Excluir equipe', onPressed: () => _excluirEquipe(context, equipe), icon: const Icon(Symbols.delete)),
                 ],
               ),
             ),
@@ -595,7 +596,7 @@ class _Area extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: cores.surface, width: 2),
               ),
-              child: Icon(Icons.add, size: 16, color: cores.onPrimary),
+              child: Icon(Symbols.add, size: 16, color: cores.onPrimary),
             ),
           ),
       ],
@@ -732,7 +733,7 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
     return ListView(padding: const EdgeInsets.all(16), children: [
       Row(children: [
         Expanded(child: Text('Posição ${p.id}', style: Theme.of(context).textTheme.titleSmall)),
-        IconButton(tooltip: 'Fechar', icon: const Icon(Icons.close), onPressed: () => widget.estado.selecionar(null)),
+        IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: () => widget.estado.selecionar(null)),
       ]),
       TextField(
         controller: _titulo,
@@ -770,7 +771,7 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
             final titulo = await pedirTexto(context, titulo: 'Subordinada de ${p.titulo}', rotulo: 'Título (ex.: executor)');
             if (titulo != null) widget.estado.novaSubordinada(p.id, titulo);
           },
-          icon: const Icon(Icons.subdirectory_arrow_right),
+          icon: const Icon(Symbols.subdirectory_arrow_right),
           label: const Text('Adicionar subordinada'),
         ),
       ),
@@ -836,7 +837,7 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
           widget.estado.aplicar((e) => removerPosicao(e, p.id));
           widget.estado.selecionar(null);
         },
-        icon: const Icon(Icons.delete_outline),
+        icon: const Icon(Symbols.delete),
         label: const Text('Remover posição'),
       ),
     ]);
@@ -897,19 +898,19 @@ class _DepoisDaEntrega extends StatelessWidget {
             IconButton(
               tooltip: 'Subir',
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.arrow_upward, size: 18),
+              icon: const Icon(Symbols.arrow_upward, size: 18),
               onPressed: i == 0 ? null : () => _aplicar((e) => moverEtapa(e, posicao.id, i, i - 1)),
             ),
             IconButton(
               tooltip: 'Descer',
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.arrow_downward, size: 18),
+              icon: const Icon(Symbols.arrow_downward, size: 18),
               onPressed: i == politica.length - 1 ? null : () => _aplicar((e) => moverEtapa(e, posicao.id, i, i + 1)),
             ),
             IconButton(
               tooltip: 'Remover etapa',
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.close, size: 18),
+              icon: const Icon(Symbols.close, size: 18),
               onPressed: () => _aplicar((e) => removerEtapa(e, posicao.id, i)),
             ),
           ]),
@@ -921,11 +922,11 @@ class _DepoisDaEntrega extends StatelessWidget {
         ),
       const SizedBox(height: 4),
       Wrap(spacing: 8, runSpacing: 8, children: [
-        _menu('Adicionar revisão', Icons.rate_review_outlined, [
+        _menu('Adicionar revisão', Symbols.rate_review, [
           for (final x in outras) (_rotuloDaOpcao(x), EtapaDePolitica.revisaoPor(x.id)),
           ('Board da equipe', const EtapaDePolitica.revisaoDoBoard()),
         ]),
-        _menu('Adicionar aprovação', Icons.verified_outlined, [
+        _menu('Adicionar aprovação', Symbols.verified, [
           for (final x in outras) (_rotuloDaOpcao(x), EtapaDePolitica.aprovacaoPor(x.id)),
           ('Ueslei', const EtapaDePolitica.aprovacaoDoUeslei()),
         ]),
@@ -980,8 +981,8 @@ class _PainelDePersonas extends StatelessWidget {
       Row(children: [
         Expanded(child: Text('Personas', style: Theme.of(context).textTheme.titleSmall)),
         if (gerenciar) ...[
-          FilledButton.icon(onPressed: () => _nova(context), icon: const Icon(Icons.person_add_alt), label: const Text('Nova')),
-          IconButton(tooltip: 'Ocultar personas', icon: const Icon(Icons.close), onPressed: () => estado.alternarPersonas(personasVisiveis)),
+          FilledButton.icon(onPressed: () => _nova(context), icon: const Icon(Symbols.person_add_alt), label: const Text('Nova')),
+          IconButton(tooltip: 'Ocultar personas', icon: const Icon(Symbols.close), onPressed: () => estado.alternarPersonas(personasVisiveis)),
         ],
       ]),
       const SizedBox(height: 4),
@@ -1035,13 +1036,13 @@ class _PainelDePersonas extends StatelessWidget {
             ),
             IconButton(
               tooltip: p.pausa == 'ueslei' ? 'Retomar ${p.nome}' : 'Pausar ${p.nome}',
-              icon: Icon(p.pausa == 'ueslei' ? Icons.play_arrow : Icons.pause),
+              icon: Icon(p.pausa == 'ueslei' ? Symbols.play_arrow : Symbols.pause),
               onPressed: () => p.pausa == 'ueslei' ? estado.retomar(p.chave) : estado.pausar(p.chave),
             ),
             if (gerenciar)
-              IconButton(tooltip: 'Orçamento', icon: const Icon(Icons.savings_outlined), onPressed: () => _orcamento(context, p)),
+              IconButton(tooltip: 'Orçamento', icon: const Icon(Symbols.savings), onPressed: () => _orcamento(context, p)),
             if (gerenciar && p.excluivel)
-              IconButton(tooltip: 'Excluir ${p.nome}', icon: const Icon(Icons.person_remove_outlined), onPressed: () => _excluir(context, p)),
+              IconButton(tooltip: 'Excluir ${p.nome}', icon: const Icon(Symbols.person_remove), onPressed: () => _excluir(context, p)),
           ]),
         ),
     ]);
@@ -1155,7 +1156,7 @@ class _DetalheDaPosicao extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(posicao.titulo, style: Theme.of(context).textTheme.titleSmall)),
-              IconButton(icon: const Icon(Icons.close), onPressed: () => sala.equipes.selecionar(null)),
+              IconButton(icon: const Icon(Symbols.close), onPressed: () => sala.equipes.selecionar(null)),
             ]),
             Text('Persona: ${posicao.persona == null ? 'vaga' : Perfil.porChave(posicao.persona!).nome}'),
             Text('Responde a: ${chefe?.titulo ?? 'ninguém (solta, responde a você)'}'),
@@ -1296,7 +1297,7 @@ class BarraDePausa extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(children: [
-            Icon(estado.pausadoTudo ? Icons.pause_circle : Icons.play_circle_outline, size: 18,
+            Icon(estado.pausadoTudo ? Symbols.pause_circle : Symbols.play_circle, size: 18,
                 color: estado.pausadoTudo ? cores.onErrorContainer : cores.onSurfaceVariant),
             const SizedBox(width: 8),
             Expanded(
@@ -1307,7 +1308,7 @@ class BarraDePausa extends StatelessWidget {
             ),
             TextButton.icon(
               onPressed: estado.alternarPausaGeral,
-              icon: Icon(estado.pausadoTudo ? Icons.play_arrow : Icons.pause),
+              icon: Icon(estado.pausadoTudo ? Symbols.play_arrow : Symbols.pause),
               label: Text(estado.pausadoTudo ? 'Retomar tudo' : 'Pausar tudo'),
             ),
           ]),
