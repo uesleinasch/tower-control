@@ -207,42 +207,6 @@ class _Vazio extends StatelessWidget {
   }
 }
 
-IconData _iconeDoEstado(String? estado) => switch (estado) {
-      'ocioso' => Symbols.radio_button_unchecked,
-      'pausada' => Symbols.pause_circle,
-      'sem_orcamento' => Symbols.money_off,
-      _ => switch (papelDoEstado(estado)) {
-          PapelDeEstado.neutro => Symbols.inventory_2,
-          PapelDeEstado.fila => Symbols.schedule,
-          PapelDeEstado.andamento => Symbols.play_circle,
-          PapelDeEstado.revisao => Symbols.rate_review,
-          PapelDeEstado.aviso => Symbols.block,
-          PapelDeEstado.sucesso => Symbols.check_circle,
-          PapelDeEstado.cancelado => Symbols.cancel,
-          PapelDeEstado.erro => Symbols.error,
-        },
-    };
-
-class _RotuloDeEstado extends StatelessWidget {
-  const _RotuloDeEstado({required this.estado, required this.rotulo});
-
-  final String estado;
-  final String rotulo;
-
-  @override
-  Widget build(BuildContext context) {
-    final cor = corDoEstado(context, estado);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(_iconeDoEstado(estado), size: 16, color: cor),
-        const SizedBox(width: Espacos.esp1),
-        Flexible(child: Text(rotulo, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cor))),
-      ],
-    );
-  }
-}
-
 String _juntar(Iterable<String?> partes) => partes.whereType<String>().where((p) => p.isNotEmpty).join(' · ');
 
 IconData _iconeDaAtencao(String tipo) => switch (tipo) {
@@ -504,7 +468,7 @@ class _Agora extends StatelessWidget {
     }) =>
         ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: Icon(_iconeDoEstado(estado), color: corDoEstado(context, estado)),
+          leading: Icon(iconeDoEstado(estado), color: corDoEstado(context, estado)),
           title: Text('#$tarefaId $titulo'),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -576,8 +540,8 @@ class _Workflows extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               f.ativas.isEmpty
-                  ? const _RotuloDeEstado(estado: 'na_fila', rotulo: 'na fila')
-                  : const _RotuloDeEstado(estado: 'rodando', rotulo: 'rodando'),
+                  ? const RotuloDeEstado(estado: 'na_fila', rotulo: 'na fila')
+                  : const RotuloDeEstado(estado: 'rodando', rotulo: 'rodando'),
               Text(_juntar(['#${f.fluxo}', f.equipe, haQuanto(f.desde, agora)]), style: secundario),
             ],
           ),
@@ -684,7 +648,7 @@ class _Personas extends StatelessWidget {
                     Avatar(cor: Color(p.cor), inicial: p.inicial, tamanho: 28),
                     const SizedBox(width: Espacos.esp2),
                     Expanded(child: Text(p.nome, style: tema.textTheme.titleSmall)),
-                    _RotuloDeEstado(estado: p.estado, rotulo: rotulosDeEstado[p.estado] ?? p.estado),
+                    RotuloDeEstado(estado: p.estado, rotulo: rotulosDeEstado[p.estado] ?? p.estado),
                   ]),
                   const SizedBox(height: Espacos.esp1),
                   Row(children: [
@@ -772,7 +736,7 @@ class _Tarefas extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: Espacos.esp1),
               child: Row(children: [
-                Expanded(child: _RotuloDeEstado(estado: c.status, rotulo: nomesDeStatus[c.status] ?? c.status)),
+                Expanded(child: RotuloDeEstado(estado: c.status, rotulo: nomesDeStatus[c.status] ?? c.status)),
                 Text('${c.quantas}', style: tema.textTheme.headlineSmall?.copyWith(fontFeatures: _numeros)),
               ]),
             ),
