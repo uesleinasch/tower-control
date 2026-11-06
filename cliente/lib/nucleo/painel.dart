@@ -1,3 +1,4 @@
+import 'design.dart';
 import 'modelos.dart';
 import 'protocolo.dart';
 import 'tarefas.dart';
@@ -484,3 +485,21 @@ String haQuanto(DateTime? desde, DateTime agora) {
   if (d.inDays < 1) return 'há ${d.inHours} h';
   return 'há ${d.inDays} d';
 }
+
+int colunasDoPainel(ClasseDeJanela classe) => switch (classe) {
+  ClasseDeJanela.compact => 1,
+  ClasseDeJanela.medium || ClasseDeJanela.expanded => 2,
+  ClasseDeJanela.large || ClasseDeJanela.extraLarge => 3,
+};
+
+List<List<T>> emColunas<T>(List<T> itens, int colunas) => [
+  for (var c = 0; c < colunas; c++) [for (var i = c; i < itens.length; i += colunas) itens[i]],
+];
+
+enum EnfaseDaAcao { principal, secundaria, baixa }
+
+EnfaseDaAcao enfaseDaAcao(String acao, {required int indice, required int total}) => switch (acao) {
+  'abrir' => total == 1 ? EnfaseDaAcao.secundaria : EnfaseDaAcao.baixa,
+  _ when indice == 0 => EnfaseDaAcao.principal,
+  _ => EnfaseDaAcao.secundaria,
+};

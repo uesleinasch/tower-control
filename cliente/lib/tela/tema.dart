@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_color_utilities/material_color_utilities.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../nucleo/design.dart';
@@ -83,6 +84,42 @@ Color corDoPapel(PapelDeEstado papel, ColorScheme cores, CoresSemanticas semanti
 
 Color corDoEstado(BuildContext context, String? estado) =>
     corDoPapel(papelDoEstado(estado), Theme.of(context).colorScheme, CoresSemanticas.de(context));
+
+IconData iconeDoEstado(String? estado) => switch (estado) {
+      'ocioso' => Symbols.radio_button_unchecked,
+      'pausada' => Symbols.pause_circle,
+      'sem_orcamento' => Symbols.money_off,
+      _ => switch (papelDoEstado(estado)) {
+          PapelDeEstado.neutro => Symbols.inventory_2,
+          PapelDeEstado.fila => Symbols.schedule,
+          PapelDeEstado.andamento => Symbols.play_circle,
+          PapelDeEstado.revisao => Symbols.rate_review,
+          PapelDeEstado.aviso => Symbols.block,
+          PapelDeEstado.sucesso => Symbols.check_circle,
+          PapelDeEstado.cancelado => Symbols.cancel,
+          PapelDeEstado.erro => Symbols.error,
+        },
+    };
+
+class RotuloDeEstado extends StatelessWidget {
+  const RotuloDeEstado({super.key, required this.estado, required this.rotulo});
+
+  final String estado;
+  final String rotulo;
+
+  @override
+  Widget build(BuildContext context) {
+    final cor = corDoEstado(context, estado);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(iconeDoEstado(estado), size: 16, color: cor),
+        const SizedBox(width: Espacos.esp1),
+        Flexible(child: Text(rotulo, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cor))),
+      ],
+    );
+  }
+}
 
 TextStyle? _semTracking(TextStyle? estilo, [FontWeight? peso]) =>
     estilo?.copyWith(letterSpacing: 0, fontWeight: peso ?? estilo.fontWeight);
