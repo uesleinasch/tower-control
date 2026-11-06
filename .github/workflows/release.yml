@@ -13,7 +13,19 @@ env:
   ASSINATURA_APK: "1b5579ddebfad9d7739458564e1603cb1325fc80bf2456f73eb2a29b8ee5e61f"
 
 jobs:
+  origem:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: tag aponta para um commit da Production
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/Production \
+            || { echo "::error::a tag $GITHUB_REF_NAME não está na Production: só vira release o que passou por ela"; exit 1; }
+
   ai-memory:
+    needs: origem
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +42,7 @@ jobs:
           if-no-files-found: error
 
   servidor:
+    needs: origem
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +68,7 @@ jobs:
           if-no-files-found: error
 
   flutter:
+    needs: origem
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
