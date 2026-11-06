@@ -83,7 +83,10 @@ limpar() {
   done
   encerrar_ambientes
   for f in "${REVERSOS[@]}"; do adb -s "$SERIAL" reverse --remove "tcp:$f" > /dev/null 2>&1; done
-  [ "$INSTALOU" = 1 ] && adb -s "$SERIAL" uninstall "$PACOTE_DE_TESTE" > /dev/null 2>&1
+  if [ "$INSTALOU" = 1 ]; then
+    adb -s "$SERIAL" uninstall "$PACOTE_DE_TESTE" > /dev/null 2>&1
+    adb -s "$SERIAL" shell rm -f "/data/local/tmp/sky.$PACOTE_DE_TESTE.sha1" > /dev/null 2>&1
+  fi
   [ -f "$APK" ] && [ -n "$AAPT" ] && "$AAPT" dump badging "$APK" 2> /dev/null | head -1 | grep -q "name='$PACOTE_DE_TESTE'" && rm -f "$APK"
   for f in "${XDGS[@]}"; do limpar_xdg "$f"; done
   exit "$estado"
