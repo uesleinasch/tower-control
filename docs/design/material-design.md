@@ -168,7 +168,7 @@ Fatos: Inter é SIL Open Font License 1.1 (arquivo LICENSE.txt do repositório `
 
 Para o Control Tower (LAN, desktop e celular, uso offline plausível), o empacotamento em assets é mais robusto: sem rede, sem flash, sem dependência extra. Pesos mínimos: 400 (corpo), 500 (title/label), 600 (ênfase) e 700 se necessário. A variável permite `FontVariation('wght', 500)` e o eixo `opsz`, com um arquivo só, porém maior que quatro estáticos subsetados. Registrar a OFL com `LicenseRegistry.addLicense`.
 
-Ajuste fino: a escala do M3 foi calibrada para Roboto. Inter tem x-height maior e é mais larga. Conferir o tracking de `bodyLarge` (0,5) e `labelSmall` e, se pesar, reduzir. O app hoje declara fontes próprias (Trajan Pro, Schyler) no pubspec, que podem coexistir como família de marca.
+Ajuste fino: a escala do M3 foi calibrada para Roboto. Inter tem x-height maior e é mais larga. Conferir o tracking de `bodyLarge` (0,5) e `labelSmall` e, se pesar, reduzir. O app ainda não declara nenhuma fonte no pubspec e usa a padrão da plataforma.
 
 ## 4. Forma, elevação, movimento, estados e densidade
 

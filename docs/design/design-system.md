@@ -99,7 +99,7 @@ Texto 4,5:1 (3:1 a partir de 18 sp, ou de 14 sp em negrito). Ícone informativo,
 
 - **Inter**, empacotada em `assets/fonts/` (sem `google_fonts`, para não depender de rede nem trocar de fonte na primeira abertura). Pesos 400, 500 e 600. Licença OFL 1.1 registrada no `LicenseRegistry`.
 - **JetBrains Mono** **(decisão)**, empacotada, pesos 400 e 500, para código, comandos, logs, ids e JSON. Hoje o app usa `'monospace'`, que muda de fonte entre Linux e Android. A JetBrains Mono tem licença OFL e altura-x parecida com a da Inter.
-- As fontes de marca já declaradas no pubspec (Trajan Pro, Schyler) ficam restritas à marca e nunca aparecem na interface de trabalho.
+- Nenhuma outra família entra na interface. Antes deste design system, o app não declarava fonte nenhuma e usava a padrão da plataforma.
 
 ### 4.2 Escala
 
