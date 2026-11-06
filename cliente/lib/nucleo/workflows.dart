@@ -404,6 +404,26 @@ List<Caixa> caixasEmOrdem(Workflow w) {
     });
 }
 
+String estadoDoFluxo(String status) => status == 'esperando' ? 'na_fila' : status;
+
+Vista vistaComCaixa(Vista v, Map<String, Ponto> layout, String id, double largura, double altura, {double folga = 24}) {
+  if (!layout.containsKey(id) || largura <= 0 || altura <= 0) return v;
+  final c = cantoDaCaixa(layout, id);
+  double ajuste(double inicio, double fim, double limite) {
+    if (fim > limite - folga) return limite - folga - fim;
+    if (inicio < folga) return folga - inicio;
+    return 0;
+  }
+
+  final esquerda = c.x * v.escala + v.dx;
+  final topo = c.y * v.escala + v.dy;
+  var dx = ajuste(esquerda, esquerda + larguraDaCaixa * v.escala, largura);
+  var dy = ajuste(topo, topo + alturaDaCaixa * v.escala, altura);
+  if (esquerda + dx < folga) dx = folga - esquerda;
+  if (topo + dy < folga) dy = folga - topo;
+  return (dx: v.dx + dx, dy: v.dy + dy, escala: v.escala);
+}
+
 Map<String, String> estadoDasCaixas(Fluxo f) {
   final estado = <String, String>{};
   for (final ficha in [...f.fichas]..sort((a, b) => a.id.compareTo(b.id))) {
