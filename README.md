@@ -18,7 +18,8 @@ Pré-requisito: login do Claude Code nesta conta (`claude` e fazer login). O pac
 próprio binário do Claude Code que o Agent SDK usa, mas as credenciais são suas.
 `sudo apt remove control-tower` tira código e serviços e não toca nos dados.
 
-Publicar uma versão: `git tag v0.2.0 && git push --tags`. O APK é assinado com a
+Publicar uma versão: a tag anotada `vX.Y.Z` sai de um commit da `Production`, seguindo
+`docs/fluxo-do-git.md`; tag fora da `Production` é recusada pelo `release.yml`. O APK é assinado com a
 `~/.android/debug.keystore`, guardada como secret uma única vez:
 
 ```bash
