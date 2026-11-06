@@ -11,7 +11,7 @@ import '../nucleo/tarefas.dart';
 import '../nucleo/workflows.dart' show nomesDeCaixa;
 import 'comum.dart';
 import 'equipes.dart' show BarraDePausa, pedirTexto, quandoCurto;
-import 'workflows.dart' show cancelarFluxo;
+import 'workflows.dart' show PedidoDeCaixaParada, cancelarFluxo;
 import 'tema.dart';
 
 const _numeros = [FontFeature.tabularFigures()];
@@ -280,7 +280,22 @@ class _PrecisaDeVoce extends StatelessWidget {
           colunas: colunas,
           espaco: Espacos.esp3,
           filhos: [
-            for (final item in itens) _PedidoDeAtencao(sala: sala, retrato: retrato, item: item, agora: agora),
+            for (final item in itens)
+              if (item.tipo == 'parada' && item.fluxo != null)
+                PedidoDeCaixaParada(
+                  fluxo: item.fluxo!,
+                  texto: item.detalhe,
+                  quando: haQuanto(item.desde, agora),
+                  aoRecriar: () => sala.agirNoPainel(item, 'recriar'),
+                  aoCancelar: () => cancelarFluxo(
+                    context,
+                    sala.workflows,
+                    item.fluxo!,
+                    retrato.workflows.where((f) => f.fluxo == item.fluxo).firstOrNull?.nome ?? '',
+                  ),
+                )
+              else
+                _PedidoDeAtencao(sala: sala, retrato: retrato, item: item, agora: agora),
           ],
         ),
       ],
@@ -549,7 +564,7 @@ class _Workflows extends StatelessWidget {
           Text(
             f.ativas.isEmpty
                 ? 'esperando o anterior'
-                : 'em: ${f.ativas.map((a) => '${a.titulo} (${nomesDeCaixa[a.tipo] ?? a.tipo}${a.tarefaId == null ? '' : ' #${a.tarefaId}'})').join(', ')}',
+                : 'em: ${f.ativas.map((a) => '${a.titulo} (${a.parada ? 'parada' : nomesDeCaixa[a.tipo] ?? a.tipo}${a.tarefaId == null ? '' : ' #${a.tarefaId}'})').join(', ')}',
             style: secundario,
           ),
           Wrap(

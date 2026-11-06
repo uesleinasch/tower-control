@@ -195,7 +195,7 @@ A validação (núcleo puro, `orquestra/workflow.ts`) recusa:
 - `fluxos`: `id`, `equipe`, `workflow`, `versao`, `definicao` (o JSON inteiro da versão),
   `entrada`, `status` (`rodando`, `concluido`, `falhou`, `cancelado`), `resultado`,
   `criadoPor` (`ueslei` ou `rotina:<equipe>/<id>`), `criadoEm`, `atualizadoEm`, `erro`;
-- `fichas`: `id`, `fluxo`, `no`, `status` (`ativa`, `esperando`, `concluida`, `cancelada`),
+- `fichas`: `id`, `fluxo`, `no`, `status` (`ativa`, `esperando`, `parada`, `concluida`, `cancelada`),
   `tarefa`, `voltas`, `acordaEm`, `prazoEm`, `saidas` (JSON), `veioDe` (a ficha anterior),
   `criadaEm`, `concluidaEm`;
 - `tarefas` ganha `fluxo` e `ficha`.
@@ -215,8 +215,8 @@ decisão humana, espera, board) ficam `esperando` até o evento delas.
 - tarefa de ficha entregue (o runtime chama o motor em vez de mandar a entrega ao Ueslei):
   grava as saídas e entra nas revisões, ou conclui a tarefa e segue;
 - tarefa de ficha concluída pela política ou à mão: segue pela ligação `aprovado` da corrente;
-- tarefa de ficha cancelada à mão: o fluxo inteiro é cancelado, com as outras tarefas abertas
-  dele **(decisão desta fase)**;
+- tarefa de ficha cancelada à mão: quem cancela escolhe entre só a tarefa e o fluxo inteiro
+  (ver "Cancelar só a tarefa");
 - `workflow-decidir`, `workflow-sinal`, a resposta do board;
 - o relógio de 30 s: esperas vencidas, prazos e o vigia.
 
@@ -234,6 +234,41 @@ tarefas novas esperam na fila.
 
 **Cancelar.** Cliente→servidor `workflow-cancelar`: `{ execucao }` cancela as fichas e as
 tarefas abertas do fluxo. Entra na auditoria.
+
+### Cancelar só a tarefa
+
+Decisão do Ueslei em 06/11/2026 (TickTask #578). Cancelar uma tarefa que é de uma caixa
+`esperando` de um fluxo `rodando` abre, na web, no desktop e no celular, a janela "Cancelar a
+tarefa #N?" com duas escolhas. "Só esta tarefa" vem marcada. Tarefa fora de fluxo cancela como
+antes, sem a janela.
+
+- **"O workflow inteiro"** é o comportamento anterior: o fluxo vai para `cancelado` com todas
+  as tarefas abertas dele.
+- **"Só esta tarefa"** cancela a tarefa e põe a ficha em `parada`. O fluxo continua `rodando` e
+  nada avança sozinho: a caixa não segue pelas ligações, e o fluxo não fecha enquanto houver
+  ficha parada. Os ramos paralelos que já estavam andando seguem até onde não dependem dela.
+- O protocolo é o `tarefa-status` de sempre, com `escopo: "tarefa" | "fluxo"`. Sem `escopo`
+  vale `fluxo`, o que mantém os clientes antigos e as rotinas como estavam.
+- **O pedido.** A ficha parada vira o item `parada` do "Precisa de você", "Caixa parada no
+  workflow #F", com `recriar` e `cancelar-fluxo`. Ele aparece também no topo da visão do
+  workflow e no detalhe da tarefa cancelada.
+- **Recriar a tarefa** (`workflow-recriar`: `{ execucao, ficha }`) marca a ficha parada como
+  `cancelada` e cria uma ficha nova na mesma caixa, com o mesmo `veioDe` e uma tarefa nova com
+  o título, a descrição e o porquê da tarefa cancelada, ou seja, o mesmo contexto de entrada.
+  Daí em diante o fluxo segue normalmente. A ficha parada conta como viva no freio, e recriar
+  troca uma viva por outra; se o fluxo já criou 200 fichas, recriar é recusado e sobra
+  cancelar o workflow.
+- **Cancelar o workflow** usa o `workflow-cancelar` de sempre, que também encerra a ficha
+  parada.
+- Parar, recriar e cancelar entram na auditoria ("parou a caixa do workflow", "recriou a caixa
+  do workflow", "cancelou o workflow").
+- **Rotinas.** O fluxo com caixa parada continua aberto para a concorrência: `pular` pula os
+  disparos até o Ueslei decidir, `enfileirar` acumula atrás dele e `substituir` cancela o
+  fluxo parado. Nada trava para sempre, porque o pedido fica no painel.
+- **Espelho do TickTask.** O tipo `parada` entra nos espelháveis e nos padrões, com a chave
+  `parada:<fluxo>:<ficha>` e a ação `nenhuma`: finalizar lá só tira o aviso da lista, sem
+  recriar nem cancelar. As duas saídas mudam o fluxo de jeitos que não se desfazem, por isso
+  ficam só no control-tower.
 
 ## 5. Iniciar
 
@@ -256,13 +291,13 @@ tarefas abertas do fluxo. Entra na auditoria.
   organograma (fase 4), sem editar. O celular mostra o grafo em lista, caixa por caixa, na ordem
   do caminho, porque o desenho não cabe **(decisão desta fase)**.
 - **Painel, "Precisa de você":** três tipos novos: `decisao` (botão por opção), `sinal` (botão
-  "Sinalizar") e `atrasada` (abrir).
+  "Sinalizar") e `atrasada` (abrir). Depois veio `parada` (ver "Cancelar só a tarefa").
 - **Tarefa de fluxo:** o detalhe diz "caixa <nome> do workflow <nome>" e abre o grafo.
 
 ## 7. Protocolo
 
 - cliente→servidor: `workflows` (pede a lista), `workflow-iniciar`, `workflow-decidir`,
-  `workflow-sinal`, `workflow-cancelar` e, só no desktop, `workflow-salvar` e
+  `workflow-sinal`, `workflow-cancelar`, `workflow-recriar` e, só no desktop, `workflow-salvar` e
   `workflow-excluir` (o servidor já valida e grava; quem usa é o editor da fase 10);
 - servidor→cliente: `workflows` (`{ definicoes, fluxos }`, com as fichas dos fluxos abertos e
   dos 20 últimos fechados), mandado a todos a cada mudança;

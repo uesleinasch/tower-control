@@ -9,6 +9,7 @@ import '../nucleo/design.dart';
 import '../nucleo/editor_de_workflow.dart';
 import '../nucleo/organograma.dart' show paraMundo, passoDeMover;
 import '../nucleo/painel.dart' show haQuanto;
+import '../nucleo/protocolo.dart' show EscopoDoCancelamento;
 import '../nucleo/tarefas.dart';
 import '../nucleo/workflows.dart';
 import 'canvas.dart';
@@ -33,6 +34,144 @@ Future<void> cancelarFluxo(BuildContext context, EstadoWorkflows estado, int flu
   );
   if (ok) estado.cancelar(fluxo);
 }
+
+Future<EscopoDoCancelamento?> escolherEscopoDoCancelamento(BuildContext context, int tarefa, CaixaDaTarefa caixa) =>
+    showDialog<EscopoDoCancelamento>(
+      context: context,
+      builder: (_) => DialogoDeCancelarTarefa(tarefa: tarefa, caixa: caixa),
+    );
+
+class DialogoDeCancelarTarefa extends StatefulWidget {
+  const DialogoDeCancelarTarefa({super.key, required this.tarefa, required this.caixa});
+
+  final int tarefa;
+  final CaixaDaTarefa caixa;
+
+  @override
+  State<DialogoDeCancelarTarefa> createState() => _DialogoDeCancelarTarefaState();
+}
+
+class _DialogoDeCancelarTarefaState extends State<DialogoDeCancelarTarefa> {
+  var _escopo = EscopoDoCancelamento.tarefa;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final (:fluxo, :ficha) = widget.caixa;
+    final caixa = rotuloDaFicha(fluxo, ficha);
+    Widget opcao(EscopoDoCancelamento valor, String titulo, String texto) {
+      final escolhida = _escopo == valor;
+      return Card.outlined(
+        margin: EdgeInsets.zero,
+        color: escolhida ? cores.surfaceContainerLow : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Raios.md),
+          side: BorderSide(color: escolhida ? cores.primary : cores.outlineVariant, width: escolhida ? 2 : 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: RadioListTile<EscopoDoCancelamento>(
+          value: valor,
+          title: Text(titulo),
+          subtitle: Text(texto),
+          contentPadding: const EdgeInsets.symmetric(horizontal: Espacos.esp3, vertical: Espacos.esp1),
+        ),
+      );
+    }
+
+    return AlertDialog(
+      title: Text('Cancelar a tarefa #${widget.tarefa}?'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _larguraDoDialogo),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(
+              'Ela faz parte do workflow "${fluxo.nome}" (#${fluxo.id}), na caixa "$caixa".',
+              style: tema.textTheme.bodyMedium?.copyWith(color: cores.onSurfaceVariant),
+            ),
+            const SizedBox(height: Espacos.esp4),
+            RadioGroup<EscopoDoCancelamento>(
+              groupValue: _escopo,
+              onChanged: (v) => setState(() => _escopo = v ?? _escopo),
+              child: Semantics(
+                label: 'O que cancelar',
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  opcao(
+                    EscopoDoCancelamento.tarefa,
+                    'Só esta tarefa',
+                    'O workflow para na caixa "$caixa" e espera você escolher: recriar a tarefa ou cancelar o workflow.',
+                  ),
+                  const SizedBox(height: Espacos.esp2),
+                  opcao(
+                    EscopoDoCancelamento.fluxo,
+                    'O workflow inteiro',
+                    'Cancela o workflow #${fluxo.id} e todas as tarefas abertas dele. O que já foi feito fica registrado.',
+                  ),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Voltar')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: cores.error, foregroundColor: cores.onError),
+          onPressed: () => Navigator.pop(context, _escopo),
+          child: const Text('Cancelar a tarefa'),
+        ),
+      ],
+    );
+  }
+}
+
+class PedidoDeCaixaParada extends StatelessWidget {
+  const PedidoDeCaixaParada({
+    super.key,
+    required this.fluxo,
+    required this.texto,
+    this.quando,
+    required this.aoRecriar,
+    required this.aoCancelar,
+  });
+
+  final int fluxo;
+  final String texto;
+  final String? quando;
+  final VoidCallback aoRecriar;
+  final VoidCallback aoCancelar;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return CartaoDePedido(
+      icone: Symbols.pause_circle,
+      faixa: 'Caixa parada no workflow #$fluxo',
+      quando: quando,
+      conteudo: Text(texto, style: tema.textTheme.bodyMedium),
+      acoes: [
+        FilledButton(onPressed: aoRecriar, child: const Text('Recriar a tarefa')),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(foregroundColor: tema.colorScheme.error),
+          onPressed: aoCancelar,
+          child: const Text('Cancelar o workflow'),
+        ),
+      ],
+    );
+  }
+}
+
+Widget pedidoDaCaixaParada(BuildContext context, EstadoWorkflows estado, Fluxo fluxo, Ficha ficha) => PedidoDeCaixaParada(
+      key: ValueKey('parada-${fluxo.id}-${ficha.id}'),
+      fluxo: fluxo.id,
+      texto: textoDaCaixaParada(fluxo, ficha),
+      quando: switch (ficha.concluidaEm ?? ficha.criadaEm) {
+        final em? => quandoCurto(em),
+        null => null,
+      },
+      aoRecriar: () => estado.recriar(fluxo.id, ficha.id),
+      aoCancelar: () => cancelarFluxo(context, estado, fluxo.id, fluxo.nome),
+    );
 
 Future<bool> abrirIniciarWorkflow(BuildContext context, EstadoWorkflows estado, Workflow w) async =>
     await showDialog<bool>(
@@ -387,7 +526,10 @@ class _LinhaDoFluxo extends StatelessWidget {
     final f = fluxo;
     final ativas = [
       for (final ficha in f.fichas)
-        if (ficha.esperando) f.definicao.caixa(ficha.no)?.rotulo ?? ficha.no,
+        if (ficha.esperando)
+          rotuloDaFicha(f, ficha)
+        else if (ficha.parada)
+          '${rotuloDaFicha(f, ficha)} (parada)',
     ];
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -668,6 +810,18 @@ class _VistaDoGrafo extends StatelessWidget {
               ),
             ),
           ),
+        if (f != null)
+          for (final ficha in caixasParadas(f))
+            Padding(
+              padding: EdgeInsets.fromLTRB(margem, Espacos.esp2, margem, Espacos.esp2),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: larguraDeLeitura),
+                  child: pedidoDaCaixaParada(context, estado, f, ficha),
+                ),
+              ),
+            ),
         const Divider(height: 1),
         Expanded(child: corpo),
       ]);
@@ -1779,7 +1933,7 @@ class _CaixaDoGrafo extends StatelessWidget {
   Widget build(BuildContext context) {
     final tema = Theme.of(context);
     final cores = tema.colorScheme;
-    final ativa = estado == 'esperando';
+    final ativa = estado == 'esperando' || estado == 'parada';
     final corAtiva = ativa ? corDoEstado(context, estado) : null;
     final destaque = escolhida || focada;
     final comErro = erros.isNotEmpty;

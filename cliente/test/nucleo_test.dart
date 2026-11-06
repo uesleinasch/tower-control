@@ -444,6 +444,7 @@ final _saidas = <Saida>[
   const DecidirWorkflow(9, 3, 'seguir'),
   const SinalizarWorkflow(9, 4),
   const CancelarWorkflow(9),
+  const RecriarCaixa(9, 5),
   const SalvarWorkflow('casa', _mudancaComPlano),
   const ExcluirWorkflow('casa', 'mudanca-com-plano'),
   const PedirSkills(),
@@ -1632,6 +1633,39 @@ void main() {
       expect(descricaoDaCaixaDaTarefa(t(null, null), [f]), '');
     });
 
+    test('caixa parada: a tarefa sabe se a caixa está viva ou parada, e o caminho a destaca', () {
+      final viva = recebidos().fluxos.single;
+      final comParada = <String, Object?>{
+        ..._fluxo,
+        'fichas': [
+          ...(_fluxo['fichas'] as List).where((f) => (f as Map)['id'] != 5),
+          {..._ficha(5, 'executa', 'parada', veioDe: 4, tarefa: 21), 'concluidaEm': '2026-11-05T09:20:00.000Z'},
+        ],
+      };
+      final parada = Fluxo.deJson(comParada);
+      Tarefa t(int? fluxo, int? ficha) => Tarefa.deJson({..._tarefa, 'fluxo': fluxo, 'ficha': ficha});
+      expect(caixaVivaDaTarefa(t(9, 5), [viva])?.ficha.id, 5);
+      expect(caixaVivaDaTarefa(t(9, 5), [parada]), isNull);
+      expect(caixaVivaDaTarefa(t(null, null), [viva]), isNull);
+      expect(caixaParadaDaTarefa(t(9, 5), [parada])?.fluxo.id, 9);
+      expect(caixaParadaDaTarefa(t(9, 5), [viva]), isNull);
+      final cancelado = Fluxo.deJson({...comParada, 'status': 'cancelado'});
+      expect(caixaParadaDaTarefa(t(9, 5), [cancelado]), isNull);
+      expect(caixasParadas(parada).map((f) => f.id), [5]);
+      expect(caixasParadas(cancelado), isEmpty);
+      expect(
+        textoDaCaixaParada(parada, parada.ficha(5)!),
+        'A tarefa #21 da caixa "executa" foi cancelada. O workflow "Mudança com plano" está esperando você decidir.',
+      );
+      expect(estadoDasCaixas(parada)['executa'], 'parada');
+      expect(ordemDoCaminho(parada).take(2).map((p) => (p.ficha, p.destacado)), [(5, true), (7, true)]);
+      expect(nomesDeStatusDaFicha['parada'], 'parada');
+      expect(jsonDecode(const MudarStatusTarefa(21, 'cancelada', escopo: EscopoDoCancelamento.tarefa).codificar()),
+          {'tipo': 'tarefa-status', 'id': 21, 'status': 'cancelada', 'escopo': 'tarefa'});
+      expect(jsonDecode(const MudarStatusTarefa(21, 'cancelada').codificar()), {'tipo': 'tarefa-status', 'id': 21, 'status': 'cancelada'});
+      expect(jsonDecode(const RecriarCaixa(9, 5).codificar()), {'tipo': 'workflow-recriar', 'execucao': 9, 'ficha': 5});
+    });
+
     test('retrato traz os workflows e os itens novos de atenção', () {
       final retrato = Retrato.deJson({
         'workflows': [
@@ -1686,6 +1720,12 @@ void main() {
       const comTarefa = ItemDeAtencao(tipo: 'atrasada', acoes: ['abrir'], fluxo: 9, ficha: 5, tarefaId: 21);
       expect((efeitoDaAcao(comTarefa, 'abrir') as IrParaTarefa).id, 21);
       expect(rotulosDeAcao['sinalizar'], 'Sinalizar');
+      const parada = ItemDeAtencao(tipo: 'parada', acoes: ['recriar', 'cancelar-fluxo'], fluxo: 9, ficha: 5, tarefaId: 21);
+      expect(saida(efeitoDaAcao(parada, 'recriar')), {'tipo': 'workflow-recriar', 'execucao': 9, 'ficha': 5});
+      expect(saida(efeitoDaAcao(parada, 'cancelar-fluxo')), {'tipo': 'workflow-cancelar', 'execucao': 9});
+      expect(efeitoDaAcao(const ItemDeAtencao(tipo: 'parada', fluxo: 9), 'recriar'), isNull);
+      expect([rotulosDeAtencao['parada'], rotulosDeAcao['recriar'], rotulosDeAcao['cancelar-fluxo']],
+          ['caixa parada', 'Recriar a tarefa', 'Cancelar o workflow']);
       expect([rotulosDeAtencao['decisao'], rotulosDeAtencao['sinal'], rotulosDeAtencao['atrasada']], ['decisão', 'sinal', 'atrasada']);
     });
   });
@@ -1828,7 +1868,7 @@ void main() {
     });
 
     test('os tipos seguem a ordem do servidor, e marcar e desmarcar mantém essa ordem', () {
-      expect(tiposDoEspelho, ['aprovacao', 'plano', 'entrega', 'decisao', 'sinal', 'bloqueada', 'backlog', 'atrasada', 'orcamento', 'rotina', 'vaga']);
+      expect(tiposDoEspelho, ['aprovacao', 'plano', 'entrega', 'decisao', 'sinal', 'parada', 'bloqueada', 'backlog', 'atrasada', 'orcamento', 'rotina', 'vaga']);
       expect(rotulosDoEspelho['orcamento'], 'orçamento estourado');
       const c = ConfigDoEspelho(tipos: ['decisao']);
       expect(c.comTipo('vaga', true).comTipo('aprovacao', true).tipos, ['aprovacao', 'decisao', 'vaga']);

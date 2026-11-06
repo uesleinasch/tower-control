@@ -51,6 +51,9 @@ type Depois = (() => void)[]
 
 class FluxoParado extends Error {}
 
+export type EscopoDoCancelamento = "tarefa" | "fluxo"
+
+const viva = (f: Ficha) => f.status === "esperando" || f.status === "parada"
 const chave = (equipe: string, id: string) => `${equipe}/${id}`
 const nomeDaCaixa = (no: No) => no.titulo ?? no.id
 const autorDoFluxo = (id: number) => `fluxo:${id}`
@@ -176,7 +179,7 @@ export class Motor {
     if (atual.status !== "rodando") return
     const fichas = this.repo.fichasDo(fluxo.id)
     if (fichas.length >= MAX_FICHAS_CRIADAS) throw new FluxoParado(`passou de ${MAX_FICHAS_CRIADAS} caixas`)
-    if (fichas.filter((f) => f.status === "esperando").length >= MAX_FICHAS_VIVAS) {
+    if (fichas.filter(viva).length >= MAX_FICHAS_VIVAS) {
       throw new FluxoParado(`passou de ${MAX_FICHAS_VIVAS} caixas ao mesmo tempo`)
     }
     const no = this.no(atual, noId)
@@ -216,31 +219,19 @@ export class Motor {
         this.concluir(ficha, { voltas }, repetir ? "repetir" : "sair", depois)
         return
       }
-      case "executar": {
-        const tarefa = this.repo.criar(
+      case "executar":
+        this.criarTarefaDaCaixa(
+          ficha,
           {
-            equipe: atual.equipe,
             posicao: no.posicao,
-            titulo: `${atual.definicao.nome}: ${nomeDaCaixa(no)}`.slice(0, 200),
-            descricao: descricaoDaCaixa(no, contexto).slice(0, 20_000),
+            titulo: `${atual.definicao.nome}: ${nomeDaCaixa(no)}`,
+            descricao: descricaoDaCaixa(no, contexto),
             porque: `Caixa ${nomeDaCaixa(no)} do workflow ${atual.definicao.nome}.`,
-            pai: null,
-            dependeDe: [],
-            status: "a_fazer",
-            politica: [],
-            fluxo: fluxo.id,
-            ficha: ficha.id,
           },
-          autorDoFluxo(fluxo.id),
-          agora,
+          atual,
+          depois,
         )
-        this.repo.ligarFicha(tarefa.id, ficha.id)
-        depois.push(() => {
-          this.amb.publicarTarefa(tarefa.id)
-          this.amb.aoCriarTarefa(this.repo.exigir(tarefa.id))
-        })
         return
-      }
       case "decisao_humana":
         depois.push(() =>
           this.amb.avisar(avisoDoFluxo(`${atual.definicao.nome} pergunta`, interpolar(no.pergunta, contexto), { fluxo: fluxo.id, ficha: ficha.id })),
@@ -255,6 +246,37 @@ export class Motor {
       case "aprovar":
         throw new FluxoParado(`a caixa ${noId} só pode vir logo depois da caixa executar ${no.de}`)
     }
+  }
+
+  private criarTarefaDaCaixa(
+    ficha: Ficha,
+    texto: Pick<Tarefa, "posicao" | "titulo" | "descricao" | "porque">,
+    fluxo: Fluxo,
+    depois: Depois,
+  ): Tarefa {
+    const tarefa = this.repo.criar(
+      {
+        equipe: fluxo.equipe,
+        posicao: texto.posicao,
+        titulo: texto.titulo.slice(0, 200),
+        descricao: texto.descricao.slice(0, 20_000),
+        porque: texto.porque,
+        pai: null,
+        dependeDe: [],
+        status: "a_fazer",
+        politica: [],
+        fluxo: fluxo.id,
+        ficha: ficha.id,
+      },
+      autorDoFluxo(fluxo.id),
+      this.agora(),
+    )
+    this.repo.ligarFicha(tarefa.id, ficha.id)
+    depois.push(() => {
+      this.amb.publicarTarefa(tarefa.id)
+      this.amb.aoCriarTarefa(this.repo.exigir(tarefa.id))
+    })
+    return tarefa
   }
 
   private seguir(fluxo: Fluxo, deNo: string, quando: string | undefined, veioDe: Ficha, depois: Depois): void {
@@ -276,7 +298,7 @@ export class Motor {
   private fecharSePronto(id: number, depois: Depois): void {
     const fluxo = this.repo.exigirFluxo(id)
     if (fluxo.status !== "rodando") return
-    if (this.repo.fichasDo(id).some((f) => f.status === "esperando")) return
+    if (this.repo.fichasDo(id).some(viva)) return
     this.repo.mudarFluxo(id, { status: "concluido" })
     depois.push(() =>
       this.amb.avisar(avisoDoFluxo(`${fluxo.definicao.nome} terminou`, fluxo.resultado ?? "Todas as caixas foram concluídas.", { fluxo: id })),
@@ -353,9 +375,34 @@ export class Motor {
     })
   }
 
-  aoCancelar(tarefaId: number): void {
+  aoCancelar(tarefaId: number, escopo: EscopoDoCancelamento = "fluxo"): void {
     const viva = this.fichaViva(this.repo.exigir(tarefaId))
-    if (viva) this.cancelar(viva.fluxo.id, "ueslei", `a tarefa #${tarefaId} foi cancelada`)
+    if (!viva) return
+    if (escopo === "fluxo") {
+      this.cancelar(viva.fluxo.id, "ueslei", `a tarefa #${tarefaId} foi cancelada`)
+      return
+    }
+    this.repo.auditar("ueslei", "parou a caixa do workflow", `fluxo:${viva.fluxo.id}`, `${viva.ficha.no}: a tarefa #${tarefaId} foi cancelada`)
+    this.emTransacao(() => this.repo.mudarFicha(viva.ficha.id, { status: "parada" }, this.agora()))
+  }
+
+  recriar(fluxoId: number, fichaId: number): Tarefa {
+    const parada = this.repo.exigirFicha(fichaId)
+    const fluxo = this.repo.exigirFluxo(parada.fluxo)
+    if (parada.fluxo !== fluxoId || parada.status !== "parada" || fluxo.status !== "rodando") throw new Error("essa caixa não está parada")
+    const no = this.no(fluxo, parada.no)
+    if (no.tipo !== "executar" || parada.tarefa === null) throw new Error("essa caixa não tem tarefa para recriar")
+    const fichas = this.repo.fichasDo(fluxoId)
+    if (fichas.length >= MAX_FICHAS_CRIADAS) throw new Error(`o workflow já passou de ${MAX_FICHAS_CRIADAS} caixas; cancele o workflow`)
+    const antiga = this.repo.exigir(parada.tarefa)
+    this.repo.auditar("ueslei", "recriou a caixa do workflow", `fluxo:${fluxoId}`, `${parada.no}: no lugar da #${antiga.id}`)
+    return this.emTransacao((depois) => {
+      const agora = this.agora()
+      this.repo.mudarFicha(parada.id, { status: "cancelada" }, agora)
+      const prazoEm = no.prazo ? new Date(agora.getTime() + duracaoEmMs(no.prazo)!).toISOString() : null
+      const ficha = this.repo.criarFicha({ fluxo: fluxoId, no: parada.no, veioDe: parada.veioDe, prazoEm }, agora)
+      return this.criarTarefaDaCaixa(ficha, antiga, fluxo, depois)
+    })
   }
 
   // ── decisões, sinais e o relógio ─────────────────────────────────
@@ -447,7 +494,7 @@ export class Motor {
     const fluxo = this.repo.exigirFluxo(id)
     if (fluxo.status !== "rodando" && fluxo.status !== "esperando") return
     this.repo.mudarFluxo(id, { status, erro })
-    for (const f of this.repo.fichasDo(id)) if (f.status === "esperando") this.repo.mudarFicha(f.id, { status: "cancelada" })
+    for (const f of this.repo.fichasDo(id)) if (viva(f)) this.repo.mudarFicha(f.id, { status: "cancelada" })
     for (const t of this.repo.listar(fluxo.equipe)) {
       if (t.fluxo !== id || t.status === "concluida" || t.status === "cancelada") continue
       const de = t.status

@@ -89,7 +89,7 @@ Color corDoEstado(BuildContext context, String? estado) =>
 
 IconData iconeDoEstado(String? estado) => switch (estado) {
       'ocioso' => Symbols.radio_button_unchecked,
-      'pausada' => Symbols.pause_circle,
+      'pausada' || 'parada' => Symbols.pause_circle,
       'sem_orcamento' => Symbols.money_off,
       _ => switch (papelDoEstado(estado)) {
           PapelDeEstado.neutro => Symbols.inventory_2,

@@ -113,6 +113,21 @@
     </div>
   </div>
 
+  <div id="cancelar-tarefa" hidden>
+    <div class="caixa" role="dialog" aria-modal="true" aria-labelledby="cancelar-tarefa-titulo">
+      <h2 id="cancelar-tarefa-titulo"></h2>
+      <p id="cancelar-tarefa-texto"></p>
+      <div class="opcoes" role="radiogroup" aria-label="O que cancelar">
+        <label><input type="radio" name="escopo-do-cancelamento" value="tarefa" checked /><span><strong>Só esta tarefa</strong><small id="cancelar-tarefa-so"></small></span></label>
+        <label><input type="radio" name="escopo-do-cancelamento" value="fluxo" /><span><strong>O workflow inteiro</strong><small id="cancelar-tarefa-fluxo"></small></span></label>
+      </div>
+      <div class="acoes">
+        <button id="cancelar-tarefa-voltar">Voltar</button>
+        <button id="cancelar-tarefa-sim" class="perigo">Cancelar a tarefa</button>
+      </div>
+    </div>
+  </div>
+
   <div id="menu-anexo" class="menu" hidden>
     <button data-fonte="camera">📷 Câmera</button>
     <button data-fonte="galeria">🖼 Galeria</button>

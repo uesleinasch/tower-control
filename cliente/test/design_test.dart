@@ -38,6 +38,7 @@ void main() {
       'bloqueada': PapelDeEstado.aviso,
       'pausada': PapelDeEstado.aviso,
       'sem_orcamento': PapelDeEstado.aviso,
+      'parada': PapelDeEstado.aviso,
       'concluida': PapelDeEstado.sucesso,
       'concluido': PapelDeEstado.sucesso,
       'criada': PapelDeEstado.sucesso,

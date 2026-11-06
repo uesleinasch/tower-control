@@ -7,6 +7,7 @@ const rotulosDoEspelho = <String, String>{
   'entrega': 'entrega para concluir',
   'decisao': 'decisão de workflow',
   'sinal': 'sinal de workflow',
+  'parada': 'caixa parada de workflow',
   'bloqueada': 'tarefa bloqueada',
   'backlog': 'delegada esperando liberar',
   'atrasada': 'caixa atrasada',
@@ -17,7 +18,7 @@ const rotulosDoEspelho = <String, String>{
 
 final tiposDoEspelho = rotulosDoEspelho.keys.toList(growable: false);
 
-const tiposPadraoDoEspelho = ['aprovacao', 'plano', 'entrega', 'decisao', 'sinal', 'bloqueada'];
+const tiposPadraoDoEspelho = ['aprovacao', 'plano', 'entrega', 'decisao', 'sinal', 'parada', 'bloqueada'];
 
 class ConfigDoEspelho {
   const ConfigDoEspelho({

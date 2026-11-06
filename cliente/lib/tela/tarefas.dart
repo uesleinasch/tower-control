@@ -17,6 +17,7 @@ import 'comum.dart';
 import 'equipes.dart';
 import 'paineis.dart';
 import 'tema.dart';
+import 'workflows.dart' show escolherEscopoDoCancelamento, pedidoDaCaixaParada;
 
 const _larguraDaLista = 360.0;
 const _numeros = [FontFeature.tabularFigures()];
@@ -180,12 +181,24 @@ String _rotuloDaTransicao(String para) => switch (para) {
     };
 
 class _MenuDaTarefa extends StatelessWidget {
-  const _MenuDaTarefa({required this.estado, required this.tarefa, this.comAbrir = false, this.child});
+  const _MenuDaTarefa({required this.sala, required this.tarefa, this.comAbrir = false, this.child});
 
-  final EstadoTarefas estado;
+  final Sala sala;
   final Tarefa tarefa;
   final bool comAbrir;
   final Widget? child;
+
+  EstadoTarefas get estado => sala.tarefas;
+
+  Future<void> _mudarStatus(BuildContext context, String para) async {
+    final caixa = para == 'cancelada' ? caixaVivaDaTarefa(tarefa, sala.workflows.fluxos) : null;
+    if (caixa == null) {
+      estado.mudarStatus(tarefa.id, para);
+      return;
+    }
+    final escopo = await escolherEscopoDoCancelamento(context, tarefa.id, caixa);
+    if (escopo != null) estado.mudarStatus(tarefa.id, para, escopo: escopo);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -204,7 +217,7 @@ class _MenuDaTarefa extends StatelessWidget {
           MenuItemButton(
             leadingIcon: Icon(iconeDoEstado(para)),
             style: para == 'cancelada' ? destrutivo : null,
-            onPressed: () => estado.mudarStatus(tarefa.id, para),
+            onPressed: () => _mudarStatus(context, para),
             child: Text(_rotuloDaTransicao(para)),
           ),
         ],
@@ -277,7 +290,7 @@ class _Lista extends StatelessWidget {
             ),
             for (final t in grupo.tarefas)
               _MenuDaTarefa(
-                estado: estado,
+                sala: sala,
                 tarefa: t,
                 comAbrir: true,
                 child: ListTile(
@@ -476,7 +489,7 @@ class _DetalheState extends State<_Detalhe> {
                 Expanded(child: Text('#${t.id}', overflow: TextOverflow.ellipsis, style: tema.textTheme.titleMedium)),
                 RotuloDeEstado(estado: t.status, rotulo: nomesDeStatus[t.status] ?? t.status),
                 const SizedBox(width: Espacos.esp1),
-                _MenuDaTarefa(estado: estado, tarefa: t),
+                _MenuDaTarefa(sala: widget.sala, tarefa: t),
               ]),
             ),
           ),
@@ -508,6 +521,10 @@ class _DetalheState extends State<_Detalhe> {
                           label: const Text('Ver o workflow'),
                         ),
                       ),
+                    if (caixaParadaDaTarefa(t, widget.sala.workflows.fluxos) case final parada?) ...[
+                      const SizedBox(height: Espacos.esp4),
+                      pedidoDaCaixaParada(context, widget.sala.workflows, parada.fluxo, parada.ficha),
+                    ],
                     if (t.politica.isNotEmpty) ...[
                       const SizedBox(height: Espacos.esp3),
                       _Trilha(

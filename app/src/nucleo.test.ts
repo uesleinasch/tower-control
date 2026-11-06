@@ -107,7 +107,7 @@ import { lerCron, menorIntervaloEmMinutos, proximoHorario, proximosHorarios, ult
 import { LIMITE_DO_CORPO, descricaoComDados, horarioDevido, planoDoDisparo, tituloDaTarefa, validarRotina } from "./orquestra/rotinas"
 import { Agendador } from "./orquestra/agendador"
 import { avaliar, corrente, errosDoWorkflow, etapasDaCorrente, interpolar, validarValores, validarWorkflow } from "./orquestra/workflow"
-import { Motor, SEM_DEVOLUCAO } from "./orquestra/motor"
+import { MAX_FICHAS_CRIADAS, Motor, SEM_DEVOLUCAO } from "./orquestra/motor"
 import { AssinaturaDoPainel, atividade, cartoesDePersonas, itensDeAtencao, montarRetrato, motivoDaEspera, type DadosDoPainel } from "./orquestra/painel"
 import type { Registro, Tarefa } from "./orquestra/tarefa"
 import type { Execucao } from "./orquestra/execucao"
@@ -2044,7 +2044,7 @@ describe("workflows em grafo", () => {
         aoEntregar: (t, e, d) => motor.aoEntregar(t, e, d),
         saidasDa: (t) => motor.saidasDa(t),
         aoConcluir: (id) => motor.aoConcluir(id),
-        aoCancelar: (id) => motor.aoCancelar(id),
+        aoCancelar: (id, escopo) => motor.aoCancelar(id, escopo),
       },
     })
     motor = new Motor({
@@ -2257,6 +2257,111 @@ describe("workflows em grafo", () => {
       expect(repo.exigirFluxo(fluxo.id)).toMatchObject({ status: "cancelado" })
       expect(repo.listar().filter((t) => t.status !== "concluida").every((t) => t.status === "cancelada")).toBe(true)
       expect(repo.fichasDo(fluxo.id).some((f) => f.status === "esperando")).toBe(false)
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  const retratoDe = (repo: Repositorio) =>
+    montarRetrato({
+      agora: new Date(),
+      mes: "2026-11",
+      teto: 2,
+      pausas: new Map(),
+      bloqueio: () => null,
+      equipes: [equipe],
+      personas: [],
+      tarefas: repo.listar(),
+      registros: (id) => repo.registros(id),
+      rodando: [],
+      naFila: [],
+      personaDaFila: () => null,
+      ultimoEvento: () => undefined,
+      comandos: [],
+      rotinas: [],
+      registrosRecentes: [],
+      auditoria: [],
+      disparos: [],
+      fluxos: repo.fluxosAbertos().map((fluxo) => ({ fluxo, fichas: repo.fichasDo(fluxo.id) })),
+    })
+
+  const cancelarSoATarefa = (repo: Repositorio, orquestra: Orquestra, id: number) => {
+    const de = repo.exigir(id).status
+    repo.mudarStatus(id, "cancelada", "ueslei")
+    orquestra.aoMudarStatus(id, de, "cancelada", "tarefa")
+  }
+
+  test("cancelar só a tarefa para a caixa; recriar roda a caixa de novo e o fluxo segue", async () => {
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor } = montarMotor(
+      repo,
+      {
+        nati: nati("baixo"),
+        "nati:revisa": (o) => void o.acoes.aprovar!("ok"),
+        alfred: (_, vez) => (vez === 1 ? (new Promise(() => {}) as never) : "executado"),
+      },
+      [exemplo()],
+    )
+    try {
+      const fluxo = motor.iniciar("casa", "mudanca-com-plano", { pedido: "x" }, "ueslei")
+      await ate(() => repo.listar().filter((t) => t.status === "concluida").length === 2 && repo.comStatus("rodando").length === 1)
+      const executa = repo.listar().find((t) => t.posicao === "executor")!
+      cancelarSoATarefa(repo, orquestra, executa.id)
+      const parada = repo.fichasDo(fluxo.id).find((f) => f.no === "executa")!
+      expect(parada.status).toBe("parada")
+      expect(repo.exigirFluxo(fluxo.id).status).toBe("rodando")
+      expect(repo.exigir(executa.id).status).toBe("cancelada")
+      expect(repo.auditoria().map((a) => a.acao)).toContain("parou a caixa do workflow")
+      const item = retratoDe(repo).atencao.find((i) => i.tipo === "parada")!
+      expect(item).toMatchObject({
+        titulo: `Caixa parada no workflow #${fluxo.id}`,
+        detalhe: `A tarefa #${executa.id} da caixa "executa" foi cancelada. O workflow "Mudança com plano" está esperando você decidir.`,
+        acoes: ["recriar", "cancelar-fluxo"],
+        fluxo: fluxo.id,
+        ficha: parada.id,
+        tarefaId: executa.id,
+      })
+      expect(retratoDe(repo).workflows[0]!.ativas.find((a) => a.ficha === parada.id)).toMatchObject({ parada: true })
+      motor.tique()
+      expect(repo.exigirFluxo(fluxo.id).status).toBe("rodando")
+      expect(() => motor.recriar(fluxo.id, repo.fichasDo(fluxo.id)[0]!.id)).toThrow("não está parada")
+
+      const nova = motor.recriar(fluxo.id, parada.id)
+      expect(nova).toMatchObject({ posicao: "executor", status: "a_fazer", titulo: executa.titulo, descricao: executa.descricao, fluxo: fluxo.id })
+      expect(nova.id).not.toBe(executa.id)
+      expect(repo.exigirFicha(parada.id).status).toBe("cancelada")
+      expect(repo.exigirFicha(nova.ficha!)).toMatchObject({ no: "executa", status: "esperando", tarefa: nova.id, veioDe: parada.veioDe })
+      expect(repo.auditoria().map((a) => a.acao)).toContain("recriou a caixa do workflow")
+      expect(retratoDe(repo).atencao.some((i) => i.tipo === "parada")).toBe(false)
+      await ate(() => repo.exigirFluxo(fluxo.id).status !== "rodando")
+      expect(repo.exigirFluxo(fluxo.id).status).toBe("concluido")
+      expect(repo.exigir(nova.id).status).toBe("concluida")
+      expect(repo.fichasDo(fluxo.id).filter((f) => f.no === "executa").map((f) => f.status)).toEqual(["cancelada", "concluida"])
+    } finally {
+      orquestra.parar()
+      repo.fechar()
+    }
+  })
+
+  test("cancelar o fluxo com a caixa parada encerra tudo, e recriar respeita o freio", async () => {
+    const repo = new Repositorio(":memory:")
+    const { orquestra, motor } = montarMotor(repo, { nati: nati("baixo"), alfred: () => new Promise(() => {}) as never }, [exemplo()])
+    try {
+      const fluxo = motor.iniciar("casa", "mudanca-com-plano", { pedido: "x" }, "ueslei")
+      await ate(() => repo.listar().length === 3)
+      const executa = repo.listar().find((t) => t.posicao === "executor")!
+      cancelarSoATarefa(repo, orquestra, executa.id)
+      const parada = repo.fichasDo(fluxo.id).find((f) => f.no === "executa")!
+      for (let i = repo.fichasDo(fluxo.id).length; i < MAX_FICHAS_CRIADAS; i++) repo.criarFicha({ fluxo: fluxo.id, no: "fim", veioDe: null })
+      expect(() => motor.recriar(fluxo.id, parada.id)).toThrow(`passou de ${MAX_FICHAS_CRIADAS} caixas`)
+      expect(repo.exigirFicha(parada.id).status).toBe("parada")
+      motor.cancelar(fluxo.id)
+      expect(repo.exigirFluxo(fluxo.id).status).toBe("cancelado")
+      expect(repo.fichasDo(fluxo.id).some((f) => f.status === "esperando" || f.status === "parada")).toBe(false)
+      expect(repo.listar().every((t) => t.status === "concluida" || t.status === "cancelada")).toBe(true)
+      expect(() => motor.recriar(fluxo.id, parada.id)).toThrow("não está parada")
+      expect(retratoDe(repo).atencao).toEqual([])
     } finally {
       orquestra.parar()
       repo.fechar()
@@ -2829,6 +2934,9 @@ describe("espelho do TickTask", () => {
     expect(acaoDo(item("backlog", { tarefaId: 3 }))).toEqual({ tipo: "liberar", tarefa: 3 })
     expect(acaoDo(item("sinal", { fluxo: 1, ficha: 2 }))).toEqual({ tipo: "sinalizar", fluxo: 1, ficha: 2 })
     expect(acaoDo(item("bloqueada", { tarefaId: 3 }))).toEqual({ tipo: "nenhuma" })
+    expect(chaveDo(item("parada", { fluxo: 2, ficha: 9, tarefaId: 4 }))).toBe("parada:2:9")
+    expect(acaoDo(item("parada", { fluxo: 2, ficha: 9, tarefaId: 4 }))).toEqual({ tipo: "nenhuma" })
+    expect(descricaoNoTickTask(item("parada", { fluxo: 2, ficha: 9 }), null)).toContain("só pelo control-tower")
     expect(descricaoNoTickTask(item("aprovacao", { tarefaId: 3 }), "http://x:7878")).toContain("Finalizar aqui aprova a entrega")
     expect(nomeNoTickTask(item("decisao", { fluxo: 1, ficha: 2, titulo: "Mudança pergunta", detalhe: "Seguir?" }))).toBe("[CT] Mudança pergunta: Seguir?")
   })
