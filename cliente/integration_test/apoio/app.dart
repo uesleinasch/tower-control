@@ -51,13 +51,11 @@ Future<void> subirDesktop(WidgetTester t, AmbienteDeTeste a) async {
 }
 
 void exigirXdgDeTeste(Map<String, String> ambiente) {
-  final casa = ambiente['HOME'] ?? '';
-  for (final (variavel, padrao) in [('XDG_DATA_HOME', '$casa/.local'), ('XDG_CONFIG_HOME', '$casa/.config')]) {
+  for (final variavel in ['XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_RUNTIME_DIR']) {
     final valor = ambiente[variavel] ?? '';
     final caminho = valor.isEmpty ? '' : Directory(valor).absolute.uri.normalizePath().toFilePath();
-    final pasta = caminho.endsWith('/') ? caminho : '$caminho/';
-    if (valor.isEmpty || casa.isEmpty || pasta == '$casa/' || pasta.startsWith('$padrao/')) {
-      throw StateError('$variavel="$valor" não é uma pasta de teste: o app gravaria nas preferências do app instalado');
+    if (!caminho.startsWith('/tmp/ct-xdg-')) {
+      throw StateError('$variavel="$valor" não é uma pasta de teste em /tmp/ct-xdg-*: o app encostaria no app instalado');
     }
   }
 }
