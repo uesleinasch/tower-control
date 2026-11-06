@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../estado/equipes.dart';
 import '../estado/sala.dart';
 import '../estado/skills.dart';
+import '../nucleo/design.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/organograma.dart';
 import '../nucleo/skills.dart';
@@ -17,6 +18,7 @@ import 'editor_de_workflow.dart';
 import 'importacao.dart';
 import 'rotinas.dart';
 import 'skills.dart';
+import 'tema.dart';
 import 'workflows.dart';
 
 bool get edicaoDisponivel =>
@@ -1289,31 +1291,43 @@ class BarraDePausa extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final aviso = CoresSemanticas.de(context).aviso;
     return ListenableBuilder(
       listenable: estado,
-      builder: (context, _) => Material(
-        color: estado.pausadoTudo ? cores.errorContainer : cores.surface,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(children: [
-            Icon(estado.pausadoTudo ? Symbols.pause_circle : Symbols.play_circle, size: 18,
-                color: estado.pausadoTudo ? cores.onErrorContainer : cores.onSurfaceVariant),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                estado.pausadoTudo ? 'Tudo pausado: nenhuma tarefa começa.' : 'Personas trabalhando normalmente.',
-                style: TextStyle(fontSize: 12, color: estado.pausadoTudo ? cores.onErrorContainer : cores.onSurfaceVariant),
+      builder: (context, _) {
+        final pausado = estado.pausadoTudo;
+        final cor = pausado ? aviso.sobreContainer : cores.onSurfaceVariant;
+        return Material(
+          color: pausado ? aviso.container : cores.surface,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Espacos.esp4, vertical: Espacos.esp1),
+            child: Row(children: [
+              Icon(pausado ? Symbols.pause_circle : Symbols.play_circle, size: 20, color: cor),
+              const SizedBox(width: Espacos.esp2),
+              Expanded(
+                child: Text(
+                  pausado ? 'Tudo pausado: nenhuma tarefa começa.' : 'Personas trabalhando normalmente.',
+                  style: tema.textTheme.bodyMedium?.copyWith(color: cor),
+                ),
               ),
-            ),
-            TextButton.icon(
-              onPressed: estado.alternarPausaGeral,
-              icon: Icon(estado.pausadoTudo ? Symbols.play_arrow : Symbols.pause),
-              label: Text(estado.pausadoTudo ? 'Retomar tudo' : 'Pausar tudo'),
-            ),
-          ]),
-        ),
-      ),
+              if (pausado)
+                FilledButton.icon(
+                  onPressed: estado.alternarPausaGeral,
+                  icon: const Icon(Symbols.play_arrow),
+                  label: const Text('Retomar tudo'),
+                )
+              else
+                TextButton.icon(
+                  onPressed: estado.alternarPausaGeral,
+                  icon: const Icon(Symbols.pause),
+                  label: const Text('Pausar tudo'),
+                ),
+            ]),
+          ),
+        );
+      },
     );
   }
 }
