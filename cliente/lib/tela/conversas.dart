@@ -34,31 +34,34 @@ class ListaConversas extends StatelessWidget {
           final cores = Theme.of(context).colorScheme;
           final texto = Theme.of(context).textTheme;
           final secundario = texto.bodySmall?.copyWith(color: cores.onSurfaceVariant);
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: Espacos.esp2, vertical: Espacos.esp1),
-            itemCount: estado.lista.length,
-            itemBuilder: (context, i) {
-              final meta = estado.lista[i];
-              final nome = Perfil.porChave(meta.perfil).nome;
-              return MenuDeToque(
-                itens: () => [(Symbols.delete, 'Excluir conversa', () => _excluir(context, meta))],
-                child: ListTile(
-                  selected: sala.chat.conversaId == meta.id,
-                  selectedTileColor: cores.secondaryContainer,
-                  selectedColor: cores.onSecondaryContainer,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Raios.md)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: Espacos.esp3),
-                  titleTextStyle: texto.titleSmall,
-                  subtitleTextStyle: secundario,
-                  leadingAndTrailingTextStyle: secundario?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-                  leading: Avatar.doPerfil(meta.perfil),
-                  title: Text(meta.titulo, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(nome, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: Text(quando(meta.criadaEm)),
-                  onTap: () => sala.abrirConversa(meta.id),
-                ),
-              );
-            },
+          return RolagemDeDesktop(
+            builder: (context, controle) => ListView.builder(
+              controller: controle,
+              padding: const EdgeInsets.symmetric(horizontal: Espacos.esp2, vertical: Espacos.esp1),
+              itemCount: estado.lista.length,
+              itemBuilder: (context, i) {
+                final meta = estado.lista[i];
+                final nome = Perfil.porChave(meta.perfil).nome;
+                return MenuDeToque(
+                  itens: () => [(Symbols.delete, 'Excluir conversa', () => _excluir(context, meta))],
+                  child: ListTile(
+                    selected: sala.chat.conversaId == meta.id,
+                    selectedTileColor: cores.secondaryContainer,
+                    selectedColor: cores.onSecondaryContainer,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Raios.md)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: Espacos.esp3),
+                    titleTextStyle: texto.titleSmall,
+                    subtitleTextStyle: secundario,
+                    leadingAndTrailingTextStyle: secundario?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                    leading: Avatar.doPerfil(meta.perfil),
+                    title: Text(meta.titulo, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(nome, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: Text(quando(meta.criadaEm)),
+                    onTap: () => sala.abrirConversa(meta.id),
+                  ),
+                );
+              },
+            ),
           );
         },
       );

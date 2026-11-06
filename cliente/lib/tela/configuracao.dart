@@ -269,6 +269,7 @@ class _SaidaState extends State<_Saida> {
           constraints: const BoxConstraints(maxHeight: _alturaMaximaDaSaida),
           child: Scrollbar(
             controller: _rolagem,
+            thumbVisibility: ehDesktop,
             child: SingleChildScrollView(
               controller: _rolagem,
               padding: const EdgeInsets.all(Espacos.esp3),
@@ -1113,6 +1114,7 @@ class _BlocoLogsState extends State<_BlocoLogs> {
                   )
                 : Scrollbar(
                     controller: _rolagem,
+                    thumbVisibility: ehDesktop,
                     child: ListView.builder(
                       controller: _rolagem,
                       reverse: true,

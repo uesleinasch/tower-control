@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +9,44 @@ import 'tema.dart';
 
 const _proporcaoDaInicial = 0.42;
 const _tamanhoDoPonto = 10.0;
+
+bool get ehDesktop => switch (defaultTargetPlatform) {
+      TargetPlatform.linux || TargetPlatform.windows || TargetPlatform.macOS => true,
+      _ => false,
+    };
+
+class RolagemDeDesktop extends StatefulWidget {
+  const RolagemDeDesktop({super.key, required this.builder});
+
+  final Widget Function(BuildContext context, ScrollController? controle) builder;
+
+  @override
+  State<RolagemDeDesktop> createState() => _RolagemDeDesktopState();
+}
+
+class _RolagemDeDesktopState extends State<RolagemDeDesktop> {
+  ScrollController? _controle;
+
+  @override
+  void dispose() {
+    _controle?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!ehDesktop) return widget.builder(context, null);
+    final controle = _controle ??= ScrollController();
+    return Scrollbar(
+      controller: controle,
+      thumbVisibility: true,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: widget.builder(context, controle),
+      ),
+    );
+  }
+}
 
 class Avatar extends StatelessWidget {
   const Avatar({super.key, required this.cor, required this.inicial, this.tamanho = 36});

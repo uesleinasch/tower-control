@@ -51,3 +51,17 @@ PapelDeEstado papelDoEstado(String? estado) => switch (estado) {
       'falhou' || 'falha' || 'recusada' || 'erro' => PapelDeEstado.erro,
       _ => PapelDeEstado.neutro,
     };
+
+const double passoDoDivisor = 16;
+
+double limitarLargura(
+  double desejada, {
+  required double minimo,
+  required double maximo,
+  double disponivel = double.infinity,
+  double restoMinimo = 0,
+}) {
+  final teto = maximo < disponivel - restoMinimo ? maximo : disponivel - restoMinimo;
+  if (teto <= minimo || desejada < minimo) return minimo;
+  return desejada > teto ? teto : desejada;
+}

@@ -15,6 +15,7 @@ import '../nucleo/workflows.dart';
 import 'chat.dart';
 import 'comum.dart';
 import 'equipes.dart';
+import 'paineis.dart';
 import 'tema.dart';
 
 const _larguraDaLista = 360.0;
@@ -59,17 +60,14 @@ class _TelaTarefasState extends State<TelaTarefas> {
             Expanded(
               child: !classe.comDoisPaineis
                   ? lista
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(width: _larguraDaLista, child: lista),
-                        const VerticalDivider(width: 1),
-                        Expanded(
-                          child: aberta == null
-                              ? _NadaSelecionado(estado: sala.tarefas, focoDoTitulo: _focoDoTitulo)
-                              : _Detalhe(key: ValueKey(aberta.tarefa.id), sala: sala, aberta: aberta, emPainel: true),
-                        ),
-                      ],
+                  : LadoALado(
+                      painel: 'tarefas',
+                      rotulo: 'Largura da lista de tarefas',
+                      inicial: _larguraDaLista,
+                      lateral: lista,
+                      principal: aberta == null
+                          ? _NadaSelecionado(estado: sala.tarefas, focoDoTitulo: _focoDoTitulo)
+                          : _Detalhe(key: ValueKey(aberta.tarefa.id), sala: sala, aberta: aberta, emPainel: true),
                     ),
             ),
           ],
@@ -242,60 +240,63 @@ class _Lista extends StatelessWidget {
     final cores = Theme.of(context).colorScheme;
     if (!estado.carregada) return const Center(child: CircularProgressIndicator());
     final grupos = agruparPorStatus(estado.daEquipe);
-    return ListView(
-      padding: const EdgeInsets.only(bottom: Espacos.esp5),
-      children: [
-        if (estado.equipes.length > 1)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Espacos.esp4, Espacos.esp3, Espacos.esp4, 0),
-            child: DropdownButtonFormField<String>(
-              key: ValueKey(estado.equipe),
-              initialValue: estado.equipes.any((e) => e.id == estado.equipe) ? estado.equipe : null,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Equipe'),
-              items: [for (final e in estado.equipes) DropdownMenuItem(value: e.id, child: Text(e.nome))],
-              onChanged: (id) => id == null ? null : estado.escolherEquipe(id),
-            ),
-          ),
-        _NovaTarefa(sala: sala, focoDoTitulo: focoDoTitulo),
-        if (estado.daEquipe.isEmpty)
-          _Vazio(
-            icone: Symbols.task_alt,
-            texto: 'Nenhuma tarefa nesta equipe ainda.',
-            acao: OutlinedButton(onPressed: focoDoTitulo.requestFocus, child: const Text('Escrever a primeira tarefa')),
-          ),
-        for (final grupo in grupos) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Espacos.esp4, Espacos.esp4, Espacos.esp4, Espacos.esp1),
-            child: Semantics(
-              header: true,
-              child: RotuloDeEstado(
-                estado: grupo.status,
-                rotulo: '${nomesDeStatus[grupo.status] ?? grupo.status} · ${grupo.tarefas.length}',
+    return RolagemDeDesktop(
+      builder: (context, controle) => ListView(
+        controller: controle,
+        padding: const EdgeInsets.only(bottom: Espacos.esp5),
+        children: [
+          if (estado.equipes.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Espacos.esp4, Espacos.esp3, Espacos.esp4, 0),
+              child: DropdownButtonFormField<String>(
+                key: ValueKey(estado.equipe),
+                initialValue: estado.equipes.any((e) => e.id == estado.equipe) ? estado.equipe : null,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Equipe'),
+                items: [for (final e in estado.equipes) DropdownMenuItem(value: e.id, child: Text(e.nome))],
+                onChanged: (id) => id == null ? null : estado.escolherEquipe(id),
               ),
             ),
-          ),
-          for (final t in grupo.tarefas)
-            _MenuDaTarefa(
-              estado: estado,
-              tarefa: t,
-              comAbrir: true,
-              child: ListTile(
-                selected: t.id == selecionada,
-                selectedTileColor: cores.secondaryContainer,
-                selectedColor: cores.onSecondaryContainer,
-                title: Text('#${t.id} ${t.titulo}'),
-                subtitle: Text([
-                  estado.rotuloDaPosicao(t.posicao),
-                  if (t.status == 'em_revisao' && t.comQuem != null) t.comQuem!,
-                  quando(t.atualizadaEm),
-                ].join(' · ')),
-                trailing: t.rodando ? const RotuloDeEstado(estado: 'rodando', rotulo: 'rodando') : null,
-                onTap: () => estado.abrir(t.id),
+          _NovaTarefa(sala: sala, focoDoTitulo: focoDoTitulo),
+          if (estado.daEquipe.isEmpty)
+            _Vazio(
+              icone: Symbols.task_alt,
+              texto: 'Nenhuma tarefa nesta equipe ainda.',
+              acao: OutlinedButton(onPressed: focoDoTitulo.requestFocus, child: const Text('Escrever a primeira tarefa')),
+            ),
+          for (final grupo in grupos) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Espacos.esp4, Espacos.esp4, Espacos.esp4, Espacos.esp1),
+              child: Semantics(
+                header: true,
+                child: RotuloDeEstado(
+                  estado: grupo.status,
+                  rotulo: '${nomesDeStatus[grupo.status] ?? grupo.status} · ${grupo.tarefas.length}',
+                ),
               ),
             ),
+            for (final t in grupo.tarefas)
+              _MenuDaTarefa(
+                estado: estado,
+                tarefa: t,
+                comAbrir: true,
+                child: ListTile(
+                  selected: t.id == selecionada,
+                  selectedTileColor: cores.secondaryContainer,
+                  selectedColor: cores.onSecondaryContainer,
+                  title: Text('#${t.id} ${t.titulo}'),
+                  subtitle: Text([
+                    estado.rotuloDaPosicao(t.posicao),
+                    if (t.status == 'em_revisao' && t.comQuem != null) t.comQuem!,
+                    quando(t.atualizadaEm),
+                  ].join(' · ')),
+                  trailing: t.rodando ? const RotuloDeEstado(estado: 'rodando', rotulo: 'rodando') : null,
+                  onTap: () => estado.abrir(t.id),
+                ),
+              ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

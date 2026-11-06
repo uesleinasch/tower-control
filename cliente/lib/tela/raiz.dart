@@ -5,14 +5,17 @@ import 'package:material_ui/material_ui.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../estado/equipes.dart';
 import '../estado/sala.dart';
 import '../nucleo/design.dart';
+import 'atalhos.dart';
 import 'board.dart';
 import 'chat.dart';
 import 'comum.dart';
 import 'conversas.dart';
 import 'decisoes.dart';
 import 'equipes.dart';
+import 'paineis.dart';
 import 'painel.dart';
 import 'tarefas.dart';
 
@@ -30,6 +33,7 @@ class Raiz extends StatefulWidget {
 class _RaizState extends State<Raiz> {
   late final StreamSubscription<String> _avisos;
   final _mensageiro = GlobalKey<ScaffoldMessengerState>();
+  final _focoDaBusca = FocusNode(debugLabel: 'busca da tela');
   bool? _trilhoEstendido;
 
   Sala get sala => widget.sala;
@@ -55,10 +59,54 @@ class _RaizState extends State<Raiz> {
     if (contexto != null && mounted) abrirNovaConversa(contexto, sala);
   }
 
+  void _mostrarAtalhos() {
+    final contexto = _mensageiro.currentContext;
+    if (contexto != null && mounted) mostrarAtalhosDeTeclado(contexto);
+  }
+
+  void _buscar() {
+    if (sala.tela != Tela.decisoes) return;
+    if (_focoDaBusca.context?.mounted ?? false) {
+      _focoDaBusca.requestFocus();
+      return;
+    }
+    sala.decisoes.fecharDetalhe();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focoDaBusca.requestFocus());
+  }
+
+  bool _fecharPainel() {
+    switch (sala.tela) {
+      case Tela.tarefas when sala.tarefas.aberta != null:
+        sala.tarefas.fecharDetalhe();
+      case Tela.decisoes when sala.decisoes.aberta != null:
+        sala.decisoes.fecharDetalhe();
+      case Tela.equipes when sala.editorDeWorkflow.aberto:
+        if (sala.editorDeWorkflow.selecionada == null) return false;
+        sala.editorDeWorkflow.selecionar(null);
+      case Tela.equipes when sala.equipes.vendoWorkflows && sala.workflows.caixa != null:
+        sala.workflows.selecionarCaixa(null);
+      case Tela.equipes when sala.equipes.aba == AbaDaEquipe.organograma && sala.equipes.selecionada != null:
+        sala.equipes.selecionar(null);
+      default:
+        return false;
+    }
+    return true;
+  }
+
+  KeyEventResult _tecla(FocusNode _, KeyEvent evento) {
+    if (evento is! KeyDownEvent || evento.logicalKey != LogicalKeyboardKey.escape) return KeyEventResult.ignored;
+    final teclado = HardwareKeyboard.instance;
+    if (_digitando() || teclado.isControlPressed || teclado.isShiftPressed || teclado.isAltPressed) {
+      return KeyEventResult.ignored;
+    }
+    return _fecharPainel() ? KeyEventResult.handled : KeyEventResult.ignored;
+  }
+
   @override
   void dispose() {
     sala.pedidosDeNova.removeListener(_abrirNova);
     _avisos.cancel();
+    _focoDaBusca.dispose();
     super.dispose();
   }
 
@@ -78,9 +126,14 @@ class _RaizState extends State<Raiz> {
                   bindings: {
                     for (final (i, destino) in _destinos.indexed)
                       SingleActivator(_teclasDosDestinos[i], control: true): () => sala.ir(destino.tela),
+                    const SingleActivator(LogicalKeyboardKey.keyN, control: true): _abrirNova,
+                    const SingleActivator(LogicalKeyboardKey.keyK, control: true): _buscar,
+                    const SingleActivator(LogicalKeyboardKey.slash, control: true): _mostrarAtalhos,
+                    const SingleActivator(LogicalKeyboardKey.numpadDivide, control: true): _mostrarAtalhos,
                   },
-                  child: Focus(
+                  child: FocusScope(
                     autofocus: true,
+                    onKeyEvent: _tecla,
                     child: classe == ClasseDeJanela.compact ? _compacto(context) : _comTrilho(context, classe),
                   ),
                 );
@@ -98,7 +151,7 @@ class _RaizState extends State<Raiz> {
 
   Widget _principal(BuildContext context, {required bool compacto}) => switch (sala.tela) {
         Tela.board => TelaBoard(sala: sala),
-        Tela.decisoes => TelaDecisoes(sala: sala),
+        Tela.decisoes => TelaDecisoes(sala: sala, focoDaBusca: _focoDaBusca),
         Tela.painel => TelaPainel(sala: sala),
         Tela.tarefas => TelaTarefas(sala: sala),
         Tela.equipes => TelaEquipes(sala: sala),
@@ -120,28 +173,34 @@ class _RaizState extends State<Raiz> {
     final emConversa = sala.tela == Tela.conversas || sala.tela == Tela.chat;
     final Widget conteudo;
     if (duplo) {
-      conteudo = Row(children: [
-        if (emConversa) ...[
-          SizedBox(width: 320, child: _PainelDeConversas(sala: sala)),
-          const VerticalDivider(width: 1),
-        ],
-        Expanded(child: _principal(context, compacto: false)),
-      ]);
+      final principal = _principal(context, compacto: false);
+      conteudo = emConversa
+          ? LadoALado(
+              painel: 'conversas',
+              rotulo: 'Largura da lista de conversas',
+              maximo: 480,
+              lateral: _PainelDeConversas(sala: sala),
+              principal: principal,
+            )
+          : principal;
     } else {
       final principal = _principal(context, compacto: true);
       conteudo = sala.tela == Tela.chat || sala.tela == Tela.configuracao ? _voltaParaConversas(principal) : principal;
     }
     return Scaffold(
       body: Row(children: [
-        _Trilho(
-          sala: sala,
-          selecionado: _indice(sala.tela),
-          estendido: _trilhoEstendido ?? classe.index >= ClasseDeJanela.large.index,
-          configuracao: widget.configuracao != null,
-          alternar: _alternarTrilho,
+        FocusTraversalGroup(
+          child: _Trilho(
+            sala: sala,
+            selecionado: _indice(sala.tela),
+            estendido: _trilhoEstendido ?? classe.index >= ClasseDeJanela.large.index,
+            configuracao: widget.configuracao != null,
+            atalhos: ehDesktop ? _mostrarAtalhos : null,
+            alternar: _alternarTrilho,
+          ),
         ),
         const VerticalDivider(width: 1),
-        Expanded(child: conteudo),
+        Expanded(child: FocusTraversalGroup(child: conteudo)),
       ]),
     );
   }
@@ -287,6 +346,7 @@ class _Trilho extends StatelessWidget {
     required this.selecionado,
     required this.estendido,
     required this.configuracao,
+    required this.atalhos,
     required this.alternar,
   });
 
@@ -294,6 +354,7 @@ class _Trilho extends StatelessWidget {
   final int? selecionado;
   final bool estendido;
   final bool configuracao;
+  final VoidCallback? atalhos;
   final void Function(bool estendido) alternar;
 
   @override
@@ -323,13 +384,16 @@ class _Trilho extends StatelessWidget {
             ],
           ),
         ),
-        trailing: configuracao
+        trailing: configuracao || atalhos != null
             ? Expanded(
                 child: Align(
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: Espacos.esp4),
-                    child: _BotaoDeConfiguracao(sala: sala, estendido: estendido),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      if (atalhos case final abrir?) _BotaoDeAtalhos(estendido: estendido, aoAbrir: abrir),
+                      if (configuracao) _BotaoDeConfiguracao(sala: sala, estendido: estendido),
+                    ]),
                   ),
                 ),
               )
@@ -343,6 +407,51 @@ class _Trilho extends StatelessWidget {
             ),
         ],
       );
+}
+
+class _BotaoDeAtalhos extends StatelessWidget {
+  const _BotaoDeAtalhos({required this.estendido, required this.aoAbrir});
+
+  final bool estendido;
+  final VoidCallback aoAbrir;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!estendido) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: Espacos.esp2),
+        child: IconButton(
+          tooltip: 'Atalhos de teclado (Ctrl+/)',
+          icon: const Icon(Symbols.keyboard),
+          onPressed: aoAbrir,
+        ),
+      );
+    }
+    final tema = Theme.of(context);
+    final cor = tema.colorScheme.onSurfaceVariant;
+    return SizedBox(
+      width: 224,
+      child: Tooltip(
+        message: 'Ctrl+/',
+        child: TextButton.icon(
+          onPressed: aoAbrir,
+          icon: Icon(Symbols.keyboard, color: cor),
+          label: Text('Atalhos de teclado', style: tema.textTheme.labelLarge?.copyWith(color: cor)),
+          style: TextButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: Espacos.esp4, vertical: Espacos.esp4),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Raios.xl)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+bool _digitando() {
+  final contexto = FocusManager.instance.primaryFocus?.context;
+  if (contexto == null) return false;
+  return contexto.widget is EditableText || contexto.findAncestorWidgetOfExactType<EditableText>() != null;
 }
 
 class _BotaoDeConfiguracao extends StatelessWidget {
