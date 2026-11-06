@@ -985,6 +985,21 @@ void main() {
       expect(slugDe('42 coisas'), 'p-42-coisas');
     });
 
+    test('equipe nova não tem personas, e adicionar uma persona cria a posição ocupada por ela', () {
+      const nova = EquipeResumo(id: 'nova', nome: 'Nova', posicoes: []);
+      final vazia = personasDaEquipe(nova, ['poe', 'nati']);
+      expect(vazia.naEquipe, isEmpty);
+      expect(vazia.disponiveis, ['poe', 'nati']);
+
+      final r = adicionarPersona(nova, 'nati', 'conselheira');
+      expect(r.equipe.posicao(r.id)!.persona, 'nati');
+      expect(r.equipe.posicao(r.id)!.titulo, 'conselheira');
+      expect(r.equipe.posicao(r.id)!.respondeA, isNull);
+      final depois = personasDaEquipe(r.equipe, ['poe', 'nati']);
+      expect(depois.naEquipe, {'nati': ['conselheira']});
+      expect(depois.disponiveis, ['poe']);
+    });
+
     test('mover não deixa coordenada negativa', () {
       expect(mover(codigo(), 'executor', -10, 40.4).ponto('executor'), (x: 0.0, y: 40.0));
     });
