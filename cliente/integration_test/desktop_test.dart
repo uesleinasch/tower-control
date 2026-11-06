@@ -74,7 +74,7 @@ Future<void> preencherRotina(WidgetTester t, {Future<void> Function()? ruido}) a
     await digitarNoTeclado(t, campoRotulado(rotulo), texto, noMeio: ruido);
     await ruido?.call();
   }
-  await tocar(t, find.widgetWithText(SwitchListTile, 'Webhook'));
+  await tocar(t, find.widgetWithText(CheckboxListTile, 'Webhook'));
   await ruido?.call();
   await tocar(t, botao('Salvar').last);
 }
