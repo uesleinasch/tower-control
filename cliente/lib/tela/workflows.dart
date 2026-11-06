@@ -12,21 +12,7 @@ import '../nucleo/workflows.dart';
 import 'canvas.dart';
 import 'equipes.dart' show confirmar, pedirTexto, quandoCurto;
 import 'importacao.dart';
-
-Color corDaFicha(String? status, ColorScheme cores) => switch (status) {
-      'concluida' => const Color(0xFF4FAE7C),
-      'esperando' => const Color(0xFF9A6EE8),
-      'cancelada' => const Color(0xFF8B93A7),
-      _ => cores.outlineVariant,
-    };
-
-Color corDoFluxo(String status, ColorScheme cores) => switch (status) {
-      'rodando' => const Color(0xFFE0A458),
-      'esperando' => const Color(0xFF5B8DEF),
-      'concluido' => const Color(0xFF4FAE7C),
-      'falhou' => cores.error,
-      _ => const Color(0xFF8B93A7),
-    };
+import 'tema.dart';
 
 Future<void> cancelarFluxo(BuildContext context, EstadoWorkflows estado, int fluxo, String nome) async {
   final ok = await confirmar(
@@ -236,7 +222,7 @@ class _LinhaDoFluxo extends StatelessWidget {
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-      leading: CircleAvatar(backgroundColor: corDoFluxo(f.status, cores), radius: 6),
+      leading: CircleAvatar(backgroundColor: corDoEstado(context, f.status), radius: 6),
       title: Text([
         if (comNome) f.nome,
         '#${f.id}',
@@ -481,7 +467,7 @@ class _DetalheDaCaixa extends StatelessWidget {
       for (final ficha in fichas) ...[
         const Divider(height: 24),
         Row(children: [
-          CircleAvatar(backgroundColor: corDaFicha(ficha.status, cores), radius: 6),
+          CircleAvatar(backgroundColor: corDoEstado(context, ficha.status), radius: 6),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -529,15 +515,15 @@ class _CaminhoEmLista extends StatelessWidget {
       for (final p in passos)
         Card(
           margin: const EdgeInsets.symmetric(vertical: 4),
-          color: p.destacado ? corDaFicha('esperando', cores).withValues(alpha: 0.16) : null,
+          color: p.destacado ? corDoEstado(context, 'esperando').withValues(alpha: 0.16) : null,
           shape: p.destacado
               ? RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: corDaFicha('esperando', cores)),
+                  side: BorderSide(color: corDoEstado(context, 'esperando')),
                 )
               : null,
           child: ListTile(
-            leading: CircleAvatar(backgroundColor: corDaFicha(p.status, cores), radius: 7),
+            leading: CircleAvatar(backgroundColor: corDoEstado(context, p.status), radius: 7),
             title: Text(p.titulo),
             subtitle: Text(
               [
@@ -1022,7 +1008,7 @@ class _CaixaDoGrafo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
-    final cor = estado == null ? null : corDaFicha(estado, cores);
+    final cor = estado == null ? null : corDoEstado(context, estado);
     final borda = escolhida ? cores.primary : (comErro ? cores.error : cor ?? cores.outlineVariant);
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),

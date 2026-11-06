@@ -15,6 +15,7 @@ import '../nucleo/formato.dart';
 import '../nucleo/modelos.dart';
 import 'anexar.dart';
 import 'comum.dart';
+import 'tema.dart';
 
 class TelaChat extends StatefulWidget {
   const TelaChat({super.key, required this.sala, required this.compacto});
@@ -258,7 +259,7 @@ class _Linha extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(texto,
-              style: TextStyle(color: c, fontSize: 13, fontFamily: mono ? 'monospace' : null)),
+              style: TextStyle(color: c, fontSize: 13, fontFamily: mono ? familiaMono : null)),
         ),
       ]),
     );
@@ -418,7 +419,7 @@ class TextoMarkdown extends StatelessWidget {
       styleSheet: MarkdownStyleSheet.fromTheme(legado.Theme.of(context)).copyWith(
         p: tema.textTheme.bodyMedium?.copyWith(height: 1.45),
         code: TextStyle(
-          fontFamily: 'monospace',
+          fontFamily: familiaMono,
           fontSize: 13,
           backgroundColor: tema.colorScheme.surface,
         ),
@@ -511,7 +512,7 @@ class _CartaoPermissaoState extends State<_CartaoPermissao> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(color: cores.surface, borderRadius: BorderRadius.circular(8)),
-            child: SelectableText(p.comando, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+            child: SelectableText(p.comando, style: const TextStyle(fontFamily: familiaMono, fontSize: 13)),
           ),
           const SizedBox(height: 8),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [

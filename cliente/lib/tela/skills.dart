@@ -6,6 +6,7 @@ import '../estado/skills.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/skills.dart';
 import 'comum.dart';
+import 'tema.dart';
 
 String nomeDaPosicaoDaSkill(Sala sala, String chave) {
   final barra = chave.indexOf('/');
@@ -254,7 +255,7 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
             minLines: 18,
             maxLines: null,
             keyboardType: TextInputType.multiline,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+            style: const TextStyle(fontFamily: familiaMono, fontSize: 13),
             decoration: const InputDecoration(
               labelText: 'Corpo (Markdown)',
               alignLabelWithHint: true,
@@ -278,7 +279,7 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
                 child: Row(children: [
                   const Icon(Icons.description_outlined, size: 16),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(a, style: const TextStyle(fontFamily: 'monospace', fontSize: 13))),
+                  Expanded(child: Text(a, style: const TextStyle(fontFamily: familiaMono, fontSize: 13))),
                 ]),
               ),
           const SizedBox(height: 4),

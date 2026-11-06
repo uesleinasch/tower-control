@@ -8,6 +8,7 @@ import '../nucleo/tarefas.dart';
 import '../nucleo/workflows.dart';
 import 'equipes.dart' show confirmar;
 import 'workflows.dart';
+import 'tema.dart';
 
 const _larguraDaPaleta = 210.0;
 const _larguraDoPainel = 360.0;
@@ -1200,7 +1201,7 @@ class _PainelDoWorkflow extends StatelessWidget {
             dense: true,
             contentPadding: EdgeInsets.zero,
             selected: e.sobreposto == f.id,
-            leading: CircleAvatar(backgroundColor: corDoFluxo(f.status, cores), radius: 6),
+            leading: CircleAvatar(backgroundColor: corDoEstado(context, f.status), radius: 6),
             title: Text('#${f.id} · versão ${f.versao} · ${nomesDeStatusDoFluxo[f.status] ?? f.status}'),
             onTap: () => aoVerFluxo(f),
           ),
