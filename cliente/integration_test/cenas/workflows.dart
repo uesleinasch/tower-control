@@ -506,7 +506,8 @@ void cenasDeWorkflows() {
     final tarefa = _ficha(comTarefa, 'esperar')!['tarefa'] as int;
 
     await _abrirTarefa(t, tarefa, 'Cancelável: esperar');
-    await tocar(t, find.text('→ cancelada'));
+    await tocar(t, find.byTooltip('Mais opções'));
+    await tocar(t, find.text('Cancelar tarefa'));
     final cancelado = await _esperarFluxo(t, c, fluxo, (f) => f['status'] == 'cancelado', descricao: 'o fluxo cancelado');
     expect(cancelado['erro'], 'a tarefa #$tarefa foi cancelada');
     expect(_ficha(cancelado, 'esperar')?['status'], 'cancelada');
