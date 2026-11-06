@@ -217,7 +217,14 @@ A classe vem da largura da janela (`MediaQuery.sizeOf`) ou do espaço do widget 
 
 A `larguraDupla = 840` de `raiz.dart` passa a ser o corte `expanded`. A janela do desktop pode cair em qualquer classe, e cada tela precisa funcionar em todas.
 
-**Pendente com o Ueslei:** a `NavigationBar` do celular tem hoje 6 destinos (Conversas, Board, Decisões, Painel, Tarefas, Equipes), e o M3 recomenda de 3 a 5. É preciso juntar dois deles (por exemplo, Board e Decisões numa tela só) ou mandar o sexto para um menu "Mais". A escolha muda o produto e fica para ele. No rail (medium para cima), os 6 cabem.
+**Destinos em compact** (decisão do Ueslei, 06/11/2026: as ações mais importantes na barra e as demais num menu hambúrguer):
+
+| Onde | Destinos |
+|---|---|
+| `NavigationBar` | Conversas, Painel, Tarefas **(decisão: a divisão)** |
+| Menu hambúrguer (`NavigationDrawer` modal, aberto pelo ícone `menu` no início da app bar) | Equipes, Board, Decisões, e Configuração quando existir no celular |
+
+O menu marca o destino atual e mostra badges de pendência como a barra. Ao escolher um destino, ele fecha e a barra fica sem item selecionado. Em medium e acima não há menu hambúrguer: o rail mostra os seis destinos.
 
 ### 10.2 Layout por tela
 
@@ -379,7 +386,7 @@ O que muda quando este padrão for aplicado (para a tarefa de implementação):
 
 1. `tema.dart`: tirar os papéis sobrescritos, `fundo`, `painel` e `borda`, e passar a usar os papéis da tabela 3.2.
 2. Raio 18 dos campos para `raio-sm` e `raio-total` no compositor.
-3. `NavigationBar` de 64 para 80 dp. A navegação passa a mudar por classe de janela (hoje há só o corte 840).
+3. `NavigationBar` de 64 para 80 dp, com 3 destinos e os outros 3 no menu hambúrguer (seção 10.1). A navegação passa a mudar por classe de janela (hoje há só o corte 840).
 4. Os 13 usos de `'monospace'` viram o estilo `mono`.
 5. As quatro funções de cor de estado espalhadas viram o `EstadoVisual`.
 6. Cerca de 190 `Icons.*` migram para `Symbols.*` com o critério de tamanho da seção 12. O `cupertino_icons` sai se nada o usar.
