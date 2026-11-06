@@ -189,7 +189,7 @@ void main() {
     expect(find.text('Remover'), findsNothing);
   });
 
-  testWidgets('renomear a Casa muda o seletor, e os textos da biblioteca passam a usar o nome novo', (t) async {
+  testWidgets('renomear a Casa muda o seletor, e a biblioteca de skills não leva o nome da equipe', (t) async {
     SharedPreferences.setMockInitialValues({});
     t.view.physicalSize = const Size(1300, 900);
     t.view.devicePixelRatio = 1;
@@ -232,8 +232,9 @@ void main() {
     sala.skills.tratar(const SkillsRecebidas([]));
     await t.pumpWidget(MaterialApp(theme: temaEscuro, home: Scaffold(body: TelaSkills(sala: sala))));
     await t.pump();
-    expect(find.text('A biblioteca da Sala e as skills de cada persona'), findsOneWidget);
-    expect(find.text('Nenhuma skill na biblioteca da Sala.'), findsOneWidget);
+    expect(find.text('A biblioteca de skills e as próprias de cada persona'), findsOneWidget);
+    expect(find.text('Nenhuma skill na biblioteca.'), findsOneWidget);
+    expect(find.textContaining('da Sala'), findsNothing);
     expect(find.textContaining('da Casa'), findsNothing);
   });
 }

@@ -3,16 +3,12 @@ import 'package:flutter/foundation.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/protocolo.dart';
 import '../nucleo/skills.dart';
-import '../nucleo/tarefas.dart';
 import 'chat.dart';
 
 class EstadoSkills extends ChangeNotifier {
-  EstadoSkills(this._enviar, {String Function()? nomeDaCasa}) : _nomeDaCasa = nomeDaCasa ?? (() => nomePadraoDaCasa);
+  EstadoSkills(this._enviar);
 
   final Enviar _enviar;
-  final String Function() _nomeDaCasa;
-
-  String get nomeDaCasa => _nomeDaCasa();
 
   List<Skill> lista = const [];
   bool carregada = false;
@@ -24,7 +20,7 @@ class EstadoSkills extends ChangeNotifier {
 
   List<String> get errosDoRascunhoAtual {
     final r = rascunho;
-    return r == null ? const [] : errosDoRascunho(r, existentes: lista, casa: nomeDaCasa);
+    return r == null ? const [] : errosDoRascunho(r, existentes: lista);
   }
 
   bool get podeSalvar => rascunho != null && !salvando && errosDoRascunhoAtual.isEmpty;
@@ -54,7 +50,7 @@ class EstadoSkills extends ChangeNotifier {
   void salvar() {
     final r = rascunho;
     if (r == null || salvando) return;
-    final erros = errosDoRascunho(r, existentes: lista, casa: nomeDaCasa);
+    final erros = errosDoRascunho(r, existentes: lista);
     if (erros.isNotEmpty) {
       erro = erros.join('\n');
       notifyListeners();

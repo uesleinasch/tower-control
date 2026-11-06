@@ -35,7 +35,7 @@ class Sala extends ChangeNotifier {
     painel = EstadoPainel(canal.enviar);
     workflows = EstadoWorkflows(canal.enviar);
     editorDeWorkflow = EstadoEditorDeWorkflow(canal.enviar);
-    skills = EstadoSkills(canal.enviar, nomeDaCasa: () => equipes.nomeDaCasa);
+    skills = EstadoSkills(canal.enviar);
     espelho = EstadoEspelho(canal.enviar);
     importacao = EstadoImportacao(canal.enviar);
     personas = EstadoPersonas(canal.enviar);

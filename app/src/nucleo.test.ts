@@ -2886,7 +2886,7 @@ describe("skills", () => {
     const casa = new Set(["relatorio"])
     expect(validarPersona({ id: "poe", nome: "Poe", skills: ["relatorio", "relatorio"] }, casa).skills).toEqual(["relatorio"])
     expect(validarPersona({ id: "poe", nome: "Poe", skills: [] }, casa).skills).toBeUndefined()
-    expect(() => validarPersona({ id: "poe", nome: "Poe", skills: ["sumiu"] }, casa)).toThrow("skill inexistente na biblioteca da Casa (sumiu)")
+    expect(() => validarPersona({ id: "poe", nome: "Poe", skills: ["sumiu"] }, casa)).toThrow("skill inexistente na biblioteca de skills (sumiu)")
     expect(() => validarPersona({ id: "poe", nome: "Poe", skills: "relatorio" })).toThrow("skills precisam ser uma lista")
     expect(validarPersona({ id: "poe", nome: "Poe", skills: ["sumiu"] }).skills).toEqual(["sumiu"])
     const equipe = (skills: unknown) => ({

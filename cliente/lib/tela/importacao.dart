@@ -27,7 +27,7 @@ void _avisar(ScaffoldMessengerState? mensageiro, String texto) =>
 Future<void> exportarEquipeComoModelo(BuildContext context, Sala sala, EquipeResumo equipe, {bool alterada = false}) async {
   final opcoes = await showDialog<({bool personas, bool rotinas})>(
     context: context,
-    builder: (_) => _DialogoDeExportacao(equipe: equipe, alterada: alterada, casa: sala.equipes.nomeDaCasa),
+    builder: (_) => _DialogoDeExportacao(equipe: equipe, alterada: alterada),
   );
   if (opcoes == null || !context.mounted) return;
   await _exportar(
@@ -153,11 +153,10 @@ class EscolhaSegmentada<T> extends StatelessWidget {
 }
 
 class _DialogoDeExportacao extends StatefulWidget {
-  const _DialogoDeExportacao({required this.equipe, required this.alterada, required this.casa});
+  const _DialogoDeExportacao({required this.equipe, required this.alterada});
 
   final EquipeResumo equipe;
   final bool alterada;
-  final String casa;
 
   @override
   State<_DialogoDeExportacao> createState() => _DialogoDeExportacaoState();
@@ -171,7 +170,7 @@ class _DialogoDeExportacaoState extends State<_DialogoDeExportacao> {
   Widget build(BuildContext context) => AlertDialog(
         title: Text('Exportar ${widget.equipe.nome} como modelo'),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('O modelo leva a equipe, os workflows e as skills da ${widget.casa} que ela usa. '
+          Text('O modelo leva a equipe, os workflows e as skills da biblioteca que ela usa. '
               'Orçamentos, diretórios, memória e conversas nunca saem.'),
           if (widget.alterada) ...[
             const SizedBox(height: Espacos.esp3),
