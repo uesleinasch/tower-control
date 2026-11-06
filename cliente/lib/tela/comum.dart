@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../conexao/canal.dart';
+import '../nucleo/design.dart';
 import '../nucleo/modelos.dart';
 
 class Avatar extends StatelessWidget {
@@ -71,6 +72,62 @@ Future<void> copiar(BuildContext context, String texto, {String aviso = 'Copiado
   await Clipboard.setData(ClipboardData(text: texto));
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(aviso), duration: const Duration(seconds: 2)));
+  }
+}
+
+class CartaoDePedido extends StatelessWidget {
+  const CartaoDePedido({
+    super.key,
+    required this.icone,
+    required this.faixa,
+    this.quando,
+    this.conteudo,
+    required this.acoes,
+  });
+
+  final IconData icone;
+  final String faixa;
+  final String? quando;
+  final Widget? conteudo;
+  final List<Widget> acoes;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final estilo = tema.textTheme.labelMedium?.copyWith(color: cores.onTertiaryContainer);
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ColoredBox(
+            color: cores.tertiaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Espacos.esp4, vertical: Espacos.esp2),
+              child: Row(children: [
+                Icon(icone, size: 16, color: cores.onTertiaryContainer),
+                const SizedBox(width: Espacos.esp2),
+                Expanded(child: Text(faixa, style: estilo)),
+                if (quando case final q?)
+                  Text(q, style: estilo?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
+              ]),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(Espacos.esp4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (conteudo case final c?) ...[c, const SizedBox(height: Espacos.esp3)],
+                Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, children: acoes),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
