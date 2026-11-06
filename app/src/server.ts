@@ -964,7 +964,7 @@ const ORQUESTRA = new Orquestra({
     aoEntregar: (tarefa, entrega, devolvido) => MOTOR.aoEntregar(tarefa, entrega, devolvido),
     saidasDa: (tarefa) => MOTOR.saidasDa(tarefa),
     aoConcluir: (id) => MOTOR.aoConcluir(id),
-    aoCancelar: (id) => MOTOR.aoCancelar(id),
+    aoCancelar: (id, escopo) => MOTOR.aoCancelar(id, escopo),
   },
 })
 
@@ -1316,6 +1316,10 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       MOTOR.cancelar(idDeFluxo(msg.execucao))
       return
     }
+    case "workflow-recriar": {
+      MOTOR.recriar(idDeFluxo(msg.execucao), idDeFluxo(msg.ficha))
+      return
+    }
     case "workflow-salvar": {
       await salvarWorkflow(msg.equipe, msg.workflow)
       return
@@ -1417,7 +1421,7 @@ async function tratar(ws: Cliente, bruto: string): Promise<void> {
       const de = TAREFAS.exigir(id).status
       TAREFAS.mudarStatus(id, msg.status, "ueslei")
       publicarTarefa(id)
-      ORQUESTRA.aoMudarStatus(id, de, msg.status)
+      ORQUESTRA.aoMudarStatus(id, de, msg.status, msg.escopo === "tarefa" ? "tarefa" : "fluxo")
       return
     }
     case "tarefa-comentar": {

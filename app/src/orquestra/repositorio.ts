@@ -211,7 +211,7 @@ export interface Ficha {
   id: number
   fluxo: number
   no: string
-  status: "esperando" | "concluida" | "cancelada"
+  status: "esperando" | "parada" | "concluida" | "cancelada"
   tarefa: number | null
   veioDe: number | null
   chegadas: string[]
