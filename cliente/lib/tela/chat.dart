@@ -582,7 +582,10 @@ class _BalaoPerfil extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(bottom: Espacos.esp1),
                           child: Text(perfil == 'board' ? 'Board' : p.nome,
-                              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cor)),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelLarge
+                                  ?.copyWith(color: corLegivelSobre(cor, cores.surfaceContainerLow))),
                         ),
                       TextoMarkdown(texto, estilo: _estiloDaMensagem(context)),
                       if (ts != null)

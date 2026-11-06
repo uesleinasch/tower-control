@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_color_utilities/material_color_utilities.dart';
@@ -119,6 +121,27 @@ class RotuloDeEstado extends StatelessWidget {
       ],
     );
   }
+}
+
+const contrasteMinimoDoTexto = 4.5;
+
+double razaoDeContraste(Color a, Color b) {
+  final (la, lb) = (a.computeLuminance(), b.computeLuminance());
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
+
+Color corDoTextoSobre(Color fundo) =>
+    razaoDeContraste(Colors.black, fundo) >= razaoDeContraste(Colors.white, fundo) ? Colors.black : Colors.white;
+
+Color corLegivelSobre(Color cor, Color fundo, {double minimo = contrasteMinimoDoTexto}) {
+  if (razaoDeContraste(cor, fundo) >= minimo) return cor;
+  final extremo = corDoTextoSobre(fundo);
+  const passos = 20;
+  for (var i = 1; i < passos; i++) {
+    final ajustada = Color.lerp(cor, extremo, i / passos)!;
+    if (razaoDeContraste(ajustada, fundo) >= minimo) return ajustada;
+  }
+  return extremo;
 }
 
 TextStyle? _semTracking(TextStyle? estilo, [FontWeight? peso]) =>
