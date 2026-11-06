@@ -191,7 +191,7 @@ Future<void> _esperarSumirDaTela(WidgetTester t, Finder alvo) =>
 
 Future<void> _verEncerrado(WidgetTester t, int fluxo, String status) async {
   final linha = find.textContaining('#$fluxo · $status');
-  if (linha.evaluate().isEmpty) await tocar(t, find.textContaining('ENCERRADOS ('));
+  if (linha.evaluate().isEmpty) await tocar(t, find.textContaining('Encerrados ('));
   await aparecer(t, linha, descricao: 'o fluxo #$fluxo $status na lista de encerrados');
 }
 
@@ -308,7 +308,12 @@ void cenasDeWorkflows() {
     expect(ligacoesDe(rascunhoNaTela(t)), contains('$aprovarB>$decisao (aprovado)'));
     expect(t.widget<CanvasDoGrafo>(find.byType(CanvasDoGrafo)).comErro, contains(juncao));
     await selecionarCaixa(t, juncao);
-    await aparecer(t, find.text(erroDaJuncao), descricao: 'o erro da junção no painel da caixa');
+    final painelDaCaixa = find.ancestor(of: find.byTooltip('Menu da caixa'), matching: find.byType(SingleChildScrollView));
+    await aparecer(
+      t,
+      find.descendant(of: painelDaCaixa, matching: find.text(erroDaJuncao)),
+      descricao: 'o erro da junção no painel da caixa',
+    );
     expect(t.widget<ButtonStyleButton>(botao('Salvar')).onPressed, isNull, reason: 'o salvar fica desligado com erro');
     await tocar(t, find.byTooltip('Desfazer (Ctrl+Z)'));
     await esperarAte(
