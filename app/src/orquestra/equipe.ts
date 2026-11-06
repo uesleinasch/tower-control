@@ -94,7 +94,7 @@ function lerSkills(bruto: unknown, onde: string, existentes?: ReadonlySet<string
   }
   const ids = [...new Set(bruto as string[])]
   const faltando = existentes ? ids.filter((s) => !existentes.has(s)) : []
-  if (faltando.length) throw new Error(`${onde}: skill inexistente na biblioteca da Casa (${faltando.join(", ")})`)
+  if (faltando.length) throw new Error(`${onde}: skill inexistente na biblioteca de skills (${faltando.join(", ")})`)
   return ids.length ? ids : undefined
 }
 
@@ -409,7 +409,6 @@ export function exigirMudancaDeEquipe(
 ): void {
   if (!antes) return
   const erros: string[] = []
-  if (antes.id === CASA && depois.nome !== antes.nome) erros.push("a Casa não pode ser renomeada")
   for (const velha of antes.posicoes) {
     const nova = depois.posicoes.find((p) => p.id === velha.id)
     const { abertas, emAndamento, citadas = 0, rotinas = 0, workflows = 0 } = tarefas(velha.id)

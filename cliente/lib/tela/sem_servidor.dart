@@ -1,8 +1,12 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../conexao/canal.dart';
 import '../estado/sala.dart';
 import '../estado/servidor.dart';
+import '../nucleo/design.dart';
+
+const _larguraDoConteudo = 420.0;
 
 Widget? bloqueioDoCelular(Sala sala, ServidorRemoto servidor) {
   final perdido = sala.canal.estado == EstadoConexao.semServidor && !sala.conversas.carregada;
@@ -41,24 +45,30 @@ class _TelaSemServidorState extends State<TelaSemServidor> {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final pareado = widget.servidor.pareado;
     final tentando = widget.sala.canal.estado == EstadoConexao.reconectando;
+    final secundario = tema.textTheme.bodyMedium?.copyWith(color: cores.onSurfaceVariant);
     return SafeArea(
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(Espacos.esp5),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(maxWidth: _larguraDoConteudo),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Icon(pareado ? Icons.wifi_off : Icons.link, size: 48, color: cores.onSurfaceVariant),
-              const SizedBox(height: 16),
-              Text(
-                pareado ? 'Servidor não encontrado' : 'Celular ainda não conectado',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge,
+              Icon(pareado ? Symbols.wifi_off : Symbols.link, size: Espacos.esp7, color: cores.onSurfaceVariant),
+              const SizedBox(height: Espacos.esp4),
+              Semantics(
+                header: true,
+                liveRegion: true,
+                child: Text(
+                  pareado ? 'Servidor não encontrado' : 'Celular ainda não conectado',
+                  textAlign: TextAlign.center,
+                  style: tema.textTheme.titleLarge,
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Espacos.esp2),
               Text(
                 pareado
                     ? 'Nenhum dos endereços guardados respondeu: ${widget.servidor.enderecos.join(', ')}. '
@@ -66,28 +76,52 @@ class _TelaSemServidorState extends State<TelaSemServidor> {
                     : 'No computador, abra o Control Tower → Configuração → Celular e toque em '
                         '"Instalar e conectar" com o celular no cabo.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: cores.onSurfaceVariant),
+                style: secundario,
               ),
-              const SizedBox(height: 20),
-              if (pareado)
+              if (pareado) ...[
+                const SizedBox(height: Espacos.esp5),
                 FilledButton.icon(
                   onPressed: tentando ? null : widget.sala.canal.reconectarJa,
                   icon: tentando
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.refresh),
+                      ? const SizedBox.square(
+                          dimension: Espacos.esp4,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Symbols.refresh),
                   label: Text(tentando ? 'Procurando…' : 'Tentar de novo'),
                 ),
-              const SizedBox(height: 28),
-              Text('Ou informe o endereço à mão', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _manual,
-                keyboardType: TextInputType.url,
-                decoration: InputDecoration(hintText: 'host:porta', errorText: _erro),
-                onSubmitted: (_) => _usarManual(),
+              ],
+              const SizedBox(height: Espacos.esp6),
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(Espacos.esp4),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text('Informar o endereço à mão', style: tema.textTheme.titleMedium),
+                    const SizedBox(height: Espacos.esp1),
+                    Text('Use quando souber o IP do computador na rede ou no Tailscale.', style: secundario),
+                    const SizedBox(height: Espacos.esp4),
+                    TextField(
+                      controller: _manual,
+                      keyboardType: TextInputType.url,
+                      decoration: InputDecoration(
+                        labelText: 'Endereço do servidor',
+                        hintText: 'host:porta',
+                        helperText: _erro == null ? 'Por exemplo 100.113.47.75:7878' : null,
+                        errorText: _erro,
+                      ),
+                      onSubmitted: (_) => _usarManual(),
+                    ),
+                    const SizedBox(height: Espacos.esp3),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: pareado
+                          ? OutlinedButton(onPressed: _usarManual, child: const Text('Conectar'))
+                          : FilledButton.tonal(onPressed: _usarManual, child: const Text('Conectar')),
+                    ),
+                  ]),
+                ),
               ),
-              const SizedBox(height: 8),
-              OutlinedButton(onPressed: _usarManual, child: const Text('Conectar')),
             ]),
           ),
         ),

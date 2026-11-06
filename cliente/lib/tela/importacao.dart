@@ -1,17 +1,25 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/importacao.dart';
 import '../estado/sala.dart';
+import '../nucleo/design.dart';
 import '../nucleo/importacao.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
 import '../sistema/arquivos.dart';
+import 'tema.dart';
 
-const _corDoAviso = Color(0xFFE0A458);
+const _numeros = [FontFeature.tabularFigures()];
+const _larguraDaIdentidade = 200.0;
+const _larguraDaEscolha = 260.0;
+const _larguraParaLado = 560.0;
+const _larguraDaEscolhaDeSkillEmLinha = 440.0;
 
 void _avisar(ScaffoldMessengerState? mensageiro, String texto) =>
     mensageiro?.showSnackBar(SnackBar(content: Text(texto)));
@@ -62,6 +70,88 @@ Future<void> importarModelo(BuildContext context, Sala sala, {String? destino}) 
   sala.importacao.fechar();
 }
 
+enum TomDaMensagem { aviso, erro }
+
+class CaixaDeMensagens extends StatelessWidget {
+  const CaixaDeMensagens({super.key, required this.tom, required this.linhas});
+
+  final TomDaMensagem tom;
+  final List<String> linhas;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final aviso = CoresSemanticas.de(context).aviso;
+    final (fundo, texto, icone) = switch (tom) {
+      TomDaMensagem.aviso => (aviso.container, aviso.sobreContainer, Symbols.warning),
+      TomDaMensagem.erro => (cores.errorContainer, cores.onErrorContainer, Symbols.error),
+    };
+    return DecoratedBox(
+      decoration: BoxDecoration(color: fundo, borderRadius: BorderRadius.circular(Raios.sm)),
+      child: Padding(
+        padding: const EdgeInsets.all(Espacos.esp3),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final (i, l) in linhas.indexed)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : Espacos.esp2),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(icone, size: 20, color: texto),
+                const SizedBox(width: Espacos.esp2),
+                Expanded(child: Text(l, style: tema.textTheme.bodyMedium?.copyWith(color: texto))),
+              ]),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+typedef OpcaoSegmentada<T> = ({T valor, String rotulo, IconData? icone, bool habilitada});
+
+class EscolhaSegmentada<T> extends StatelessWidget {
+  const EscolhaSegmentada({
+    super.key,
+    required this.opcoes,
+    required this.valor,
+    required this.aoEscolher,
+    this.larguraParaLinha = 0,
+  });
+
+  final List<OpcaoSegmentada<T>> opcoes;
+  final T? valor;
+  final ValueChanged<T>? aoEscolher;
+  final double larguraParaLinha;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, limites) {
+        final emLinha = limites.maxWidth >= larguraParaLinha;
+        final atual = valor;
+        final botao = SegmentedButton<T>(
+          direction: emLinha ? Axis.horizontal : Axis.vertical,
+          emptySelectionAllowed: atual == null,
+          selected: {?atual},
+          segments: [
+            for (final o in opcoes)
+              ButtonSegment(
+                value: o.valor,
+                label: Text(o.rotulo),
+                icon: o.icone == null ? null : Icon(o.icone),
+                enabled: o.habilitada,
+              ),
+          ],
+          onSelectionChanged: aoEscolher == null
+              ? null
+              : (s) {
+                  if (s.isNotEmpty && s.first != atual) aoEscolher!(s.first);
+                },
+        );
+        return emLinha
+            ? Align(alignment: AlignmentDirectional.centerStart, child: botao)
+            : SizedBox(width: double.infinity, child: botao);
+      });
+}
+
 class _DialogoDeExportacao extends StatefulWidget {
   const _DialogoDeExportacao({required this.equipe, required this.alterada});
 
@@ -80,14 +170,16 @@ class _DialogoDeExportacaoState extends State<_DialogoDeExportacao> {
   Widget build(BuildContext context) => AlertDialog(
         title: Text('Exportar ${widget.equipe.nome} como modelo'),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('O modelo leva a equipe, os workflows e as skills da Casa que ela usa. '
+          Text('O modelo leva a equipe, os workflows e as skills da biblioteca que ela usa. '
               'Orçamentos, diretórios, memória e conversas nunca saem.'),
-          if (widget.alterada)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text('As mudanças ainda não salvas desta equipe não entram.', style: TextStyle(color: _corDoAviso)),
+          if (widget.alterada) ...[
+            const SizedBox(height: Espacos.esp3),
+            const CaixaDeMensagens(
+              tom: TomDaMensagem.aviso,
+              linhas: ['As mudanças ainda não salvas desta equipe não entram.'],
             ),
-          const SizedBox(height: 8),
+          ],
+          const SizedBox(height: Espacos.esp2),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _personas,
@@ -161,29 +253,32 @@ class _TelaDeImportacaoState extends State<TelaDeImportacao> {
           final deWorkflow = previa?.deWorkflow ?? _e.destino != null;
           return Scaffold(
             appBar: AppBar(title: Text(deWorkflow ? 'Importar workflow' : 'Importar modelo')),
-            body: SafeArea(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 820),
-                  child: previa == null ? _carregando() : _Previa(sala: widget.sala, previa: previa),
-                ),
-              ),
-            ),
+            body: SafeArea(child: previa == null ? _carregando(context) : _Previa(sala: widget.sala, previa: previa)),
             bottomNavigationBar: _Rodape(estado: _e),
           );
         },
       );
 
-  Widget _carregando() => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (_e.erro == null) const CircularProgressIndicator(),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(_e.erro ?? 'Lendo o modelo ${_e.arquivo ?? ''}…'),
-          ),
-        ]),
-      );
+  Widget _carregando(BuildContext context) {
+    final tema = Theme.of(context);
+    final erro = _e.erro;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(Espacos.esp4),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: larguraDeLeitura),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (erro == null)
+              const CircularProgressIndicator()
+            else
+              Icon(Symbols.error, color: tema.colorScheme.error),
+            const SizedBox(height: Espacos.esp4),
+            Text(erro ?? 'Lendo o modelo ${_e.arquivo ?? ''}…', textAlign: TextAlign.center, style: tema.textTheme.bodyMedium),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class _Rodape extends StatelessWidget {
@@ -193,7 +288,8 @@ class _Rodape extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final previa = estado.previa;
     final situacao = estado.importando
         ? 'Importando…'
@@ -207,25 +303,39 @@ class _Rodape extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(children: [
-            if (estado.importando || estado.pendente)
-              const Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          padding: const EdgeInsets.symmetric(horizontal: Espacos.esp4, vertical: Espacos.esp3),
+          child: LayoutBuilder(builder: (context, limites) {
+            final aviso = Row(children: [
+              if (estado.importando || estado.pendente)
+                const Padding(
+                  padding: EdgeInsets.only(right: Espacos.esp3),
+                  child: SizedBox.square(dimension: Espacos.esp4, child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              Expanded(
+                child: Text(situacao, style: tema.textTheme.bodyMedium?.copyWith(color: cores.onSurfaceVariant)),
               ),
-            Expanded(child: Text(situacao, style: TextStyle(color: cores.onSurfaceVariant))),
-            TextButton(
-              onPressed: estado.importando ? null : () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: estado.podeImportar ? estado.importar : null,
-              icon: const Icon(Icons.download_done),
-              label: const Text('Importar'),
-            ),
-          ]),
+            ]);
+            final botoes = Row(mainAxisSize: MainAxisSize.min, children: [
+              TextButton(
+                onPressed: estado.importando ? null : () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              const SizedBox(width: Espacos.esp2),
+              FilledButton.icon(
+                onPressed: estado.podeImportar ? estado.importar : null,
+                icon: const Icon(Symbols.download_done),
+                label: const Text('Importar'),
+              ),
+            ]);
+            if (ClasseDeJanela.de(limites.maxWidth) != ClasseDeJanela.compact) {
+              return Row(children: [Expanded(child: aviso), const SizedBox(width: Espacos.esp3), botoes]);
+            }
+            final ocupado = situacao.isNotEmpty || estado.importando || estado.pendente;
+            return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (ocupado) ...[aviso, const SizedBox(height: Espacos.esp2)],
+              Align(alignment: AlignmentDirectional.centerEnd, child: botoes),
+            ]);
+          }),
         ),
       ),
     );
@@ -242,84 +352,114 @@ class _Previa extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final resumo = previa.resumo;
     final habilitado = !_e.importando;
     final escolhas = _e.escolhas;
     final destino = sala.equipes.equipes.where((e) => e.id == _e.destino).firstOrNull;
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), children: [
-      if (resumo != null) _Cabecalho(resumo: resumo, arquivo: _e.arquivo, destino: destino?.nome ?? _e.destino),
-      if (resumo != null && !resumo.deWorkflow) ...[
-        const _Titulo('Equipe'),
-        Wrap(spacing: 12, runSpacing: 12, children: [
+    final soltos = previa.errosSoltos;
+    return LayoutBuilder(builder: (context, limites) {
+      final margem = math.max(
+        ClasseDeJanela.de(limites.maxWidth).margemLateral,
+        (limites.maxWidth - larguraDeLeitura) / 2,
+      );
+      return ListView(padding: EdgeInsets.fromLTRB(margem, Espacos.esp4, margem, Espacos.esp6), children: [
+        if (resumo != null) _Cabecalho(resumo: resumo, arquivo: _e.arquivo, destino: destino?.nome ?? _e.destino),
+        if (resumo != null && !resumo.deWorkflow) ...[
+          const _Titulo('Equipe'),
           _Campo(
             key: const ValueKey('equipe-id'),
             rotulo: 'Id',
             inicial: escolhas.equipeId ?? '',
             dica: previa.escolhas.equipeId,
+            ajuda: 'nome da pasta da equipe; não muda depois',
+            validar: erroDeId,
+            erroDoServidor: errosDoCampo(previa.erros, const [prefixoDaEquipe]).firstOrNull,
             habilitado: habilitado,
             aoMudar: (v) => _e.mudar(_e.escolhas.comEquipe(id: v), digitando: true),
           ),
+          const SizedBox(height: Espacos.esp3),
           _Campo(
             key: const ValueKey('equipe-nome'),
             rotulo: 'Nome',
             inicial: escolhas.equipeNome ?? '',
             dica: previa.escolhas.equipeNome,
             habilitado: habilitado,
-            largura: 300,
             aoMudar: (v) => _e.mudar(_e.escolhas.comEquipe(nome: v), digitando: true),
           ),
-        ]),
-      ],
-      if (resumo != null && resumo.deWorkflow) ...[
-        const _Titulo('Workflow'),
-        _Campo(
-          key: const ValueKey('workflow-id'),
-          rotulo: 'Id',
-          inicial: escolhas.workflowId ?? '',
-          dica: previa.escolhas.workflowId,
-          habilitado: habilitado,
-          aoMudar: (v) => _e.mudar(_e.escolhas.comWorkflow(v), digitando: true),
-        ),
-      ],
-      if (previa.personas.isNotEmpty) ...[
-        const _Titulo('Personas'),
-        for (final p in previa.personas) _LinhaDaPersona(estado: _e, persona: p, habilitado: habilitado),
-      ],
-      if (previa.skillsEmColisao.isNotEmpty) ...[
-        const _Titulo('Skills com conteúdo diferente daqui'),
-        for (final id in previa.skillsEmColisao) _LinhaDaSkill(estado: _e, id: id, habilitado: habilitado),
-      ],
-      if (resumo != null && resumo.deWorkflow && previa.posicoes.isNotEmpty) ...[
-        _Titulo('Posições na equipe ${destino?.nome ?? _e.destino ?? ''}'),
-        for (final p in previa.posicoes)
-          _LinhaDaPosicao(estado: _e, posicao: p, destino: destino?.posicoes ?? const [], habilitado: habilitado),
-      ],
-      if (previa.entra.isNotEmpty) ...[
-        const _Titulo('O que entra'),
-        for (final linha in previa.entra)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.add, size: 16, color: cores.primary),
-              const SizedBox(width: 6),
-              Expanded(child: Text(linha)),
-            ]),
+        ],
+        if (resumo != null && resumo.deWorkflow) ...[
+          const _Titulo('Workflow'),
+          _Campo(
+            key: const ValueKey('workflow-id'),
+            rotulo: 'Id',
+            inicial: escolhas.workflowId ?? '',
+            dica: previa.escolhas.workflowId,
+            ajuda: 'nome do arquivo do workflow; as rotinas apontam para ele',
+            validar: erroDeId,
+            erroDoServidor: errosDoCampo(previa.erros, const [prefixoDoWorkflow]).firstOrNull,
+            habilitado: habilitado,
+            aoMudar: (v) => _e.mudar(_e.escolhas.comWorkflow(v), digitando: true),
           ),
-      ],
-      if (previa.avisos.isNotEmpty) ...[
-        const _Titulo('Avisos'),
-        _Caixa(cor: _corDoAviso, icone: Icons.warning_amber_rounded, linhas: previa.avisos),
-      ],
-      if (previa.erros.isNotEmpty) ...[
-        const _Titulo('Erros'),
-        _Caixa(cor: cores.error, icone: Icons.error_outline, linhas: previa.erros),
-      ],
-      if (_e.erro != null) ...[
-        const SizedBox(height: 12),
-        _Caixa(cor: cores.error, icone: Icons.error_outline, linhas: [_e.erro!]),
-      ],
-    ]);
+        ],
+        if (previa.personas.isNotEmpty) ...[
+          const _Titulo('Personas'),
+          for (final p in previa.personas)
+            _LinhaDaPersona(
+              estado: _e,
+              persona: p,
+              erros: errosDoCampo(previa.erros, prefixosDaPersona(p)),
+              habilitado: habilitado,
+            ),
+        ],
+        if (previa.skillsEmColisao.isNotEmpty) ...[
+          const _Titulo('Skills com conteúdo diferente daqui'),
+          for (final id in previa.skillsEmColisao)
+            _LinhaDaSkill(
+              estado: _e,
+              id: id,
+              erros: errosDoCampo(previa.erros, [prefixoDaSkill(id)]),
+              habilitado: habilitado,
+            ),
+        ],
+        if (resumo != null && resumo.deWorkflow && previa.posicoes.isNotEmpty) ...[
+          _Titulo('Posições na equipe ${destino?.nome ?? _e.destino ?? ''}'),
+          for (final p in previa.posicoes)
+            _LinhaDaPosicao(
+              estado: _e,
+              posicao: p,
+              destino: destino?.posicoes ?? const [],
+              erros: errosDoCampo(previa.erros, [prefixoDaPosicao(p)]),
+              habilitado: habilitado,
+            ),
+        ],
+        if (previa.entra.isNotEmpty) ...[
+          const _Titulo('O que entra'),
+          for (final linha in previa.entra)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Espacos.esp1),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Symbols.add, size: 20, color: cores.primary),
+                const SizedBox(width: Espacos.esp2),
+                Expanded(child: Text(linha, style: tema.textTheme.bodyMedium)),
+              ]),
+            ),
+        ],
+        if (previa.avisos.isNotEmpty) ...[
+          const _Titulo('Avisos'),
+          CaixaDeMensagens(tom: TomDaMensagem.aviso, linhas: previa.avisos),
+        ],
+        if (soltos.isNotEmpty) ...[
+          const _Titulo('Erros'),
+          CaixaDeMensagens(tom: TomDaMensagem.erro, linhas: soltos),
+        ],
+        if (_e.erro != null) ...[
+          const SizedBox(height: Espacos.esp3),
+          CaixaDeMensagens(tom: TomDaMensagem.erro, linhas: [_e.erro!]),
+        ],
+      ]);
+    });
   }
 }
 
@@ -332,15 +472,19 @@ class _Cabecalho extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
-    final estilo = TextStyle(color: cores.onSurfaceVariant, fontSize: 13);
+    final tema = Theme.of(context);
+    final estilo = tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.onSurfaceVariant, fontFeatures: _numeros);
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(Espacos.esp4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(resumo.nome, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 4),
+          Row(children: [
+            Icon(resumo.deWorkflow ? Symbols.schema : Symbols.account_tree, size: 20, color: tema.colorScheme.onSurfaceVariant),
+            const SizedBox(width: Espacos.esp2),
+            Expanded(child: Text(resumo.nome, style: tema.textTheme.titleMedium)),
+          ]),
+          const SizedBox(height: Espacos.esp1),
           Text(
             [
               resumo.deWorkflow ? 'modelo de workflow' : 'modelo de equipe',
@@ -364,53 +508,85 @@ class _Titulo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 20, bottom: 8),
-        child: Text(
-          texto.toUpperCase(),
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11, letterSpacing: 1),
-        ),
+        padding: const EdgeInsets.only(top: Espacos.esp5, bottom: Espacos.esp2),
+        child: Text(texto, style: Theme.of(context).textTheme.titleSmall),
       );
 }
 
-class _Caixa extends StatelessWidget {
-  const _Caixa({required this.cor, required this.icone, required this.linhas});
+class _Consequencia extends StatelessWidget {
+  const _Consequencia({required this.icone, required this.texto, this.cor});
 
-  final Color cor;
   final IconData icone;
-  final List<String> linhas;
+  final String texto;
+  final Color? cor;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: cor.withValues(alpha: 0.12),
-          border: Border.all(color: cor.withValues(alpha: 0.6)),
-          borderRadius: BorderRadius.circular(8),
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final efetiva = cor ?? tema.colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.only(top: Espacos.esp2),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icone, size: 16, color: efetiva),
+        const SizedBox(width: Espacos.esp1),
+        Expanded(child: Text(texto, style: tema.textTheme.bodySmall?.copyWith(color: efetiva))),
+      ]),
+    );
+  }
+}
+
+class _CartaoDeEscolha extends StatelessWidget {
+  const _CartaoDeEscolha({required this.identidade, required this.escolha, this.depois = const []});
+
+  final Widget identidade;
+  final Widget escolha;
+  final List<Widget> depois;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: Espacos.esp3),
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.all(Espacos.esp4),
+            child: LayoutBuilder(builder: (context, limites) {
+              final lado = limites.maxWidth >= _larguraParaLado;
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (lado)
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: identidade),
+                    const SizedBox(width: Espacos.esp4),
+                    SizedBox(width: _larguraDaEscolha, child: escolha),
+                  ])
+                else ...[
+                  identidade,
+                  const SizedBox(height: Espacos.esp3),
+                  escolha,
+                ],
+                ...depois,
+              ]);
+            }),
+          ),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          for (final l in linhas)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(icone, size: 16, color: cor),
-                const SizedBox(width: 8),
-                Expanded(child: Text(l)),
-              ]),
-            ),
-        ]),
       );
 }
 
+List<Widget> _errosDaLinha(BuildContext context, List<String> erros) => [
+      for (final e in erros) _Consequencia(icone: Symbols.error, texto: e, cor: Theme.of(context).colorScheme.error),
+    ];
+
 class _LinhaDaPersona extends StatelessWidget {
-  const _LinhaDaPersona({required this.estado, required this.persona, required this.habilitado});
+  const _LinhaDaPersona({required this.estado, required this.persona, required this.erros, required this.habilitado});
 
   final EstadoImportacao estado;
   final PersonaDoModelo persona;
+  final List<String> erros;
   final bool habilitado;
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final daqui = [for (final p in Perfil.todos) p.chave];
     final acao = estado.escolhas.personas[persona.id];
     final opcao = acao?.opcao(persona.id);
@@ -421,41 +597,50 @@ class _LinhaDaPersona extends StatelessWidget {
           OpcaoDePersona.vaga => true,
         };
     final escolhida = acao?.persona;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Wrap(spacing: 12, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        SizedBox(
-          width: 180,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(persona.nome, style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text(
-              persona.traz ? persona.id : '${persona.id} · o modelo não traz o perfil',
-              style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
-            ),
-          ]),
+    final consequencia = switch (opcao) {
+      OpcaoDePersona.daqui => (Symbols.person, 'Usa a persona ${persona.nome} que já existe aqui.', null),
+      OpcaoDePersona.outra => (
+          Symbols.swap_horiz,
+          'Usa ${escolhida == null ? 'outra persona' : Perfil.porChave(escolhida).nome} no lugar de ${persona.nome}.',
+          null,
         ),
-        DropdownButton<OpcaoDePersona>(
-          value: opcao,
-          hint: const Text('escolha'),
-          onChanged: !habilitado
-              ? null
-              : (o) {
-                  if (o == null || o == opcao) return;
-                  estado.mudar(estado.escolhas.comOpcaoDePersona(
-                    persona.id,
-                    o,
-                    nomeNoModelo: persona.nome,
-                    personasDaqui: daqui,
-                  ));
-                },
-          items: [
-            for (final o in OpcaoDePersona.values)
-              DropdownMenuItem(value: o, enabled: disponivel(o), child: Text(rotulosDeOpcaoDePersona[o]!)),
-          ],
+      OpcaoDePersona.criar => (Symbols.person_add, 'Cria a persona ${persona.nome} com o perfil do modelo.', null),
+      OpcaoDePersona.criarComNome => (Symbols.person_add, 'Cria uma persona nova com o perfil do modelo e o nome abaixo.', null),
+      OpcaoDePersona.vaga => (Symbols.person_off, 'As posições de ${persona.nome} ficam vagas.', CoresSemanticas.de(context).aviso.cor),
+      null => (Symbols.help, 'Escolha o que fazer com ${persona.nome}.', null),
+    };
+    return _CartaoDeEscolha(
+      identidade: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(persona.nome, style: tema.textTheme.titleSmall),
+        Text(
+          persona.traz ? persona.id : '${persona.id} · o modelo não traz o perfil',
+          style: tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant),
         ),
-        if (opcao == OpcaoDePersona.outra)
-          DropdownButton<String>(
-            value: escolhida,
+        _Consequencia(icone: consequencia.$1, texto: consequencia.$2, cor: consequencia.$3),
+      ]),
+      escolha: EscolhaSegmentada<OpcaoDePersona>(
+        larguraParaLinha: double.infinity,
+        valor: opcao,
+        aoEscolher: !habilitado
+            ? null
+            : (o) => estado.mudar(estado.escolhas.comOpcaoDePersona(
+                  persona.id,
+                  o,
+                  nomeNoModelo: persona.nome,
+                  personasDaqui: daqui,
+                )),
+        opcoes: [
+          for (final o in OpcaoDePersona.values)
+            (valor: o, rotulo: rotulosDeOpcaoDePersona[o]!, icone: null, habilitada: disponivel(o)),
+        ],
+      ),
+      depois: [
+        if (opcao == OpcaoDePersona.outra) ...[
+          const SizedBox(height: Espacos.esp3),
+          DropdownButtonFormField<String>(
+            initialValue: escolhida,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Persona daqui'),
             onChanged: !habilitado
                 ? null
                 : (p) {
@@ -467,95 +652,148 @@ class _LinhaDaPersona extends StatelessWidget {
                 DropdownMenuItem(value: escolhida, child: Text('$escolhida (não existe)')),
             ],
           ),
-        if (opcao == OpcaoDePersona.criarComNome)
+        ],
+        if (opcao == OpcaoDePersona.criarComNome) ...[
+          const SizedBox(height: Espacos.esp3),
           _Campo(
             key: ValueKey('persona-nome-${persona.id}'),
             rotulo: 'Nome da persona nova',
             inicial: acao?.nome ?? '',
+            ajuda: 'o id sai do nome',
             habilitado: habilitado,
             aoMudar: (v) => estado.mudar(estado.escolhas.comNomeDePersona(persona.id, v), digitando: true),
           ),
-      ]),
+        ],
+        ..._errosDaLinha(context, erros),
+      ],
     );
   }
 }
 
 class _LinhaDaSkill extends StatelessWidget {
-  const _LinhaDaSkill({required this.estado, required this.id, required this.habilitado});
+  const _LinhaDaSkill({required this.estado, required this.id, required this.erros, required this.habilitado});
 
   final EstadoImportacao estado;
   final String id;
+  final List<String> erros;
   final bool habilitado;
 
   @override
   Widget build(BuildContext context) {
+    final tema = Theme.of(context);
     final acao = estado.escolhas.skills[id];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Wrap(spacing: 12, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        SizedBox(width: 180, child: Text(id, style: const TextStyle(fontWeight: FontWeight.w600))),
-        DropdownButton<OpcaoDeSkill>(
-          value: acao?.opcao ?? OpcaoDeSkill.daqui,
-          onChanged: !habilitado
-              ? null
-              : (o) {
-                  if (o != null && o != acao?.opcao) estado.mudar(estado.escolhas.comOpcaoDeSkill(id, o));
-                },
-          items: [
-            for (final o in OpcaoDeSkill.values) DropdownMenuItem(value: o, child: Text(rotulosDeOpcaoDeSkill[o]!)),
-          ],
+    final opcao = acao?.opcao ?? OpcaoDeSkill.daqui;
+    return _CartaoDeEscolha(
+      identidade: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Symbols.extension, size: 20, color: tema.colorScheme.onSurfaceVariant),
+          const SizedBox(width: Espacos.esp2),
+          Expanded(child: Text(id, style: tema.textTheme.titleSmall?.copyWith(fontFamily: familiaMono))),
+        ]),
+        _Consequencia(
+          icone: Symbols.warning,
+          texto: 'O conteúdo no modelo é diferente da skill $id daqui.',
+          cor: CoresSemanticas.de(context).aviso.cor,
         ),
-        if (acao?.opcao == OpcaoDeSkill.importar)
+        _Consequencia(
+          icone: opcao == OpcaoDeSkill.daqui ? Symbols.extension : Symbols.add,
+          texto: opcao == OpcaoDeSkill.daqui
+              ? 'A equipe usa a skill daqui, e a do modelo não entra.'
+              : 'A skill do modelo entra com outro id, ao lado da daqui.',
+        ),
+      ]),
+      escolha: EscolhaSegmentada<OpcaoDeSkill>(
+        larguraParaLinha: _larguraDaEscolhaDeSkillEmLinha,
+        valor: opcao,
+        aoEscolher: !habilitado ? null : (o) => estado.mudar(estado.escolhas.comOpcaoDeSkill(id, o)),
+        opcoes: [
+          for (final o in OpcaoDeSkill.values) (valor: o, rotulo: rotulosDeOpcaoDeSkill[o]!, icone: null, habilitada: true),
+        ],
+      ),
+      depois: [
+        if (acao?.opcao == OpcaoDeSkill.importar) ...[
+          const SizedBox(height: Espacos.esp3),
           _Campo(
             key: ValueKey('skill-id-$id'),
             rotulo: 'Id da skill importada',
             inicial: acao?.id ?? '',
+            validar: (v) => erroDeId(v, maximo: 64),
+            erroDoServidor: erros.firstOrNull,
             habilitado: habilitado,
             aoMudar: (v) => estado.mudar(estado.escolhas.comIdDeSkill(id, v), digitando: true),
           ),
-      ]),
+        ] else
+          ..._errosDaLinha(context, erros),
+      ],
     );
   }
 }
 
 class _LinhaDaPosicao extends StatelessWidget {
-  const _LinhaDaPosicao({required this.estado, required this.posicao, required this.destino, required this.habilitado});
+  const _LinhaDaPosicao({
+    required this.estado,
+    required this.posicao,
+    required this.destino,
+    required this.erros,
+    required this.habilitado,
+  });
 
   final EstadoImportacao estado;
   final PosicaoDoModelo posicao;
   final List<PosicaoResumo> destino;
+  final List<String> erros;
   final bool habilitado;
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
     final alvo = estado.escolhas.posicoes[posicao.id];
     final ids = {for (final p in destino) p.id};
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Wrap(spacing: 12, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        SizedBox(
-          width: 180,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(posicao.titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text(posicao.id, style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
-          ]),
+      padding: const EdgeInsets.only(bottom: Espacos.esp3),
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(Espacos.esp4),
+          child: Wrap(
+            spacing: Espacos.esp4,
+            runSpacing: Espacos.esp3,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: _larguraDaIdentidade,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(posicao.titulo, style: tema.textTheme.titleSmall),
+                  Text(posicao.id, style: tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.onSurfaceVariant)),
+                ]),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _larguraDaEscolha + _larguraDaIdentidade),
+                child: DropdownButtonFormField<String?>(
+                  initialValue: alvo,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'Posição da equipe',
+                    errorText: erros.isEmpty ? null : erros.join('\n'),
+                    errorMaxLines: 3,
+                  ),
+                  onChanged: !habilitado
+                      ? null
+                      : (p) {
+                          if (p != alvo) estado.mudar(estado.escolhas.comPosicao(posicao.id, p));
+                        },
+                  items: [
+                    const DropdownMenuItem<String?>(value: null, child: Text('sem ligação')),
+                    for (final p in destino) DropdownMenuItem<String?>(value: p.id, child: Text('${p.titulo} (${p.id})')),
+                    if (alvo != null && !ids.contains(alvo))
+                      DropdownMenuItem<String?>(value: alvo, child: Text('$alvo (não existe)')),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        const Icon(Icons.arrow_forward, size: 18),
-        DropdownButton<String?>(
-          value: alvo,
-          onChanged: !habilitado
-              ? null
-              : (p) {
-                  if (p != alvo) estado.mudar(estado.escolhas.comPosicao(posicao.id, p));
-                },
-          items: [
-            const DropdownMenuItem<String?>(value: null, child: Text('sem ligação')),
-            for (final p in destino) DropdownMenuItem<String?>(value: p.id, child: Text('${p.titulo} (${p.id})')),
-            if (alvo != null && !ids.contains(alvo)) DropdownMenuItem<String?>(value: alvo, child: Text('$alvo (não existe)')),
-          ],
-        ),
-      ]),
+      ),
     );
   }
 }
@@ -567,15 +805,19 @@ class _Campo extends StatefulWidget {
     required this.inicial,
     required this.aoMudar,
     this.dica,
+    this.ajuda,
+    this.validar,
+    this.erroDoServidor,
     this.habilitado = true,
-    this.largura = 220,
   });
 
   final String rotulo;
   final String inicial;
   final String? dica;
+  final String? ajuda;
+  final String? Function(String)? validar;
+  final String? erroDoServidor;
   final bool habilitado;
-  final double largura;
   final ValueChanged<String> aoMudar;
 
   @override
@@ -592,18 +834,23 @@ class _CampoState extends State<_Campo> {
   }
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: widget.largura,
-        child: TextField(
-          controller: _controle,
-          enabled: widget.habilitado,
-          decoration: InputDecoration(
-            labelText: widget.rotulo,
-            hintText: widget.dica,
-            isDense: true,
-            border: const OutlineInputBorder(),
-          ),
-          onChanged: widget.aoMudar,
-        ),
-      );
+  Widget build(BuildContext context) {
+    final texto = _controle.text;
+    final local = texto.isEmpty && widget.dica != null ? null : widget.validar?.call(texto);
+    return TextField(
+      controller: _controle,
+      enabled: widget.habilitado,
+      decoration: InputDecoration(
+        labelText: widget.rotulo,
+        hintText: widget.dica,
+        helperText: widget.ajuda,
+        errorText: local ?? widget.erroDoServidor,
+        errorMaxLines: 3,
+      ),
+      onChanged: (v) {
+        setState(() {});
+        widget.aoMudar(v);
+      },
+    );
+  }
 }

@@ -5,7 +5,7 @@ import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/main.dart' as app;
 import 'package:control_tower/tela/painel.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
@@ -101,8 +101,13 @@ Finder botao(String texto) =>
 Future<void> verAba(WidgetTester t, AbaDaEquipe aba) async {
   final equipes = salaDe(t).equipes;
   if (equipes.aba == aba) return;
-  const rotulos = {AbaDaEquipe.rotinas: 'Rotinas', AbaDaEquipe.workflows: 'Workflows', AbaDaEquipe.skills: 'Skills'};
-  await tocar(t, botao(rotulos[aba == AbaDaEquipe.organograma ? equipes.aba : aba]!));
+  const rotulos = {
+    AbaDaEquipe.organograma: 'Organograma',
+    AbaDaEquipe.rotinas: 'Rotinas',
+    AbaDaEquipe.workflows: 'Workflows',
+  };
+  final seletor = find.byWidgetPredicate((w) => w is SegmentedButton<AbaDaEquipe>);
+  await tocar(t, find.descendant(of: seletor, matching: botao(rotulos[aba]!)));
   await esperarAte(t, () => equipes.aba == aba, descricao: 'a aba $aba');
 }
 

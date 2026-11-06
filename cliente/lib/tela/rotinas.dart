@@ -1,15 +1,51 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../conexao/http.dart';
 import '../estado/rotinas.dart';
 import '../estado/sala.dart';
+import '../nucleo/design.dart';
 import '../nucleo/enderecos.dart';
 import '../nucleo/formato.dart';
 import '../nucleo/rotinas.dart';
 import '../nucleo/tarefas.dart';
+import '../nucleo/workflows.dart';
 import 'comum.dart' show copiar;
+import 'equipes.dart' show confirmar;
+import 'importacao.dart' show CaixaDeMensagens, EscolhaSegmentada, TomDaMensagem;
+import 'paineis.dart';
+import 'tema.dart';
 
 const _larguraDoEditor = 420.0;
+const _larguraDoCampoCurto = 112.0;
+const _larguraDoDiaDaSemana = 180.0;
+const _larguraParaSegmentosEmLinha = 360.0;
+const _numeros = [FontFeature.tabularFigures()];
+
+const _rotulosDeConcorrencia = {'pular': 'Pular', 'enfileirar': 'Enfileirar', 'substituir': 'Substituir'};
+const _explicacoesDeConcorrencia = {
+  'pular': 'Não cria a nova se a anterior ainda está aberta.',
+  'enfileirar': 'A nova espera a anterior terminar.',
+  'substituir': 'Cancela a anterior e cria a nova.',
+};
+const _rotulosDePerdidos = {'um': 'Disparar uma vez', 'ignorar': 'Ignorar'};
+const _explicacoesDePerdidos = {
+  'um': 'Dispara uma vez ao voltar, mesmo que tenha perdido vários horários.',
+  'ignorar': 'Ignora os horários perdidos e espera o próximo.',
+};
+
+Future<void> _excluirRotina(BuildContext context, EstadoRotinas estado, Rotina r) async {
+  final ok = await confirmar(
+    context,
+    'Excluir a rotina ${r.nome.isEmpty ? r.id : r.nome}?',
+    'Os disparos já feitos ficam no histórico. As tarefas criadas por ela continuam.',
+    acao: 'Excluir rotina',
+    destrutivo: true,
+  );
+  if (!ok) return;
+  if (estado.rascunho?.id != r.id || estado.equipeDoRascunho != r.equipe) estado.editar(r);
+  estado.excluir();
+}
 
 class PainelDeRotinas extends StatelessWidget {
   const PainelDeRotinas({super.key, required this.sala, required this.equipe, required this.editar, required this.largo});
@@ -32,13 +68,35 @@ class PainelDeRotinas extends StatelessWidget {
             sala: sala,
             equipe: equipe,
           );
-          if (!largo) return editor;
-          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: lista),
-            const VerticalDivider(width: 1),
-            SizedBox(width: _larguraDoEditor, child: editor),
-          ]);
+          if (!largo) {
+            return Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: larguraDeLeitura), child: editor),
+            );
+          }
+          return LadoALado(
+            painel: 'rotinas',
+            rotulo: 'Largura do editor de rotina',
+            inicial: _larguraDoEditor,
+            minimo: 360,
+            maximo: 640,
+            lateralADireita: true,
+            principal: lista,
+            lateral: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: editor),
+          );
         },
+      );
+}
+
+class _TituloDeSecao extends StatelessWidget {
+  const _TituloDeSecao(this.texto);
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: Espacos.esp5, bottom: Espacos.esp2),
+        child: Text(texto, style: Theme.of(context).textTheme.titleSmall),
       );
 }
 
@@ -52,60 +110,131 @@ class _ListaDeRotinas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final estado = sala.rotinas;
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final daEquipe = estado.daEquipe(equipe.id);
     final sistema = equipe.id == 'casa' ? estado.doSistema : const <Rotina>[];
     final equipeSalva = sala.equipes.equipes.any((e) => e.id == equipe.id);
-    final rotulo = TextStyle(color: cores.onSurfaceVariant, fontSize: 11, letterSpacing: 1);
-    return ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 24), children: [
-      Row(children: [
-        Expanded(child: Text('ROTINAS · ${equipe.nome.toUpperCase()}', style: rotulo)),
-        IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: estado.carregar),
-        if (editar)
-          FilledButton.tonalIcon(
-            onPressed: equipeSalva && !estado.salvando ? () => estado.novaRotina(equipe) : null,
-            icon: const Icon(Icons.add),
-            label: const Text('Nova rotina'),
+    final podeCriar = equipeSalva && !estado.salvando;
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
+    return LayoutBuilder(builder: (context, limites) {
+      final margem = ClasseDeJanela.de(limites.maxWidth).margemLateral;
+      return ListView(padding: EdgeInsets.fromLTRB(margem, Espacos.esp4, margem, Espacos.esp5), children: [
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Rotinas de ${equipe.nome}', style: tema.textTheme.titleMedium),
+              Text('Tarefas e workflows que a equipe começa sozinha, por horário ou por webhook', style: secundario),
+            ]),
           ),
-      ]),
-      if (editar && !equipeSalva)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text('Salve a equipe antes de criar rotinas.', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
-        ),
-      if (!estado.carregada)
-        const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
-      else if (daEquipe.isEmpty)
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            editar ? 'Nenhuma rotina nesta equipe.' : 'Nenhuma rotina nesta equipe. Rotinas se criam no desktop.',
-            style: TextStyle(color: cores.onSurfaceVariant),
+          const SizedBox(width: Espacos.esp3),
+          Flexible(
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: Espacos.esp2,
+              runSpacing: Espacos.esp2,
+              children: [
+                if (editar)
+                  FilledButton.icon(
+                    onPressed: podeCriar ? () => estado.novaRotina(equipe) : null,
+                    icon: const Icon(Symbols.add),
+                    label: const Text('Nova rotina'),
+                  ),
+                IconButton(tooltip: 'Recarregar', icon: const Icon(Symbols.refresh), onPressed: estado.carregar),
+              ],
+            ),
           ),
-        ),
-      for (final r in daEquipe)
-        _CartaoDaRotina(
-          sala: sala,
-          equipe: equipe,
-          rotina: r,
-          editar: editar,
-          selecionada: estado.rascunho?.id == r.id && estado.equipeDoRascunho == equipe.id && !estado.nova,
-        ),
-      if (sistema.isNotEmpty) ...[
-        Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 4), child: Text('SISTEMA', style: rotulo)),
-        for (final r in sistema) _CartaoDaRotina(sala: sala, equipe: equipe, rotina: r, editar: false, selecionada: false),
-      ],
+        ]),
+        if (editar && !equipeSalva)
+          Padding(
+            padding: const EdgeInsets.only(top: Espacos.esp2),
+            child: Text('Salve a equipe antes de criar rotinas.', style: secundario),
+          ),
+        const SizedBox(height: Espacos.esp4),
+        if (!estado.carregada)
+          const Padding(padding: EdgeInsets.all(Espacos.esp5), child: Center(child: CircularProgressIndicator()))
+        else if (daEquipe.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: Espacos.esp7, horizontal: Espacos.esp4),
+            child: Column(children: [
+              Icon(Symbols.event_repeat, color: cores.onSurfaceVariant),
+              const SizedBox(height: Espacos.esp2),
+              Text(
+                editar ? 'Nenhuma rotina nesta equipe.' : 'Nenhuma rotina nesta equipe. Rotinas se criam no desktop.',
+                textAlign: TextAlign.center,
+                style: tema.textTheme.bodyMedium?.copyWith(color: cores.onSurfaceVariant),
+              ),
+              if (editar && podeCriar) ...[
+                const SizedBox(height: Espacos.esp3),
+                FilledButton.tonalIcon(
+                  onPressed: () => estado.novaRotina(equipe),
+                  icon: const Icon(Symbols.add),
+                  label: const Text('Nova rotina'),
+                ),
+              ],
+            ]),
+          ),
+        for (final r in daEquipe)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Espacos.esp3),
+            child: _CartaoDaRotina(
+              sala: sala,
+              equipe: equipe,
+              rotina: r,
+              editar: editar,
+              selecionada: estado.rascunho?.id == r.id && estado.equipeDoRascunho == equipe.id && !estado.nova,
+            ),
+          ),
+        if (sistema.isNotEmpty) ...[
+          const _TituloDeSecao('Rotinas do sistema'),
+          for (final r in sistema)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Espacos.esp3),
+              child: _CartaoDaRotina(sala: sala, equipe: equipe, rotina: r, editar: false, selecionada: false),
+            ),
+        ],
+      ]);
+    });
+  }
+}
+
+class _SituacaoDaRotina extends StatelessWidget {
+  const _SituacaoDaRotina({required this.rotina});
+
+  final Rotina rotina;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final (icone, rotulo, cor) = rotina.sistema
+        ? (Symbols.settings, 'sistema', cores.onSurfaceVariant)
+        : rotina.ativa
+            ? (Symbols.play_circle, 'ativa', cores.primary)
+            : (Symbols.pause_circle, 'inativa', cores.onSurfaceVariant);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icone, size: 16, color: cor),
+      const SizedBox(width: Espacos.esp1),
+      Text(rotulo, style: tema.textTheme.labelMedium?.copyWith(color: cor)),
     ]);
   }
 }
 
-Color _corDoResultado(String resultado, ColorScheme cores) => switch (resultado) {
-      'criada' => const Color(0xFF4FAE7C),
-      'pulada' => cores.onSurfaceVariant,
-      _ => cores.error,
-    };
+class _ResultadoDoDisparo extends StatelessWidget {
+  const _ResultadoDoDisparo({required this.resultado, required this.texto});
 
-class _CartaoDaRotina extends StatelessWidget {
+  final String resultado;
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => DefaultTextStyle.merge(
+        style: const TextStyle(fontFeatures: _numeros),
+        child: RotuloDeEstado(estado: resultado, rotulo: texto),
+      );
+}
+
+class _CartaoDaRotina extends StatefulWidget {
   const _CartaoDaRotina({
     required this.sala,
     required this.equipe,
@@ -120,92 +249,151 @@ class _CartaoDaRotina extends StatelessWidget {
   final bool editar;
   final bool selecionada;
 
+  @override
+  State<_CartaoDaRotina> createState() => _CartaoDaRotinaState();
+}
+
+class _CartaoDaRotinaState extends State<_CartaoDaRotina> {
+  final _menu = MenuController();
+  final _ancora = GlobalKey();
+
   void _abrirTarefa(int id) {
-    sala.tarefas.escolherEquipe(equipe.id);
-    sala.abrirTarefa(id);
+    widget.sala.tarefas.escolherEquipe(widget.equipe.id);
+    widget.sala.abrirTarefa(id);
+  }
+
+  void _abrirMenu(BuildContext botao) {
+    final origem = botao.findRenderObject();
+    final cartao = _ancora.currentContext?.findRenderObject();
+    if (origem is! RenderBox || cartao is! RenderBox) return _menu.open();
+    _menu.open(position: origem.localToGlobal(Offset(0, origem.size.height), ancestor: cartao));
   }
 
   @override
   Widget build(BuildContext context) {
+    final sala = widget.sala;
     final estado = sala.rotinas;
-    final cores = Theme.of(context).colorScheme;
-    final r = rotina;
-    final pequeno = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
-    final posicao = r.sistema ? null : equipe.posicao(r.posicao);
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final r = widget.rotina;
+    final nome = r.nome.isEmpty ? r.id : r.nome;
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant, fontFeatures: _numeros);
+    final posicao = r.sistema ? null : widget.equipe.posicao(r.posicao);
     final ultimo = r.ultimoDisparo;
-    return Card(
-      color: selecionada ? cores.secondaryContainer : null,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: editar && !r.sistema ? () => estado.editar(r) : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(r.nome.isEmpty ? r.id : r.nome, style: const TextStyle(fontWeight: FontWeight.w600))),
-              Chip(
-                visualDensity: VisualDensity.compact,
-                label: Text(r.sistema ? 'sistema' : r.ativa ? 'ativa' : 'inativa', style: const TextStyle(fontSize: 11)),
-              ),
-            ]),
-            Text(
-              [
-                if (r.iniciaWorkflow)
-                  'inicia ${sala.workflows.nomeDoWorkflow(equipe.id, r.workflow)}'
-                else if (posicao != null)
-                  posicao.rotulo
-                else if (!r.sistema)
-                  '${r.posicao} (sumiu)',
-                descricaoDoGatilho(r),
-              ].join(' · '),
-              style: pequeno,
-            ),
-            Text('próximo: ${r.proximo == null ? '—' : horarioCurto(r.proximo!)}', style: pequeno),
-            if (ultimo != null)
-              Text(
-                'último: ${quando(ultimo.em)} · ${ultimo.resumo}',
-                style: TextStyle(color: _corDoResultado(ultimo.resultado, cores), fontSize: 12),
-              )
-            else
-              Text('nunca disparou', style: pequeno),
-            if (!r.sistema)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Wrap(spacing: 8, runSpacing: 4, children: [
-                  OutlinedButton.icon(
-                    onPressed: () => estado.disparar(r),
-                    icon: const Icon(Icons.play_arrow, size: 18),
-                    label: const Text('Disparar agora'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => estado.alternarAtiva(r),
-                    icon: Icon(r.ativa ? Icons.pause_circle_outline : Icons.play_circle_outline, size: 18),
-                    label: Text(r.ativa ? 'Desativar' : 'Ativar'),
-                  ),
-                ]),
-              ),
-            if (r.disparos.isNotEmpty)
-              Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  dense: true,
-                  title: Text('Últimos disparos (${r.disparos.length})', style: pequeno),
-                  children: [
-                    for (final d in r.disparos)
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        title: Text('${horarioCurto(d.em)} · ${d.resumo}',
-                            style: TextStyle(color: _corDoResultado(d.resultado, cores), fontSize: 12)),
-                        onTap: d.tarefa == null ? null : () => _abrirTarefa(d.tarefa!),
+    final comMenu = widget.editar && !r.sistema;
+    final menu = [
+      MenuItemButton(
+        leadingIcon: const Icon(Symbols.edit),
+        onPressed: () => estado.editar(r),
+        child: const Text('Editar'),
+      ),
+      MenuItemButton(
+        leadingIcon: Icon(r.ativa ? Symbols.pause_circle : Symbols.play_circle),
+        onPressed: () => estado.alternarAtiva(r),
+        child: Text(r.ativa ? 'Desativar' : 'Ativar'),
+      ),
+      MenuItemButton(
+        leadingIcon: Icon(Symbols.delete, color: cores.error),
+        style: MenuItemButton.styleFrom(foregroundColor: cores.error),
+        onPressed: estado.salvando ? null : () => _excluirRotina(context, estado, r),
+        child: const Text('Excluir rotina'),
+      ),
+    ];
+    return MenuAnchor(
+      controller: _menu,
+      menuChildren: comMenu ? menu : const [],
+      child: GestureDetector(
+        key: _ancora,
+        onSecondaryTapUp: comMenu ? (d) => _menu.open(position: d.localPosition) : null,
+        child: Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          color: widget.selecionada ? cores.secondaryContainer : null,
+          child: InkWell(
+            onTap: comMenu ? () => estado.editar(r) : null,
+            child: Padding(
+              padding: const EdgeInsets.all(Espacos.esp4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(r.sistema ? Symbols.settings : Symbols.event_repeat, size: 20, color: cores.onSurfaceVariant),
+                  const SizedBox(width: Espacos.esp2),
+                  Expanded(child: Text(nome, style: tema.textTheme.titleMedium, overflow: TextOverflow.ellipsis)),
+                  const SizedBox(width: Espacos.esp2),
+                  _SituacaoDaRotina(rotina: r),
+                  if (comMenu)
+                    Builder(
+                      builder: (botao) => IconButton(
+                        tooltip: 'Mais opções de $nome',
+                        onPressed: () => _menu.isOpen ? _menu.close() : _abrirMenu(botao),
+                        icon: const Icon(Symbols.more_vert),
                       ),
-                  ],
+                    ),
+                ]),
+                const SizedBox(height: Espacos.esp1),
+                Text(
+                  [
+                    if (r.iniciaWorkflow)
+                      'inicia ${sala.workflows.nomeDoWorkflow(widget.equipe.id, r.workflow)}'
+                    else if (posicao != null)
+                      posicao.rotulo
+                    else if (!r.sistema)
+                      '${r.posicao} (sumiu)',
+                    descricaoDoGatilho(r),
+                  ].join(' · '),
+                  style: secundario,
                 ),
-              ),
-          ]),
+                Text('próximo: ${r.proximo == null ? 'sem horário' : horarioCurto(r.proximo!)}', style: secundario),
+                const SizedBox(height: Espacos.esp2),
+                if (ultimo != null)
+                  _ResultadoDoDisparo(resultado: ultimo.resultado, texto: 'último: ${quando(ultimo.em)} · ${ultimo.resumo}')
+                else
+                  Text('nunca disparou', style: secundario),
+                if (!r.sistema) ...[
+                  const SizedBox(height: Espacos.esp3),
+                  Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, children: [
+                    FilledButton.tonalIcon(
+                      onPressed: () => estado.disparar(r),
+                      icon: const Icon(Symbols.play_arrow),
+                      label: const Text('Disparar agora'),
+                    ),
+                    if (comMenu)
+                      OutlinedButton.icon(
+                        onPressed: () => estado.editar(r),
+                        icon: const Icon(Symbols.edit),
+                        label: const Text('Editar'),
+                      ),
+                    TextButton.icon(
+                      onPressed: () => estado.alternarAtiva(r),
+                      icon: Icon(r.ativa ? Symbols.pause_circle : Symbols.play_circle),
+                      label: Text(r.ativa ? 'Desativar' : 'Ativar'),
+                    ),
+                  ]),
+                ],
+                if (r.disparos.isNotEmpty)
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    shape: const Border(),
+                    collapsedShape: const Border(),
+                    title: Text(
+                      'Últimos disparos (${r.disparos.length})',
+                      style: tema.textTheme.titleSmall?.copyWith(fontFeatures: _numeros),
+                    ),
+                    children: [
+                      for (final d in r.disparos)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: _ResultadoDoDisparo(resultado: d.resultado, texto: '${horarioCurto(d.em)} · ${d.resumo}'),
+                          trailing: d.tarefa == null
+                              ? null
+                              : Icon(Symbols.open_in_new, size: 20, color: cores.onSurfaceVariant),
+                          onTap: d.tarefa == null ? null : () => _abrirTarefa(d.tarefa!),
+                        ),
+                    ],
+                  ),
+              ]),
+            ),
+          ),
         ),
       ),
     );
@@ -235,6 +423,8 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
   final _horas = TextEditingController(text: '4');
   var _dia = 1;
   String? _endereco;
+  final _tocados = <CampoDaRotina>{};
+  var _mostrarTudo = false;
 
   @override
   void initState() {
@@ -269,109 +459,180 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
     _usarCron(montar(hm.hora, hm.minuto));
   }
 
-  Future<void> _excluir() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (contexto) => AlertDialog(
-        title: Text('Excluir a rotina ${r.nome}?'),
-        content: const Text('Os disparos já feitos ficam no histórico. As tarefas criadas por ela continuam.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(contexto, false), child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(contexto).colorScheme.error),
-            onPressed: () => Navigator.pop(contexto, true),
-            child: const Text('Excluir'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) estado.excluir();
+  int? get _horasDoAtalho {
+    final n = int.tryParse(_horas.text.trim());
+    return n != null && n >= 1 && n <= 23 ? n : null;
+  }
+
+  String? _erroAoSair(Map<CampoDaRotina, String> erros, CampoDaRotina campo) =>
+      _mostrarTudo || _tocados.contains(campo) ? erros[campo] : null;
+
+  Widget _validaAoSair(CampoDaRotina campo, Widget campoDeTexto) => Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onFocusChange: (focado) {
+          if (!focado && !_tocados.contains(campo)) setState(() => _tocados.add(campo));
+        },
+        child: campoDeTexto,
+      );
+
+  void _salvar(List<Workflow> definicoes) {
+    if (estado.errosDoRascunho(widget.equipe, workflows: definicoes).isNotEmpty) {
+      setState(() => _mostrarTudo = true);
+      return;
+    }
+    estado.salvar(widget.equipe, workflows: definicoes);
   }
 
   Widget _webhook(BuildContext context, Rotina? salva) {
-    final cores = Theme.of(context).colorScheme;
-    final pequeno = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final token = salva?.token;
     final caminho = salva?.url;
     if (!r.webhook) return const SizedBox.shrink();
     if (salva?.webhook != true || token == null || caminho == null) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text('Salve para gerar a URL e o token.', style: pequeno),
+        padding: const EdgeInsets.only(bottom: Espacos.esp2),
+        child: Text('Salve para gerar a URL e o token.', style: secundario),
       );
     }
     final url = urlDoWebhook(_endereco ?? widget.sala.canal.endereco ?? 'host:7878', caminho);
-    Widget linha(String rotulo, String valor) => Row(children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(rotulo, style: pequeno),
-              SelectableText(valor, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-            ]),
-          ),
-          IconButton(tooltip: 'Copiar', icon: const Icon(Icons.copy, size: 18), onPressed: () => copiar(context, valor)),
-        ]);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      linha('URL (POST)', url),
-      linha('Token (cabeçalho X-Token ou ?token=)', token),
-      linha('Exemplo', curlDoWebhook(url, token)),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(onPressed: estado.trocarToken, icon: const Icon(Icons.autorenew), label: const Text('Trocar token')),
+    final mono = tema.textTheme.bodySmall?.copyWith(fontFamily: familiaMono);
+    Widget linha(String rotulo, String valor, String dica) => Padding(
+          padding: const EdgeInsets.only(bottom: Espacos.esp2),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(rotulo, style: secundario),
+                SelectableText(valor, style: mono),
+              ]),
+            ),
+            IconButton(tooltip: dica, icon: const Icon(Symbols.content_copy, size: 20), onPressed: () => copiar(context, valor)),
+          ]),
+        );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: cores.outlineVariant),
+        borderRadius: BorderRadius.circular(Raios.sm),
       ),
-    ]);
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Espacos.esp3, Espacos.esp3, Espacos.esp1, Espacos.esp1),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          linha('URL (POST)', url, 'Copiar URL'),
+          linha('Token (cabeçalho X-Token ou ?token=)', token, 'Copiar token'),
+          linha('Exemplo', curlDoWebhook(url, token), 'Copiar exemplo'),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(onPressed: estado.trocarToken, icon: const Icon(Symbols.autorenew), label: const Text('Trocar token')),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _politica(BuildContext context, String rotulo, Widget escolha, String? explicacao) {
+    final tema = Theme.of(context);
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.onSurfaceVariant);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Espacos.esp4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(rotulo, style: tema.textTheme.bodyMedium),
+        const SizedBox(height: Espacos.esp2),
+        escolha,
+        if (explicacao != null) ...[
+          const SizedBox(height: Espacos.esp1),
+          Text(explicacao, style: secundario),
+        ],
+      ]),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final equipe = widget.equipe;
-    final pequeno = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final rotina = r;
     final salva = estado.salva(equipe.id, rotina.id);
     final definicoes = widget.sala.workflows.definicoes;
-    final erros = estado.errosDoRascunho(equipe, workflows: definicoes);
+    final erros = errosDosCamposDaRotina(rotina, equipe, workflows: definicoes);
+    final soltos = [
+      for (final c in const [CampoDaRotina.id, CampoDaRotina.concorrencia, CampoDaRotina.perdidos]) ?erros[c],
+    ];
     final possiveis = workflowsParaRotina(definicoes, equipe.id);
     final porWorkflow = rotina.iniciaWorkflow;
     final escolhido = definicoes.where((w) => w.equipe == equipe.id && w.id == rotina.workflow).firstOrNull;
-    final proximos = rotina.cron.trim().isEmpty ? const <DateTime>[] : proximosDoCron(rotina.cron, DateTime.now());
-    final previa = tituloDaTarefa(rotina.titulo, proximos.firstOrNull ?? DateTime.now());
+    final agora = DateTime.now();
+    final proximos = rotina.cron.trim().isEmpty ? const <DateTime>[] : proximosDoCron(rotina.cron, agora);
+    final previa = tituloDaTarefa(rotina.titulo, proximos.firstOrNull ?? agora);
+    final proximas = previaDoCron(rotina.cron, agora);
     final posicaoValida = equipe.posicao(rotina.posicao) != null;
-    Widget secao(String texto) =>
-        Padding(padding: const EdgeInsets.only(top: 16, bottom: 4), child: Text(texto, style: pequeno));
+    final concorrencia = concorrencias.containsKey(rotina.concorrencia) ? rotina.concorrencia : 'pular';
+    final perdidos = perdidosDaRotina.containsKey(rotina.perdidos) ? rotina.perdidos : 'um';
+    final horaInvalida = lerHoraMinuto(_hora.text) == null;
+    final horasInvalidas = _horasDoAtalho == null;
 
-    return ListView(padding: const EdgeInsets.all(16), children: [
+    return ListView(padding: const EdgeInsets.all(Espacos.esp4), children: [
       Row(children: [
         Expanded(
-          child: Text(estado.nova ? 'Nova rotina' : 'Rotina ${rotina.id}', style: Theme.of(context).textTheme.titleSmall),
-        ),
-        IconButton(tooltip: 'Fechar', icon: const Icon(Icons.close), onPressed: estado.fecharEditor),
-      ]),
-      TextField(
-        controller: _nome,
-        decoration: InputDecoration(labelText: 'Nome', helperText: 'id: ${rotina.id}${estado.nova ? ' (fixo depois de salvar)' : ''}'),
-        onChanged: (v) => estado.mudar((x) => x.copiar(nome: v)),
-      ),
-      secao('Destino'),
-      SegmentedButton<bool>(
-        segments: [
-          const ButtonSegment(value: false, label: Text('Criar tarefa'), icon: Icon(Icons.task_alt)),
-          ButtonSegment(
-            value: true,
-            label: const Text('Iniciar workflow'),
-            icon: const Icon(Icons.alt_route),
-            enabled: porWorkflow || possiveis.isNotEmpty,
+          child: Text(
+            estado.nova ? 'Nova rotina' : 'Rotina ${rotina.id}',
+            style: tema.textTheme.titleMedium,
+            overflow: TextOverflow.ellipsis,
           ),
+        ),
+        IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: estado.fecharEditor),
+      ]),
+      if (estado.erro != null)
+        Padding(
+          padding: const EdgeInsets.only(top: Espacos.esp2),
+          child: MaterialBanner(
+            leading: Icon(Symbols.error, color: cores.onErrorContainer),
+            content: Text(estado.erro!, style: tema.textTheme.bodyMedium?.copyWith(color: cores.onErrorContainer)),
+            backgroundColor: cores.errorContainer,
+            actions: [
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: cores.onErrorContainer),
+                onPressed: estado.limparErro,
+                child: const Text('Fechar'),
+              ),
+            ],
+          ),
+        ),
+      const SizedBox(height: Espacos.esp3),
+      _validaAoSair(
+        CampoDaRotina.nome,
+        TextField(
+          controller: _nome,
+          decoration: InputDecoration(
+            labelText: 'Nome',
+            helperText: 'id: ${rotina.id}${estado.nova ? ' (fixo depois de salvar)' : ''}',
+            errorText: _erroAoSair(erros, CampoDaRotina.nome),
+          ),
+          onChanged: (v) => estado.mudar((x) => x.copiar(nome: v)),
+        ),
+      ),
+      const _TituloDeSecao('Destino'),
+      EscolhaSegmentada<bool>(
+        larguraParaLinha: _larguraParaSegmentosEmLinha,
+        valor: porWorkflow,
+        aoEscolher: (v) => estado.mudar((x) => x.copiar(workflow: v ? possiveis.first.id : '')),
+        opcoes: [
+          (valor: false, rotulo: 'Criar tarefa', icone: Symbols.task_alt, habilitada: true),
+          (valor: true, rotulo: 'Iniciar workflow', icone: Symbols.schema, habilitada: porWorkflow || possiveis.isNotEmpty),
         ],
-        selected: {porWorkflow},
-        onSelectionChanged: (v) => estado.mudar((x) => x.copiar(workflow: v.first ? possiveis.first.id : '')),
       ),
       if (!porWorkflow && possiveis.isEmpty)
         Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text('Nenhum workflow desta equipe pode ser iniciado por rotina (a entrada precisa ser vazia ou só "dados" em texto).',
-              style: pequeno),
+          padding: const EdgeInsets.only(top: Espacos.esp1),
+          child: Text(
+            'Nenhum workflow desta equipe pode ser iniciado por rotina (a entrada precisa ser vazia ou só "dados" em texto).',
+            style: secundario,
+          ),
         ),
-      const SizedBox(height: 12),
+      const SizedBox(height: Espacos.esp4),
       if (porWorkflow)
         DropdownButtonFormField<String>(
           initialValue: escolhido?.id,
@@ -381,6 +642,8 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
             helperText: escolhido != null && escolhido.entrada.containsKey('dados')
                 ? 'o corpo do webhook vai em entrada.dados'
                 : null,
+            errorText: erros[CampoDaRotina.workflow],
+            errorMaxLines: 3,
           ),
           items: [
             for (final w in [...possiveis, if (escolhido != null && !possiveis.contains(escolhido)) escolhido])
@@ -392,152 +655,186 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
         DropdownButtonFormField<String>(
           initialValue: posicaoValida ? rotina.posicao : null,
           isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Posição que recebe a tarefa'),
+          decoration: InputDecoration(
+            labelText: 'Posição que recebe a tarefa',
+            errorText: erros[CampoDaRotina.posicao],
+          ),
           items: [for (final p in equipe.posicoes) DropdownMenuItem(value: p.id, child: Text(p.rotulo, overflow: TextOverflow.ellipsis))],
           onChanged: (v) => v == null ? null : estado.mudar((x) => x.copiar(posicao: v)),
         ),
-        secao('Tarefa'),
-        TextField(
-          controller: _titulo,
-          maxLength: 200,
-          decoration: InputDecoration(
-            labelText: 'Título',
-            helperText: rotina.titulo.trim().isEmpty ? 'aceita {data} e {hora}' : 'prévia: $previa',
-            counterText: '',
+        const _TituloDeSecao('Tarefa'),
+        _validaAoSair(
+          CampoDaRotina.titulo,
+          TextField(
+            controller: _titulo,
+            maxLength: 200,
+            decoration: InputDecoration(
+              labelText: 'Título',
+              helperText: rotina.titulo.trim().isEmpty ? 'aceita {data} e {hora}' : 'prévia: $previa',
+              helperStyle: secundario?.copyWith(fontFeatures: _numeros),
+              errorText: _erroAoSair(erros, CampoDaRotina.titulo),
+              counterText: '',
+            ),
+            onChanged: (v) => estado.mudar((x) => x.copiar(titulo: v)),
           ),
-          onChanged: (v) => estado.mudar((x) => x.copiar(titulo: v)),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp3),
         TextField(
           controller: _descricao,
           minLines: 2,
           maxLines: 8,
-          decoration: const InputDecoration(labelText: 'Descrição'),
+          decoration: const InputDecoration(labelText: 'Descrição', alignLabelWithHint: true),
           onChanged: (v) => estado.mudar((x) => x.copiar(descricao: v)),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp3),
         TextField(
           controller: _porque,
           decoration: const InputDecoration(labelText: 'Por quê'),
           onChanged: (v) => estado.mudar((x) => x.copiar(porque: v)),
         ),
       ],
-      secao('Gatilho'),
-      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      const _TituloDeSecao('Gatilho'),
+      Text('Atalhos para montar o cron', style: secundario),
+      const SizedBox(height: Espacos.esp2),
+      Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, crossAxisAlignment: WrapCrossAlignment.center, children: [
         SizedBox(
-          width: 80,
-          child: TextField(controller: _hora, decoration: const InputDecoration(labelText: 'às', isDense: true)),
+          width: _larguraDoCampoCurto,
+          child: TextField(
+            controller: _hora,
+            style: const TextStyle(fontFeatures: _numeros),
+            decoration: InputDecoration(labelText: 'às', errorText: horaInvalida ? 'use HH:MM' : null),
+            onChanged: (_) => setState(() {}),
+          ),
         ),
-        ActionChip(label: const Text('todo dia'), onPressed: () => _atalho(cronTodoDia)),
-        ActionChip(label: const Text('dias úteis'), onPressed: () => _atalho(cronDiasUteis)),
+        ActionChip(label: const Text('todo dia'), onPressed: horaInvalida ? null : () => _atalho(cronTodoDia)),
+        ActionChip(label: const Text('dias úteis'), onPressed: horaInvalida ? null : () => _atalho(cronDiasUteis)),
       ]),
-      const SizedBox(height: 8),
-      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        DropdownButton<int>(
-          value: _dia,
-          items: [for (final (i, d) in diasDaSemana.indexed) DropdownMenuItem(value: i, child: Text(d))],
-          onChanged: (v) => setState(() => _dia = v ?? _dia),
-        ),
-        ActionChip(label: const Text('toda semana neste dia'), onPressed: () => _atalho((h, m) => cronSemanal(_dia, h, m))),
-      ]),
-      const SizedBox(height: 8),
-      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      const SizedBox(height: Espacos.esp3),
+      Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, crossAxisAlignment: WrapCrossAlignment.center, children: [
         SizedBox(
-          width: 80,
+          width: _larguraDoDiaDaSemana,
+          child: DropdownButtonFormField<int>(
+            initialValue: _dia,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Dia da semana'),
+            items: [for (final (i, d) in diasDaSemana.indexed) DropdownMenuItem(value: i, child: Text(d))],
+            onChanged: (v) => setState(() => _dia = v ?? _dia),
+          ),
+        ),
+        ActionChip(
+          label: const Text('toda semana neste dia'),
+          onPressed: horaInvalida ? null : () => _atalho((h, m) => cronSemanal(_dia, h, m)),
+        ),
+      ]),
+      const SizedBox(height: Espacos.esp3),
+      Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        SizedBox(
+          width: _larguraDoCampoCurto,
           child: TextField(
             controller: _horas,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'N horas', isDense: true),
+            style: const TextStyle(fontFeatures: _numeros),
+            decoration: InputDecoration(labelText: 'N horas', errorText: horasInvalidas ? 'de 1 a 23' : null),
+            onChanged: (_) => setState(() {}),
           ),
         ),
         ActionChip(
           label: const Text('a cada N horas'),
-          onPressed: () {
-            final n = int.tryParse(_horas.text.trim());
-            if (n != null && n >= 1 && n <= 23) _usarCron(cronACadaHoras(n));
-          },
+          onPressed: horasInvalidas ? null : () => _usarCron(cronACadaHoras(_horasDoAtalho!)),
         ),
       ]),
-      const SizedBox(height: 8),
+      const SizedBox(height: Espacos.esp4),
       TextField(
         controller: _cron,
-        style: const TextStyle(fontFamily: 'monospace'),
-        decoration: const InputDecoration(
+        style: const TextStyle(fontFamily: familiaMono, fontFeatures: _numeros),
+        decoration: InputDecoration(
           labelText: 'Cron (minuto hora dia mês dia-da-semana)',
-          helperText: 'vazio: sem horário (só webhook ou manual)',
+          helperText: proximas.isEmpty ? 'vazio: sem horário (só webhook ou manual)' : proximas,
+          helperStyle: secundario?.copyWith(fontFeatures: _numeros),
+          helperMaxLines: 2,
+          errorText: erros[CampoDaRotina.cron],
+          errorMaxLines: 3,
         ),
         onChanged: (v) => estado.mudar((x) => x.copiar(cron: v)),
       ),
-      if (proximos.isNotEmpty) ...[
-        const SizedBox(height: 6),
-        Text('próximos: ${proximos.map(horarioCurto).join(' · ')}', style: pequeno),
-      ],
-      SwitchListTile(
-        dense: true,
+      const SizedBox(height: Espacos.esp2),
+      CheckboxListTile(
         contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
         value: rotina.webhook,
         title: const Text('Webhook'),
         subtitle: const Text('aceita disparo por POST de fora'),
-        onChanged: (v) => estado.mudar((x) => x.copiar(webhook: v)),
+        onChanged: (v) => estado.mudar((x) => x.copiar(webhook: v ?? false)),
       ),
       if (webhookArriscado(rotina, equipe))
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            'Atenção: esta posição roda comandos no automático. O texto do webhook vem de fora '
-            'e entra na tarefa como dado; comando sensível ainda pede aprovação.',
-            style: const TextStyle(color: Color(0xFFE0A458), fontSize: 12),
+        const Padding(
+          padding: EdgeInsets.only(bottom: Espacos.esp3),
+          child: CaixaDeMensagens(
+            tom: TomDaMensagem.aviso,
+            linhas: [
+              'Esta posição roda comandos no automático. O texto do webhook vem de fora '
+                  'e entra na tarefa como dado; comando sensível ainda pede aprovação.',
+            ],
           ),
         ),
       _webhook(context, salva),
-      secao('Política'),
-      DropdownButtonFormField<String>(
-        initialValue: concorrencias.containsKey(rotina.concorrencia) ? rotina.concorrencia : 'pular',
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: porWorkflow ? 'Com o workflow anterior ainda aberto' : 'Com a tarefa anterior ainda aberta',
+      const _TituloDeSecao('Política'),
+      _politica(
+        context,
+        porWorkflow ? 'Com o workflow anterior ainda aberto' : 'Com a tarefa anterior ainda aberta',
+        EscolhaSegmentada<String>(
+          larguraParaLinha: _larguraParaSegmentosEmLinha,
+          valor: concorrencia,
+          aoEscolher: (v) => estado.mudar((x) => x.copiar(concorrencia: v)),
+          opcoes: [
+            for (final c in concorrencias.keys)
+              (valor: c, rotulo: _rotulosDeConcorrencia[c] ?? c, icone: null, habilitada: true),
+          ],
         ),
-        items: [for (final MapEntry(:key, :value) in concorrencias.entries) DropdownMenuItem(value: key, child: Text(value))],
-        onChanged: (v) => v == null ? null : estado.mudar((x) => x.copiar(concorrencia: v)),
+        _explicacoesDeConcorrencia[concorrencia],
       ),
-      const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
-        initialValue: perdidosDaRotina.containsKey(rotina.perdidos) ? rotina.perdidos : 'um',
-        isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Horário perdido (servidor desligado)'),
-        items: [for (final MapEntry(:key, :value) in perdidosDaRotina.entries) DropdownMenuItem(value: key, child: Text(value))],
-        onChanged: (v) => v == null ? null : estado.mudar((x) => x.copiar(perdidos: v)),
+      _politica(
+        context,
+        'Horário perdido (servidor desligado)',
+        EscolhaSegmentada<String>(
+          larguraParaLinha: _larguraParaSegmentosEmLinha,
+          valor: perdidos,
+          aoEscolher: (v) => estado.mudar((x) => x.copiar(perdidos: v)),
+          opcoes: [
+            for (final p in perdidosDaRotina.keys)
+              (valor: p, rotulo: _rotulosDePerdidos[p] ?? p, icone: null, habilitada: true),
+          ],
+        ),
+        _explicacoesDePerdidos[perdidos],
       ),
-      SwitchListTile(
-        dense: true,
+      CheckboxListTile(
         contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
         value: rotina.ativa,
         title: const Text('Ativa'),
-        onChanged: (v) => estado.mudar((x) => x.copiar(ativa: v)),
+        onChanged: (v) => estado.mudar((x) => x.copiar(ativa: v ?? false)),
       ),
-      for (final erro in erros)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text(erro, style: TextStyle(color: cores.error, fontSize: 12)),
-        ),
-      if (estado.erro != null && erros.isEmpty)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text(estado.erro!, style: TextStyle(color: cores.error, fontSize: 12)),
-        ),
-      const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 8, children: [
+      if (soltos.isNotEmpty) ...[
+        const SizedBox(height: Espacos.esp2),
+        CaixaDeMensagens(tom: TomDaMensagem.erro, linhas: soltos),
+      ],
+      if (_mostrarTudo && erros.isNotEmpty) ...[
+        const SizedBox(height: Espacos.esp2),
+        Text('Corrija os campos marcados para salvar.', style: tema.textTheme.bodySmall?.copyWith(color: cores.error)),
+      ],
+      const SizedBox(height: Espacos.esp4),
+      Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, children: [
         FilledButton.icon(
-          onPressed: erros.isEmpty && !estado.salvando ? () => estado.salvar(equipe, workflows: definicoes) : null,
-          icon: const Icon(Icons.save_outlined),
+          onPressed: estado.salvando ? null : () => _salvar(definicoes),
+          icon: const Icon(Symbols.save),
           label: Text(estado.salvando ? 'Salvando…' : 'Salvar'),
         ),
         if (!estado.nova)
           OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: cores.error),
-            onPressed: estado.salvando ? null : _excluir,
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('Excluir'),
+            style: OutlinedButton.styleFrom(foregroundColor: cores.error, side: BorderSide(color: cores.error)),
+            onPressed: estado.salvando ? null : () => _excluirRotina(context, estado, rotina),
+            icon: const Icon(Symbols.delete),
+            label: const Text('Excluir rotina'),
           ),
       ]),
     ]);

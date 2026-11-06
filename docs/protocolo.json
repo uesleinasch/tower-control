@@ -39,6 +39,7 @@
     "workflow-decidir",
     "workflow-sinal",
     "workflow-cancelar",
+    "workflow-recriar",
     "workflow-salvar",
     "workflow-excluir",
     "skills",

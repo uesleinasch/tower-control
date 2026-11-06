@@ -327,4 +327,45 @@ class PreviaDoModelo {
   bool get podeImportar => valida && erros.isEmpty;
 
   List<String> get skillsEmColisao => escolhas.skills.keys.toList()..sort();
+
+  List<String> get prefixosDosCampos => [
+        if (resumo != null && !deWorkflow) prefixoDaEquipe,
+        if (deWorkflow) prefixoDoWorkflow,
+        for (final p in personas) ...prefixosDaPersona(p),
+        for (final id in skillsEmColisao) prefixoDaSkill(id),
+        if (deWorkflow)
+          for (final p in posicoes) prefixoDaPosicao(p),
+      ];
+
+  List<String> get errosSoltos {
+    final prefixos = prefixosDosCampos;
+    return [for (final e in erros) if (_resto(e, prefixos) == null) e];
+  }
+}
+
+const prefixoDaEquipe = 'equipe: ';
+const prefixoDoWorkflow = 'workflow: ';
+
+List<String> prefixosDaPersona(PersonaDoModelo p) => {'persona ${p.nome}: ', 'persona ${p.id}: '}.toList();
+
+String prefixoDaSkill(String id) => 'skill $id: ';
+
+String prefixoDaPosicao(PosicaoDoModelo p) => 'posição ${p.titulo}: ';
+
+String? _resto(String erro, Iterable<String> prefixos) {
+  for (final p in prefixos) {
+    if (erro.startsWith(p)) return erro.substring(p.length);
+  }
+  return null;
+}
+
+List<String> errosDoCampo(List<String> erros, Iterable<String> prefixos) => [for (final e in erros) ?_resto(e, prefixos)];
+
+final _idDoModelo = RegExp(r'^[a-z][a-z0-9-]*$');
+
+String? erroDeId(String id, {int maximo = 48}) {
+  if (id.isEmpty) return 'o id é obrigatório';
+  if (!_idDoModelo.hasMatch(id)) return 'id inválido: use letras minúsculas, números e hífen, começando por letra';
+  if (id.length > maximo) return 'id longo demais: no máximo $maximo caracteres';
+  return null;
 }
