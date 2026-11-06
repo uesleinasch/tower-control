@@ -75,6 +75,19 @@ EquipeResumo mover(EquipeResumo e, String id, double x, double y) {
   return e.copiar(layout: {...e.layout, id: (x: x < 0 ? 0 : x.roundToDouble(), y: y < 0 ? 0 : y.roundToDouble())});
 }
 
+const passoDeMover = 20.0;
+
+EquipeResumo deslocar(EquipeResumo e, String id, double dx, double dy) {
+  final p = e.ponto(id);
+  return mover(e, id, p.x + dx, p.y + dy);
+}
+
+String? estadoDaPausa(String? pausa) => switch (pausa) {
+      null => null,
+      'orcamento' => 'sem_orcamento',
+      _ => 'pausada',
+    };
+
 EquipeResumo ligar(EquipeResumo e, String filho, String chefe) {
   if (filho == chefe) throw const ErroDeOrganograma('uma posição não pode responder a si mesma');
   if (e.posicao(chefe) == null) throw ErroDeOrganograma('a posição $chefe não existe');
@@ -361,6 +374,24 @@ Vista vistaQueMostra({
     dy: (altura - (maxY - minY) * escala) / 2 - minY * escala,
     escala: escala,
   );
+}
+
+Vista vistaComCartao(Vista v, EquipeResumo e, String id, double largura, double altura, {double folga = 24}) {
+  if (e.posicao(id) == null || largura <= 0 || altura <= 0) return v;
+  final c = cantoDoCartao(e, id);
+  double ajuste(double inicio, double fim, double limite) {
+    if (fim > limite - folga) return limite - folga - fim;
+    if (inicio < folga) return folga - inicio;
+    return 0;
+  }
+
+  final esquerda = c.x * v.escala + v.dx;
+  final topo = c.y * v.escala + v.dy;
+  var dx = ajuste(esquerda, esquerda + larguraDoCartao * v.escala, largura);
+  var dy = ajuste(topo, topo + alturaDoCartao * v.escala, altura);
+  if (esquerda + dx < folga) dx = folga - esquerda;
+  if (topo + dy < folga) dy = folga - topo;
+  return (dx: v.dx + dx, dy: v.dy + dy, escala: v.escala);
 }
 
 List<Ponto> caminhoDaLigacao(EquipeResumo e, String filho) {

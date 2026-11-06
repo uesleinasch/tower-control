@@ -26,8 +26,8 @@ bool get edicaoDisponivel =>
     defaultTargetPlatform == TargetPlatform.windows ||
     defaultTargetPlatform == TargetPlatform.macOS;
 
-const _larguraParaPainelFixo = 900.0;
-const _larguraDoPainel = 340.0;
+const _larguraDoPainel = 320.0;
+const _ladoDoBotaoDeMenu = 32.0;
 
 class TelaEquipes extends StatelessWidget {
   const TelaEquipes({super.key, required this.sala, this.edicao});
@@ -43,30 +43,55 @@ class TelaEquipes extends StatelessWidget {
           final editar = edicao ?? edicaoDisponivel;
           if (editar && sala.editorDeWorkflow.aberto) return EditorDeWorkflow(sala: sala);
           final equipe = estado.atual;
-          final cores = Theme.of(context).colorScheme;
+          final tema = Theme.of(context);
+          final cores = tema.colorScheme;
           return LayoutBuilder(builder: (context, limites) {
-            final largo = limites.maxWidth >= _larguraParaPainelFixo;
-            final personasVisiveis = estado.mostrarPersonas ?? largo;
+            final classe = ClasseDeJanela.de(limites.maxWidth);
+            final editarOrganograma = editar && classe != ClasseDeJanela.compact;
+            final personasVisiveis = estado.mostrarPersonas ?? classe.comDoisPaineis;
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Material(
                 color: cores.surface,
                 child: SafeArea(
                   bottom: false,
-                  child: _Topo(sala: sala, estado: estado, skills: sala.skills, editar: editar, personasVisiveis: personasVisiveis),
+                  child: _Topo(
+                    sala: sala,
+                    estado: estado,
+                    skills: sala.skills,
+                    editar: editar,
+                    editarOrganograma: editarOrganograma,
+                    personasVisiveis: personasVisiveis,
+                    classe: classe,
+                  ),
                 ),
               ),
               BarraDePausa(estado: estado),
               if (estado.erro != null)
                 MaterialBanner(
-                  content: Text(estado.erro!),
+                  leading: Icon(Symbols.error, color: cores.onErrorContainer),
+                  content: Text(estado.erro!, style: tema.textTheme.bodyMedium?.copyWith(color: cores.onErrorContainer)),
                   backgroundColor: cores.errorContainer,
-                  actions: [TextButton(onPressed: estado.limparErro, child: const Text('Ok'))],
+                  actions: [
+                    TextButton(
+                      style: TextButton.styleFrom(foregroundColor: cores.onErrorContainer),
+                      onPressed: estado.limparErro,
+                      child: const Text('Fechar'),
+                    ),
+                  ],
                 ),
               const Divider(height: 1),
               Expanded(
                 child: !estado.carregada || equipe == null
                     ? const Center(child: CircularProgressIndicator())
-                    : _corpo(context, estado, equipe, editar: editar, largo: largo, personasVisiveis: personasVisiveis),
+                    : _corpo(
+                        context,
+                        estado,
+                        equipe,
+                        editar: editar,
+                        editarOrganograma: editarOrganograma,
+                        classe: classe,
+                        personasVisiveis: personasVisiveis,
+                      ),
               ),
             ]);
           });
@@ -78,60 +103,100 @@ class TelaEquipes extends StatelessWidget {
     EstadoEquipes estado,
     EquipeResumo equipe, {
     required bool editar,
-    required bool largo,
+    required bool editarOrganograma,
+    required ClasseDeJanela classe,
     required bool personasVisiveis,
   }) {
-    if (estado.vendoRotinas) return PainelDeRotinas(sala: sala, equipe: equipe, editar: editar, largo: largo);
+    if (estado.vendoRotinas) {
+      return PainelDeRotinas(sala: sala, equipe: equipe, editar: editar, largo: classe.comDoisPaineis);
+    }
     if (estado.vendoWorkflows) return PainelDeWorkflows(sala: sala, equipe: equipe, desenhar: editar);
     if (estado.vendoSkills && editar) return PainelDeSkills(sala: sala);
     final selecionada = estado.selecionada == null ? null : equipe.posicao(estado.selecionada!);
-    final canvas = CanvasDoOrganograma(estado: estado, equipe: equipe, editar: editar);
-    if (!editar) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: canvas),
-        if (selecionada != null) _DetalheDaPosicao(sala: sala, equipe: equipe, posicao: selecionada),
-      ]);
+    final canvas = CanvasDoOrganograma(
+      estado: estado,
+      equipe: equipe,
+      editar: editarOrganograma,
+      aviso: editarOrganograma
+          ? null
+          : editar
+              ? 'Alargue a janela para editar o organograma.'
+              : 'A edição do organograma fica no desktop.',
+      aoCriarPosicao: editarOrganograma ? () => _pedirNovaPosicao(context, estado) : null,
+    );
+    final Widget? apoio;
+    if (selecionada != null) {
+      apoio = editarOrganograma
+          ? _PainelDaPosicao(
+              key: ValueKey('${equipe.id}/${selecionada.id}'),
+              estado: estado,
+              skills: sala.skills,
+              posicao: selecionada,
+            )
+          : _DetalheDaPosicao(sala: sala, equipe: equipe, posicao: selecionada);
+    } else if (editarOrganograma && personasVisiveis) {
+      apoio = _PainelDePersonas(estado: estado, skills: sala.skills, personasVisiveis: personasVisiveis);
+    } else {
+      apoio = null;
     }
-    final Widget? painel = selecionada != null
-        ? _PainelDaPosicao(
-            key: ValueKey('${equipe.id}/${selecionada.id}'), estado: estado, skills: sala.skills, posicao: selecionada)
-        : personasVisiveis
-            ? _PainelDePersonas(estado: estado, skills: sala.skills, personasVisiveis: personasVisiveis)
-            : null;
-    if (painel == null) {
-      return Stack(children: [
-        Positioned.fill(child: canvas),
-        Positioned(
-          top: 12,
-          right: 12,
-          child: FilledButton.tonalIcon(
-            onPressed: () => estado.alternarPersonas(false),
-            icon: const Icon(Symbols.people_alt),
-            label: const Text('Personas'),
-          ),
-        ),
-      ]);
-    }
-    if (largo) {
+    if (apoio == null) return canvas;
+    final Widget painel = apoio;
+    if (classe.comDoisPaineis) {
       return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(child: canvas),
         const VerticalDivider(width: 1),
-        SizedBox(width: _larguraDoPainel, child: painel),
+        SizedBox(
+          width: _larguraDoPainel,
+          child: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: painel),
+        ),
       ]);
     }
     return LayoutBuilder(
-      builder: (context, limites) => Stack(children: [
-        Positioned.fill(child: canvas),
-        Positioned(
-          top: 0,
-          bottom: 0,
-          right: 0,
-          width: limites.maxWidth * 0.9 < _larguraDoPainel ? limites.maxWidth * 0.9 : _larguraDoPainel,
-          child: Material(elevation: 8, child: painel),
-        ),
+      builder: (context, limites) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: canvas),
+        SizedBox(height: limites.maxHeight * 0.45, child: _Folha(child: painel)),
       ]),
     );
   }
+}
+
+class _Folha extends StatelessWidget {
+  const _Folha({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final cores = Theme.of(context).colorScheme;
+    return Material(
+      color: cores.surfaceContainerLow,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(Raios.lg)),
+        side: BorderSide(color: cores.outlineVariant),
+      ),
+      child: SafeArea(top: false, child: child),
+    );
+  }
+}
+
+Future<void> _pedirNovaPosicao(BuildContext context, EstadoEquipes estado) async {
+  final titulo = await pedirTexto(context, titulo: 'Nova posição', rotulo: 'Título (ex.: revisora)', acao: 'Criar posição');
+  if (titulo != null) estado.novaPosicao(titulo);
+}
+
+void _avisar(BuildContext context, String texto, {EstadoEquipes? estado, EquipeResumo? desfazerPara}) {
+  final mensageiro = ScaffoldMessenger.maybeOf(context);
+  if (mensageiro == null) return;
+  mensageiro.hideCurrentSnackBar();
+  mensageiro.showSnackBar(SnackBar(
+    content: Text(texto),
+    duration: const Duration(seconds: 4),
+    persist: false,
+    action: desfazerPara == null || estado == null
+        ? null
+        : SnackBarAction(label: 'Desfazer', onPressed: () => estado.aplicar((_) => desfazerPara)),
+  ));
 }
 
 class _Topo extends StatelessWidget {
@@ -140,159 +205,260 @@ class _Topo extends StatelessWidget {
     required this.estado,
     required this.skills,
     required this.editar,
+    required this.editarOrganograma,
     required this.personasVisiveis,
+    required this.classe,
   });
 
   final Sala sala;
   final EstadoEquipes estado;
   final EstadoSkills skills;
   final bool editar;
+  final bool editarOrganograma;
   final bool personasVisiveis;
+  final ClasseDeJanela classe;
 
   Future<void> _novaEquipe(BuildContext context) async {
-    final nome = await pedirTexto(context, titulo: 'Nova equipe', rotulo: 'Nome da equipe');
+    final nome = await pedirTexto(context, titulo: 'Nova equipe', rotulo: 'Nome da equipe', acao: 'Criar equipe');
     if (nome != null) estado.novaEquipe(nome);
   }
 
-  Future<void> _novaPosicao(BuildContext context) async {
-    final titulo = await pedirTexto(context, titulo: 'Nova posição', rotulo: 'Título (ex.: revisora)');
-    if (titulo != null) estado.novaPosicao(titulo);
-  }
-
   Future<void> _excluirEquipe(BuildContext context, EquipeResumo equipe) async {
-    final ok = await confirmar(context, 'Excluir a equipe ${equipe.nome}?', 'Equipe com tarefa aberta não pode ser excluída.');
+    final ok = await confirmar(
+      context,
+      'Excluir a equipe ${equipe.nome}?',
+      'Equipe com tarefa aberta não pode ser excluída.',
+      acao: 'Excluir equipe',
+      destrutivo: true,
+    );
     if (ok) estado.excluirEquipe();
   }
 
+  Future<void> _trocarDeEquipe(BuildContext context, String? id) async {
+    if (id == null || id == estado.atual?.id) return;
+    if (estado.alterada &&
+        !await confirmar(
+          context,
+          'Descartar as mudanças?',
+          'Há mudanças não salvas nesta equipe.',
+          acao: 'Descartar mudanças',
+          destrutivo: true,
+        )) {
+      return;
+    }
+    estado.escolher(id);
+  }
+
+  void _verPersonas(BuildContext context) => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.7,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([estado, skills]),
+            builder: (_, _) => _PainelDePersonas(estado: estado, skills: skills, personasVisiveis: true, gerenciar: false),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final equipe = estado.atual;
     final ids = {for (final e in estado.equipes) e.id};
+    final larga = classe.comDoisPaineis;
+    final compacta = classe == ClasseDeJanela.compact;
+    final aba = estado.vendoSkills && !editar ? AbaDaEquipe.organograma : estado.aba;
+
+    Widget acao(IconData icone, String rotulo, VoidCallback? aoTocar, {bool principal = false, bool marcado = false}) {
+      if (!larga) {
+        if (principal) return IconButton.filled(tooltip: rotulo, onPressed: aoTocar, icon: Icon(icone));
+        return IconButton(
+          tooltip: rotulo,
+          isSelected: marcado,
+          onPressed: aoTocar,
+          icon: Icon(icone),
+          selectedIcon: Icon(icone, fill: 1),
+        );
+      }
+      if (principal) return FilledButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+      if (marcado) return FilledButton.tonalIcon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+      return OutlinedButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+    }
+
+    final acoesDaEquipe = <Widget>[
+      if (editarOrganograma) ...[
+        acao(Symbols.group_add, 'Nova equipe', () => _novaEquipe(context)),
+        acao(Symbols.file_open, 'Importar modelo…', () => importarModelo(context, sala)),
+        if (equipe != null && ids.contains(equipe.id))
+          IconButton(
+            tooltip: 'Exportar como modelo…',
+            onPressed: () => exportarEquipeComoModelo(context, sala, equipe, alterada: estado.alterada),
+            icon: const Icon(Symbols.ios_share),
+          ),
+        if (equipe != null && equipe.id != 'casa')
+          IconButton(
+            tooltip: 'Excluir equipe',
+            color: cores.error,
+            onPressed: () => _excluirEquipe(context, equipe),
+            icon: const Icon(Symbols.delete),
+          ),
+      ],
+      if (editar && estado.alterada)
+        larga
+            ? TextButton.icon(onPressed: estado.descartar, icon: const Icon(Symbols.undo), label: const Text('Descartar'))
+            : IconButton(tooltip: 'Descartar', onPressed: estado.descartar, icon: const Icon(Symbols.undo)),
+      if (editarOrganograma || (editar && estado.alterada))
+        acao(
+          Symbols.save,
+          estado.alterada ? 'Salvar' : 'Salvo',
+          estado.alterada && !estado.salvando ? estado.salvar : null,
+          principal: true,
+        ),
+    ];
+
     final opcoes = [
       for (final e in estado.equipes) DropdownMenuItem(value: e.id, child: Text(e.nome, overflow: TextOverflow.ellipsis)),
       if (equipe != null && !ids.contains(equipe.id))
         DropdownMenuItem(value: equipe.id, child: Text('${equipe.nome} (nova)', overflow: TextOverflow.ellipsis)),
     ];
-    return LayoutBuilder(builder: (context, limites) {
-      final compacto = limites.maxWidth < 760;
-      Widget acao(IconData icone, String rotulo, VoidCallback? aoTocar, {bool principal = false, bool marcado = false}) {
-        if (compacto) {
-          return IconButton(
-            tooltip: rotulo,
-            isSelected: marcado,
-            onPressed: aoTocar,
-            icon: Icon(icone),
-            style: principal ? IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primaryContainer) : null,
-          );
-        }
-        if (principal) return FilledButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
-        if (marcado) return FilledButton.tonalIcon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
-        return OutlinedButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
-      }
+    final seletor = InputDecorator(
+      decoration: const InputDecoration(labelText: 'Equipe'),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: equipe?.id,
+          isDense: true,
+          isExpanded: true,
+          items: opcoes,
+          onChanged: (id) => _trocarDeEquipe(context, id),
+        ),
+      ),
+    );
 
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Row(children: [
-          const Avatar(cor: Color(Perfil.corBoard), inicial: 'E', tamanho: 32),
-          if (!editar) ...[
-            IconButton(
-              tooltip: estado.vendoRotinas ? 'Organograma' : 'Rotinas',
-              isSelected: estado.vendoRotinas,
-              icon: const Icon(Symbols.schedule),
-              onPressed: () => estado.alternarAba(AbaDaEquipe.rotinas),
-            ),
-            IconButton(
-              tooltip: estado.vendoWorkflows ? 'Organograma' : 'Workflows',
-              isSelected: estado.vendoWorkflows,
-              icon: const Icon(Symbols.alt_route),
-              onPressed: () => estado.alternarAba(AbaDaEquipe.workflows),
-            ),
-          ],
-          if (!editar && estado.aba == AbaDaEquipe.organograma)
-            IconButton(
-              tooltip: 'Personas',
-              icon: const Icon(Symbols.people_alt),
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => SizedBox(
-                  height: MediaQuery.sizeOf(context).height * 0.7,
-                  child: ListenableBuilder(
-                    listenable: Listenable.merge([estado, skills]),
-                    builder: (_, _) =>
-                        _PainelDePersonas(estado: estado, skills: skills, personasVisiveis: true, gerenciar: false),
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: DropdownButton<String>(
-              value: equipe?.id,
-              isExpanded: compacto,
-              items: opcoes,
-              underline: const SizedBox.shrink(),
-              onChanged: (id) async {
-                if (id == null || id == equipe?.id) return;
-                if (estado.alterada && !await confirmar(context, 'Descartar as mudanças?', 'Há mudanças não salvas nesta equipe.')) {
-                  return;
-                }
-                estado.escolher(id);
-              },
-            ),
+    final abas = SegmentedButton<AbaDaEquipe>(
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(
+          value: AbaDaEquipe.organograma,
+          label: const Text('Organograma'),
+          icon: compacta ? null : const Icon(Symbols.account_tree),
+        ),
+        ButtonSegment(
+          value: AbaDaEquipe.rotinas,
+          label: const Text('Rotinas'),
+          icon: compacta ? null : const Icon(Symbols.event_repeat),
+        ),
+        ButtonSegment(
+          value: AbaDaEquipe.workflows,
+          label: const Text('Workflows'),
+          icon: compacta ? null : const Icon(Symbols.schema),
+        ),
+        if (editar)
+          ButtonSegment(
+            value: AbaDaEquipe.skills,
+            label: const Text('Skills'),
+            icon: compacta ? null : const Icon(Symbols.extension),
           ),
-          if (editar && estado.alterada && !compacto)
-            const Padding(padding: EdgeInsets.only(left: 8), child: Chip(label: Text('não salvo'), visualDensity: VisualDensity.compact)),
-          if (!editar) const Spacer(),
-          if (editar)
-            Expanded(
+      ],
+      selected: {aba},
+      onSelectionChanged: (escolha) => estado.verAba(escolha.first),
+    );
+
+    final ferramentas = <Widget>[
+      if (aba == AbaDaEquipe.organograma && editarOrganograma) ...[
+        acao(Symbols.add_box, 'Posição', equipe == null ? null : () => _pedirNovaPosicao(context, estado)),
+        acao(
+          Symbols.auto_awesome_mosaic,
+          'Organizar',
+          equipe == null || equipe.posicoes.isEmpty ? null : () => estado.aplicar(organizar),
+        ),
+        acao(
+          Symbols.person,
+          'Personas',
+          () => estado.alternarPersonas(personasVisiveis),
+          marcado: personasVisiveis,
+        ),
+      ],
+      if (aba == AbaDaEquipe.organograma && !editarOrganograma)
+        larga
+            ? OutlinedButton.icon(
+                onPressed: () => _verPersonas(context),
+                icon: const Icon(Symbols.person),
+                label: const Text('Personas'),
+              )
+            : IconButton(tooltip: 'Personas', onPressed: () => _verPersonas(context), icon: const Icon(Symbols.person)),
+    ];
+
+    final margem = classe.margemLateral;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(margem, Espacos.esp4, margem, Espacos.esp3),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Equipes', style: tema.textTheme.titleLarge),
+              Text(
+                'Organograma, rotinas, workflows e skills de cada equipe',
+                style: tema.textTheme.bodyMedium?.copyWith(color: cores.onSurfaceVariant),
+              ),
+            ]),
+          ),
+          if (acoesDaEquipe.isNotEmpty) ...[
+            const SizedBox(width: Espacos.esp3),
+            Flexible(
+              flex: 2,
               child: Wrap(
                 alignment: WrapAlignment.end,
-                spacing: 6,
-                runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-              acao(Symbols.schedule, 'Rotinas', () => estado.alternarAba(AbaDaEquipe.rotinas), marcado: estado.vendoRotinas),
-              acao(Symbols.alt_route, 'Workflows', () => estado.alternarAba(AbaDaEquipe.workflows),
-                  marcado: estado.vendoWorkflows),
-              acao(Symbols.extension, 'Skills', () => estado.alternarAba(AbaDaEquipe.skills),
-                  marcado: estado.vendoSkills),
-              acao(Symbols.group_add, 'Nova equipe', () => _novaEquipe(context)),
-              acao(Symbols.file_open, 'Importar modelo…', () => importarModelo(context, sala)),
-              if (estado.aba == AbaDaEquipe.organograma) ...[
-                acao(Symbols.add_box, 'Posição', equipe == null ? null : () => _novaPosicao(context)),
-                acao(Symbols.account_tree, 'Organizar',
-                    equipe == null || equipe.posicoes.isEmpty ? null : () => estado.aplicar(organizar)),
-                acao(Symbols.people_alt, 'Personas', () => estado.alternarPersonas(personasVisiveis), marcado: personasVisiveis),
-              ],
-              acao(Symbols.save, estado.alterada ? 'Salvar' : 'Salvo', estado.alterada && !estado.salvando ? estado.salvar : null,
-                  principal: true),
-              if (estado.alterada) acao(Symbols.undo, 'Descartar', estado.descartar),
-              if (equipe != null && ids.contains(equipe.id))
-                IconButton(
-                  tooltip: 'Exportar como modelo…',
-                  onPressed: () => exportarEquipeComoModelo(context, sala, equipe, alterada: estado.alterada),
-                  icon: const Icon(Symbols.ios_share),
-                ),
-              if (equipe != null && equipe.id != 'casa')
-                IconButton(tooltip: 'Excluir equipe', onPressed: () => _excluirEquipe(context, equipe), icon: const Icon(Symbols.delete)),
-                ],
+                spacing: Espacos.esp2,
+                runSpacing: Espacos.esp2,
+                children: acoesDaEquipe,
               ),
             ),
+          ],
         ]),
-      );
-    });
+        const SizedBox(height: Espacos.esp3),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: Espacos.esp3,
+          runSpacing: Espacos.esp2,
+          children: [
+            SizedBox(width: compacta ? double.infinity : 260, child: seletor),
+            if (editar && estado.alterada)
+              Chip(
+                avatar: const Icon(Symbols.edit_note),
+                label: const Text('não salvo'),
+                labelStyle: tema.textTheme.labelMedium,
+                visualDensity: VisualDensity.compact,
+              ),
+            SingleChildScrollView(scrollDirection: Axis.horizontal, child: abas),
+            if (ferramentas.isNotEmpty) Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, children: ferramentas),
+          ],
+        ),
+      ]),
+    );
   }
 }
 
 enum _Gesto { fundo, cartao, alca }
 
 class CanvasDoOrganograma extends StatefulWidget {
-  const CanvasDoOrganograma({super.key, required this.estado, required this.equipe, required this.editar});
+  const CanvasDoOrganograma({
+    super.key,
+    required this.estado,
+    required this.equipe,
+    required this.editar,
+    this.aviso,
+    this.aoCriarPosicao,
+  });
 
   final EstadoEquipes estado;
   final EquipeResumo equipe;
   final bool editar;
+  final String? aviso;
+  final VoidCallback? aoCriarPosicao;
 
   @override
   State<CanvasDoOrganograma> createState() => _CanvasDoOrganogramaState();
@@ -308,6 +474,47 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
   Offset? _pressionado;
   String? _linhaSobre;
   MouseCursor _cursor = SystemMouseCursors.grab;
+  final _menu = MenuController();
+  final _primeiroItem = FocusNode(debugLabel: 'primeiro item do menu do cartão');
+  final _focos = <String, FocusNode>{};
+  String? _menuDe;
+  bool _menuPeloTeclado = false;
+  String? _movendo;
+  EquipeResumo? _antesDeMover;
+
+  @override
+  void didUpdateWidget(CanvasDoOrganograma antigo) {
+    super.didUpdateWidget(antigo);
+    final ids = {for (final p in widget.equipe.posicoes) p.id};
+    final sobras = [for (final id in _focos.keys) if (!ids.contains(id)) id];
+    if (sobras.isNotEmpty) {
+      final nos = [for (final id in sobras) _focos.remove(id)!];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final no in nos) {
+          no.dispose();
+        }
+      });
+    }
+    if (_movendo != null && !ids.contains(_movendo)) {
+      _movendo = null;
+      _antesDeMover = null;
+    }
+    if (_menuDe != null && !ids.contains(_menuDe)) {
+      _menuDe = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _menu.close());
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final no in _focos.values) {
+      no.dispose();
+    }
+    _primeiroItem.dispose();
+    super.dispose();
+  }
+
+  FocusNode _focoDe(String id) => _focos.putIfAbsent(id, () => FocusNode(debugLabel: 'posição $id'));
 
   EquipeResumo get _mostrada {
     final id = _alvo;
@@ -319,6 +526,9 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
   }
 
   void _ajustar() => setState(() => vista = ajustarVista(widget.equipe, tamanho.width, tamanho.height));
+
+  void _mostrar(EquipeResumo equipe, String id) =>
+      setState(() => vista = vistaComCartao(v, equipe, id, tamanho.width, tamanho.height));
 
   _Gesto _gestoEm(Ponto mundo) {
     if (!widget.editar) return _Gesto.fundo;
@@ -347,30 +557,28 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
 
   String _titulo(EquipeResumo e, String id) => e.posicao(id)?.titulo ?? id;
 
-  void _avisar(String texto, {EquipeResumo? desfazerPara}) {
-    final mensageiro = ScaffoldMessenger.maybeOf(context);
-    if (mensageiro == null) return;
-    mensageiro.hideCurrentSnackBar();
-    mensageiro.showSnackBar(SnackBar(
-      content: Text(texto),
-      duration: const Duration(seconds: 4),
-      persist: false,
-      action: desfazerPara == null
-          ? null
-          : SnackBarAction(label: 'Desfazer', onPressed: () => widget.estado.aplicar((_) => desfazerPara)),
-    ));
-  }
+  void _avisarComDesfazer(String texto, {EquipeResumo? desfazerPara}) =>
+      _avisar(context, texto, estado: widget.estado, desfazerPara: desfazerPara);
 
   void _ligar(String chefe, NaPosicao? destino) {
     final antes = widget.estado.atual;
     if (antes == null) return;
     if (destino == null || destino.id == chefe) {
-      _avisar('Solte o + em cima de outro cartão para ligar.');
+      _avisarComDesfazer('Solte o + em cima de outro cartão para ligar.');
       return;
     }
     widget.estado.aplicar((e) => ligarPelaAlca(e, chefe, destino));
     if (widget.estado.erro == null) {
-      _avisar('${_titulo(antes, destino.id)} agora responde a ${_titulo(antes, chefe)}.', desfazerPara: antes);
+      _avisarComDesfazer('${_titulo(antes, destino.id)} agora responde a ${_titulo(antes, chefe)}.', desfazerPara: antes);
+    }
+  }
+
+  void _ligarA(String filho, String chefe) {
+    final antes = widget.estado.atual;
+    if (antes == null) return;
+    widget.estado.aplicar((e) => ligarAbaixo(e, filho, chefe));
+    if (widget.estado.erro == null) {
+      _avisarComDesfazer('${_titulo(antes, filho)} agora responde a ${_titulo(antes, chefe)}.', desfazerPara: antes);
     }
   }
 
@@ -380,16 +588,147 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
     if (antes == null || chefe == null) return;
     widget.estado.aplicar((e) => soltar(e, filho));
     setState(() => _linhaSobre = null);
-    _avisar('${_titulo(antes, filho)} não responde mais a ${_titulo(antes, chefe)}.', desfazerPara: antes);
+    _avisarComDesfazer('${_titulo(antes, filho)} não responde mais a ${_titulo(antes, chefe)}.', desfazerPara: antes);
+  }
+
+  void _remover(String id) {
+    final antes = widget.estado.atual;
+    if (antes == null) return;
+    widget.estado.aplicar((e) => removerPosicao(e, id));
+    if (widget.estado.selecionada == id) widget.estado.selecionar(null);
+    _avisarComDesfazer('${_titulo(antes, id)} saiu do organograma.', desfazerPara: antes);
   }
 
   Future<void> _criarSubordinada(String chefe) async {
     final nome = _titulo(widget.equipe, chefe);
-    final titulo = await pedirTexto(context, titulo: 'Subordinada de $nome', rotulo: 'Título (ex.: executor)', acao: 'Criar');
+    final titulo = await pedirTexto(
+      context,
+      titulo: 'Subordinada de $nome',
+      rotulo: 'Título (ex.: executor)',
+      acao: 'Criar posição',
+    );
     if (titulo != null) widget.estado.novaSubordinada(chefe, titulo);
   }
 
+  void _ativar(String id) => widget.estado.selecionar(widget.estado.selecionada == id ? null : id);
+
+  void _comecarMovimento(String id) {
+    setState(() {
+      _movendo = id;
+      _antesDeMover = widget.estado.atual;
+    });
+    _focoDe(id).requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _movendo == id) _focoDe(id).requestFocus();
+    });
+  }
+
+  void _passo(String id, double dx, double dy) {
+    widget.estado.aplicar((e) => deslocar(e, id, dx * passoDeMover, dy * passoDeMover));
+    final equipe = widget.estado.atual;
+    if (equipe != null) _mostrar(equipe, id);
+  }
+
+  void _terminarMovimento() {
+    final id = _movendo;
+    final antes = _antesDeMover;
+    if (id == null) return;
+    setState(() {
+      _movendo = null;
+      _antesDeMover = null;
+    });
+    final depois = widget.estado.atual;
+    if (antes != null && depois != null && depois.posicao(id) != null && antes.ponto(id) != depois.ponto(id)) {
+      _avisarComDesfazer('${_titulo(depois, id)} mudou de lugar.', desfazerPara: antes);
+    }
+  }
+
+  void _aoFocar(String id, bool focado) {
+    if (!focado) return;
+    if (_movendo != null && _movendo != id) _terminarMovimento();
+    if (FocusManager.instance.highlightMode == FocusHighlightMode.traditional) _mostrar(widget.equipe, id);
+  }
+
+  Offset _naTela(Ponto mundo) => Offset(mundo.x * v.escala + v.dx, mundo.y * v.escala + v.dy);
+
+  void _abrirMenu(String id, Offset local, {bool teclado = false}) {
+    if (!widget.editar || widget.equipe.posicao(id) == null) return;
+    _terminarMovimento();
+    setState(() {
+      _menuDe = id;
+      _menuPeloTeclado = teclado;
+    });
+    _menu.open(position: local);
+    if (teclado) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _primeiroItem.requestFocus();
+      });
+    }
+  }
+
+  void _abrirMenuDoCartao(String id, {bool teclado = false}) {
+    final c = cantoDoCartao(widget.equipe, id);
+    _abrirMenu(
+      id,
+      _naTela((x: c.x + larguraDoCartao - _ladoDoBotaoDeMenu - Espacos.esp1, y: c.y + Espacos.esp1 + _ladoDoBotaoDeMenu)),
+      teclado: teclado,
+    );
+  }
+
+  void _aoFecharMenu() {
+    final id = _menuDe;
+    if (_menuPeloTeclado && id != null && _movendo == null && mounted) _focoDe(id).requestFocus();
+    _menuPeloTeclado = false;
+  }
+
+  List<Widget> _itensDoMenu(ColorScheme cores) {
+    final id = _menuDe;
+    final p = id == null ? null : widget.equipe.posicao(id);
+    if (p == null || !widget.editar) return const [];
+    final chefes = [for (final c in chefesPossiveis(widget.equipe, p.id)) if (c.id != p.respondeA) c];
+    return [
+      MenuItemButton(
+        focusNode: _primeiroItem,
+        leadingIcon: const Icon(Symbols.edit),
+        onPressed: () => widget.estado.selecionar(p.id),
+        child: const Text('Editar posição'),
+      ),
+      SubmenuButton(
+        leadingIcon: const Icon(Symbols.link),
+        menuChildren: [
+          for (final c in chefes)
+            MenuItemButton(onPressed: () => _ligarA(p.id, c.id), child: Text(_rotuloDaOpcao(c))),
+        ],
+        child: const Text('Ligar a…'),
+      ),
+      if (p.respondeA != null)
+        MenuItemButton(
+          leadingIcon: const Icon(Symbols.link_off),
+          onPressed: () => _desligar(p.id),
+          child: const Text('Desfazer a ligação'),
+        ),
+      MenuItemButton(
+        leadingIcon: const Icon(Symbols.open_with),
+        onPressed: () => _comecarMovimento(p.id),
+        child: const Text('Mover'),
+      ),
+      MenuItemButton(
+        leadingIcon: const Icon(Symbols.subdirectory_arrow_right),
+        onPressed: () => _criarSubordinada(p.id),
+        child: const Text('Adicionar subordinada'),
+      ),
+      const Divider(),
+      MenuItemButton(
+        leadingIcon: Icon(Symbols.delete, color: cores.error),
+        style: MenuItemButton.styleFrom(foregroundColor: cores.error),
+        onPressed: () => _remover(p.id),
+        child: const Text('Remover posição'),
+      ),
+    ];
+  }
+
   void _inicio(ScaleStartDetails d) {
+    _terminarMovimento();
     final ponto = d.pointerCount == 1 && _pressionado != null ? _pressionado! : d.localFocalPoint;
     final mundo = paraMundo(v, ponto.dx, ponto.dy);
     comecarPinca();
@@ -448,6 +787,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
   }
 
   void _toque(TapUpDetails d) {
+    _terminarMovimento();
     final mundo = paraMundo(v, d.localPosition.dx, d.localPosition.dy);
     final alca = widget.editar ? alcaEm(widget.equipe, mundo.x, mundo.y) : null;
     if (alca != null) {
@@ -456,7 +796,8 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
     }
     final alvo = alvoEm(widget.equipe, mundo.x, mundo.y);
     if (alvo != null) {
-      widget.estado.selecionar(widget.estado.selecionada == alvo.id ? null : alvo.id);
+      _focoDe(alvo.id).requestFocus();
+      _ativar(alvo.id);
       return;
     }
     final linha = widget.editar ? ligacaoEm(widget.equipe, mundo.x, mundo.y) : null;
@@ -467,18 +808,36 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
     }
   }
 
+  void _toqueSecundario(TapUpDetails d) {
+    final mundo = paraMundo(v, d.localPosition.dx, d.localPosition.dy);
+    final alvo = alvoEm(widget.equipe, mundo.x, mundo.y);
+    if (alvo == null) return;
+    _focoDe(alvo.id).requestFocus();
+    _abrirMenu(alvo.id, d.localPosition);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     if (widget.equipe.posicoes.isEmpty) {
+      final cor = cores.onSurfaceVariant;
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            widget.editar ? 'Equipe sem posições. Use "Posição" para começar.' : 'Equipe sem posições.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: cores.onSurfaceVariant),
-          ),
+          padding: const EdgeInsets.all(Espacos.esp5),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Symbols.account_tree, color: cor),
+            const SizedBox(height: Espacos.esp2),
+            Text(
+              widget.editar ? 'Esta equipe ainda não tem posições.' : 'Equipe sem posições.',
+              textAlign: TextAlign.center,
+              style: tema.textTheme.bodyMedium?.copyWith(color: cor),
+            ),
+            if (widget.aoCriarPosicao case final criar?) ...[
+              const SizedBox(height: Espacos.esp3),
+              FilledButton.tonalIcon(onPressed: criar, icon: const Icon(Symbols.add_box), label: const Text('Nova posição')),
+            ],
+          ]),
         ),
       );
     }
@@ -490,56 +849,145 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
       }
       final equipe = _mostrada;
       final area = tamanhoDoOrganograma(equipe);
-      return Listener(
-        onPointerSignal: rodar,
-        onPointerDown: (e) => _pressionado = e.localPosition,
-        child: MouseRegion(
-          cursor: _cursor,
-          onHover: _aoPassar,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: _toque,
-            onScaleStart: _inicio,
-            onScaleUpdate: _durante,
-            onScaleEnd: _fim,
-            child: ClipRect(
-              child: Stack(children: [
-                Positioned.fill(child: ColoredBox(color: cores.surfaceContainerLowest)),
-                mundo(
-                  largura: area.largura,
-                  altura: area.altura,
-                  child: _Area(
-                    equipe: equipe,
-                    editar: widget.editar,
-                    selecionada: widget.estado.selecionada,
-                    ligandoDe: _gesto == _Gesto.alca ? _alvo : null,
-                    ponteiro: _ponteiro,
-                    destino: _gesto == _Gesto.alca && _ponteiro != null ? alvoEm(equipe, _ponteiro!.x, _ponteiro!.y)?.id : null,
-                    linhaRealcada: _linhaSobre,
-                  ),
-                ),
-                if (widget.editar)
-                  Positioned(
-                    left: 12,
-                    bottom: 12,
-                    right: 260,
-                    child: Text(
-                      'Clique no + para criar uma subordinada, ou arraste-o até outro cartão para ligar · clique numa linha para desfazer a ligação · arraste o fundo para mover · Ctrl + roda para zoom',
-                      style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
+      final movendo = _movendo;
+      final dica = movendo != null
+          ? 'Movendo ${_titulo(equipe, movendo)}: as setas deslocam o cartão, e Enter ou Esc termina.'
+          : widget.editar
+              ? 'Clique no + para criar uma subordinada, ou arraste-o até outro cartão para ligar · clique numa linha para '
+                  'desfazer a ligação · arraste o fundo para mover · Ctrl + roda para zoom · Tab percorre os cartões e '
+                  'Shift+F10 abre o menu do cartão'
+              : widget.aviso;
+      return FocusTraversalGroup(
+        child: MenuAnchor(
+          controller: _menu,
+          onClose: _aoFecharMenu,
+          menuChildren: _itensDoMenu(cores),
+          child: Listener(
+            onPointerSignal: rodar,
+            onPointerDown: (e) {
+              _pressionado = e.localPosition;
+              if (_menu.isOpen) _menu.close();
+            },
+            child: MouseRegion(
+              cursor: _cursor,
+              onHover: _aoPassar,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapUp: _toque,
+                onSecondaryTapUp: widget.editar ? _toqueSecundario : null,
+                onScaleStart: _inicio,
+                onScaleUpdate: _durante,
+                onScaleEnd: _fim,
+                child: ClipRect(
+                  child: Stack(children: [
+                    Positioned.fill(child: ColoredBox(color: cores.surface)),
+                    mundo(
+                      largura: area.largura,
+                      altura: area.altura,
+                      child: MediaQuery.withNoTextScaling(
+                        child: _Area(
+                          equipe: equipe,
+                          editar: widget.editar,
+                          selecionada: widget.estado.selecionada,
+                          ligandoDe: _gesto == _Gesto.alca ? _alvo : null,
+                          ponteiro: _ponteiro,
+                          destino: _gesto == _Gesto.alca && _ponteiro != null
+                              ? alvoEm(equipe, _ponteiro!.x, _ponteiro!.y)?.id
+                              : null,
+                          linhaRealcada: _linhaSobre,
+                          erguida: _gesto == _Gesto.cartao ? _alvo : movendo,
+                          movendo: movendo,
+                          focoDe: _focoDe,
+                          aoAtivar: _ativar,
+                          aoAbrirMenu: widget.editar ? (id) => _abrirMenuDoCartao(id, teclado: true) : null,
+                          aoMover: _passo,
+                          aoTerminar: _terminarMovimento,
+                          aoFocar: _aoFocar,
+                        ),
+                      ),
                     ),
-                  ),
-                Positioned(
-                  right: 12,
-                  bottom: 12,
-                  child: controlesDeZoom(aoAjustar: _ajustar),
+                    if (widget.editar)
+                      mundo(
+                        largura: area.largura,
+                        altura: area.altura,
+                        interativo: true,
+                        child: _BotoesDeMenu(equipe: equipe, aoAbrir: _abrirMenuDoCartao),
+                      ),
+                    Positioned(
+                      left: Espacos.esp3,
+                      right: Espacos.esp3,
+                      bottom: Espacos.esp3,
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Expanded(
+                          child: dica == null
+                              ? const SizedBox.shrink()
+                              : _Dica(texto: dica, icone: widget.editar ? null : Symbols.info),
+                        ),
+                        const SizedBox(width: Espacos.esp3),
+                        controlesDeZoom(aoAjustar: _ajustar),
+                      ]),
+                    ),
+                  ]),
                 ),
-              ]),
+              ),
             ),
           ),
         ),
       );
     });
   }
+}
+
+class _Dica extends StatelessWidget {
+  const _Dica({required this.texto, this.icone});
+
+  final String texto;
+  final IconData? icone;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cor = tema.colorScheme.onSurfaceVariant;
+    return Row(children: [
+      if (icone != null) ...[
+        Icon(icone, size: 20, color: cor),
+        const SizedBox(width: Espacos.esp2),
+      ],
+      Flexible(child: Text(texto, style: tema.textTheme.bodySmall?.copyWith(color: cor))),
+    ]);
+  }
+}
+
+class _BotoesDeMenu extends StatelessWidget {
+  const _BotoesDeMenu({required this.equipe, required this.aoAbrir});
+
+  final EquipeResumo equipe;
+  final void Function(String id) aoAbrir;
+
+  @override
+  Widget build(BuildContext context) => Stack(clipBehavior: Clip.none, children: [
+        for (final p in equipe.posicoes)
+          Positioned(
+            key: ValueKey(p.id),
+            left: cantoDoCartao(equipe, p.id).x + larguraDoCartao - _ladoDoBotaoDeMenu - Espacos.esp1,
+            top: cantoDoCartao(equipe, p.id).y + Espacos.esp1,
+            width: _ladoDoBotaoDeMenu,
+            height: _ladoDoBotaoDeMenu,
+            child: ExcludeFocus(
+              child: IconButton(
+                tooltip: 'Mais opções de ${p.titulo}',
+                iconSize: 20,
+                padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size.square(_ladoDoBotaoDeMenu),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () => aoAbrir(p.id),
+                icon: const Icon(Symbols.more_vert),
+              ),
+            ),
+          ),
+      ]);
 }
 
 class _Area extends StatelessWidget {
@@ -551,6 +999,14 @@ class _Area extends StatelessWidget {
     this.ponteiro,
     this.destino,
     this.linhaRealcada,
+    this.erguida,
+    this.movendo,
+    required this.focoDe,
+    required this.aoAtivar,
+    this.aoAbrirMenu,
+    required this.aoMover,
+    required this.aoTerminar,
+    required this.aoFocar,
   });
 
   final EquipeResumo equipe;
@@ -560,16 +1016,25 @@ class _Area extends StatelessWidget {
   final Ponto? ponteiro;
   final String? destino;
   final String? linhaRealcada;
+  final String? erguida;
+  final String? movendo;
+  final FocusNode Function(String id) focoDe;
+  final void Function(String id) aoAtivar;
+  final void Function(String id)? aoAbrirMenu;
+  final void Function(String id, double dx, double dy) aoMover;
+  final VoidCallback aoTerminar;
+  final void Function(String id, bool focado) aoFocar;
 
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
+    final abrirMenu = aoAbrirMenu;
     return Stack(clipBehavior: Clip.none, children: [
       Positioned.fill(
         child: CustomPaint(
           painter: _Ligacoes(
             equipe: equipe,
-            cor: cores.outlineVariant,
+            cor: cores.outline,
             destaque: cores.primary,
             ligandoDe: ligandoDe,
             ponteiro: ponteiro == null ? null : Offset(ponteiro!.x, ponteiro!.y),
@@ -579,14 +1044,28 @@ class _Area extends StatelessWidget {
       ),
       for (final p in equipe.posicoes) ...[
         Positioned(
+          key: ValueKey('cartao-${p.id}'),
           left: cantoDoCartao(equipe, p.id).x,
           top: cantoDoCartao(equipe, p.id).y,
           width: larguraDoCartao,
           height: alturaDoCartao,
-          child: _Cartao(posicao: p, escolhida: selecionada == p.id || destino == p.id),
+          child: _No(
+            foco: focoDe(p.id),
+            posicao: p,
+            escolhida: selecionada == p.id || destino == p.id,
+            erguida: erguida == p.id,
+            movendo: movendo == p.id,
+            comMenu: abrirMenu != null,
+            aoAtivar: () => aoAtivar(p.id),
+            aoAbrirMenu: abrirMenu == null ? null : () => abrirMenu(p.id),
+            aoMover: (dx, dy) => aoMover(p.id, dx, dy),
+            aoTerminar: aoTerminar,
+            aoFocar: (focado) => aoFocar(p.id, focado),
+          ),
         ),
         if (editar)
           Positioned(
+            key: ValueKey('alca-${p.id}'),
             left: centroDaAlca(equipe, p.id).x - raioDaAlca,
             top: centroDaAlca(equipe, p.id).y - raioDaAlca,
             child: Container(
@@ -606,45 +1085,193 @@ class _Area extends StatelessWidget {
   }
 }
 
+class _AbrirMenuIntent extends Intent {
+  const _AbrirMenuIntent();
+}
+
+class _MoverIntent extends Intent {
+  const _MoverIntent(this.dx, this.dy);
+
+  final double dx;
+  final double dy;
+}
+
+class _TerminarIntent extends Intent {
+  const _TerminarIntent();
+}
+
+class _No extends StatefulWidget {
+  const _No({
+    required this.foco,
+    required this.posicao,
+    required this.escolhida,
+    required this.erguida,
+    required this.movendo,
+    required this.comMenu,
+    required this.aoAtivar,
+    this.aoAbrirMenu,
+    required this.aoMover,
+    required this.aoTerminar,
+    required this.aoFocar,
+  });
+
+  final FocusNode foco;
+  final PosicaoResumo posicao;
+  final bool escolhida;
+  final bool erguida;
+  final bool movendo;
+  final bool comMenu;
+  final VoidCallback aoAtivar;
+  final VoidCallback? aoAbrirMenu;
+  final void Function(double dx, double dy) aoMover;
+  final VoidCallback aoTerminar;
+  final ValueChanged<bool> aoFocar;
+
+  @override
+  State<_No> createState() => _NoState();
+}
+
+class _NoState extends State<_No> {
+  bool _realce = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget;
+    return FocusableActionDetector(
+      focusNode: w.foco,
+      onShowFocusHighlight: (realce) => setState(() => _realce = realce),
+      onFocusChange: w.aoFocar,
+      shortcuts: {
+        if (w.aoAbrirMenu != null) ...{
+          const SingleActivator(LogicalKeyboardKey.f10, shift: true): const _AbrirMenuIntent(),
+          const SingleActivator(LogicalKeyboardKey.contextMenu): const _AbrirMenuIntent(),
+        },
+        if (w.movendo) ...{
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): const _MoverIntent(-1, 0),
+          const SingleActivator(LogicalKeyboardKey.arrowRight): const _MoverIntent(1, 0),
+          const SingleActivator(LogicalKeyboardKey.arrowUp): const _MoverIntent(0, -1),
+          const SingleActivator(LogicalKeyboardKey.arrowDown): const _MoverIntent(0, 1),
+          const SingleActivator(LogicalKeyboardKey.enter): const _TerminarIntent(),
+          const SingleActivator(LogicalKeyboardKey.escape): const _TerminarIntent(),
+        },
+      },
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) {
+          w.aoAtivar();
+          return null;
+        }),
+        _AbrirMenuIntent: CallbackAction<_AbrirMenuIntent>(onInvoke: (_) {
+          w.aoAbrirMenu?.call();
+          return null;
+        }),
+        _MoverIntent: CallbackAction<_MoverIntent>(onInvoke: (i) {
+          w.aoMover(i.dx, i.dy);
+          return null;
+        }),
+        _TerminarIntent: CallbackAction<_TerminarIntent>(onInvoke: (_) {
+          w.aoTerminar();
+          return null;
+        }),
+      },
+      child: Semantics(
+        button: true,
+        selected: w.escolhida,
+        child: _Cartao(
+          posicao: w.posicao,
+          escolhida: w.escolhida,
+          focada: _realce || w.movendo,
+          erguida: w.erguida,
+          comMenu: w.comMenu,
+        ),
+      ),
+    );
+  }
+}
+
 class _Cartao extends StatelessWidget {
-  const _Cartao({required this.posicao, required this.escolhida});
+  const _Cartao({
+    required this.posicao,
+    required this.escolhida,
+    this.focada = false,
+    this.erguida = false,
+    this.comMenu = false,
+  });
 
   final PosicaoResumo posicao;
   final bool escolhida;
+  final bool focada;
+  final bool erguida;
+  final bool comMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
+    final persona = posicao.persona;
+    final perfil = persona == null ? null : Perfil.porChave(persona);
+    final nome = persona == null ? 'vaga' : (posicao.personaNome ?? perfil!.nome);
+    final pausa = perfil?.pausa;
+    final estado = estadoDaPausa(pausa);
+    final destaque = escolhida || focada;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: Espacos.esp3, vertical: Espacos.esp2),
+      decoration: BoxDecoration(
+        color: cores.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(Raios.md),
+        border: Border.all(color: destaque ? cores.primary : cores.outlineVariant, width: destaque ? 2 : 1),
+        boxShadow: erguida ? kElevationToShadow[4] : null,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          persona == null ? const _AvatarVago(tamanho: 26) : Avatar.doPerfil(persona, tamanho: 26),
+          const SizedBox(width: Espacos.esp2),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(posicao.titulo, maxLines: 1, overflow: TextOverflow.ellipsis, style: tema.textTheme.titleSmall),
+              Text(nome, maxLines: 1, overflow: TextOverflow.ellipsis, style: secundario),
+            ]),
+          ),
+          if (comMenu) const SizedBox(width: Espacos.esp5),
+        ]),
+        const Spacer(),
+        Row(children: [
+          if (estado != null && pausa != null) ...[
+            Flexible(child: RotuloDeEstado(estado: estado, rotulo: nomesDePausa[pausa] ?? pausa)),
+            const SizedBox(width: Espacos.esp2),
+          ],
+          Expanded(
+            child: Text(
+              posicao.capacidades.map((c) => nomesDeCapacidade[c] ?? c).join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: secundario,
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _AvatarVago extends StatelessWidget {
+  const _AvatarVago({required this.tamanho});
+
+  final double tamanho;
 
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
-    final persona = posicao.persona;
-    final nome = persona == null ? 'vaga' : (posicao.personaNome ?? Perfil.porChave(persona).nome);
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+      width: tamanho,
+      height: tamanho,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: cores.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: escolhida ? cores.primary : cores.outlineVariant, width: escolhida ? 2 : 1),
+        shape: BoxShape.circle,
+        border: Border.all(color: cores.outlineVariant),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          persona == null
-              ? Avatar(cor: cores.outlineVariant, inicial: '?', tamanho: 26)
-              : Avatar.doPerfil(persona, tamanho: 26),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(posicao.titulo, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(nome, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
-            ]),
-          ),
-        ]),
-        const Spacer(),
-        Text(
-          posicao.capacidades.map((c) => nomesDeCapacidade[c] ?? c).join(' · '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: cores.onSurfaceVariant, fontSize: 11),
-        ),
-      ]),
+      child: Icon(Symbols.person, size: 16, color: cores.onSurfaceVariant),
     );
   }
 }
@@ -700,6 +1327,41 @@ class _Ligacoes extends CustomPainter {
       antigo.linhaRealcada != linhaRealcada;
 }
 
+class _CabecalhoDoPainel extends StatelessWidget {
+  const _CabecalhoDoPainel({required this.titulo, this.subtitulo, this.acoes = const []});
+
+  final String titulo;
+  final String? subtitulo;
+  final List<Widget> acoes;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Row(children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(titulo, style: tema.textTheme.titleMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
+          if (subtitulo != null)
+            Text(subtitulo!, style: tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.onSurfaceVariant)),
+        ]),
+      ),
+      ...acoes,
+    ]);
+  }
+}
+
+class _TituloDeSecao extends StatelessWidget {
+  const _TituloDeSecao(this.texto);
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: Espacos.esp4, bottom: Espacos.esp1),
+        child: Text(texto, style: Theme.of(context).textTheme.titleSmall),
+      );
+}
+
 class _PainelDaPosicao extends StatefulWidget {
   const _PainelDaPosicao({super.key, required this.estado, required this.skills, required this.posicao});
 
@@ -725,6 +1387,14 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
   void _editar(PosicaoResumo Function(PosicaoResumo) mudar) =>
       widget.estado.aplicar((e) => editarPosicao(e, widget.posicao.id, mudar));
 
+  void _remover() {
+    final antes = widget.estado.atual;
+    final p = widget.posicao;
+    widget.estado.aplicar((e) => removerPosicao(e, p.id));
+    widget.estado.selecionar(null);
+    if (antes != null) _avisar(context, '${p.titulo} saiu do organograma.', estado: widget.estado, desfazerPara: antes);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.posicao;
@@ -732,17 +1402,21 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
     final equipe = widget.estado.atual!;
     final chefe = p.respondeA == null ? null : equipe.posicao(p.respondeA!);
     final comandos = p.capacidades.contains('comandos');
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      Row(children: [
-        Expanded(child: Text('Posição ${p.id}', style: Theme.of(context).textTheme.titleSmall)),
-        IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: () => widget.estado.selecionar(null)),
-      ]),
+    return ListView(padding: const EdgeInsets.all(Espacos.esp4), children: [
+      _CabecalhoDoPainel(
+        titulo: p.titulo.trim().isEmpty ? 'Posição' : p.titulo,
+        subtitulo: 'Posição ${p.id}',
+        acoes: [
+          IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: () => widget.estado.selecionar(null)),
+        ],
+      ),
+      const SizedBox(height: Espacos.esp4),
       TextField(
         controller: _titulo,
         decoration: const InputDecoration(labelText: 'Título'),
         onChanged: (v) => _editar((x) => x.copiar(titulo: v)),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: Espacos.esp3),
       DropdownButtonFormField<String>(
         initialValue: p.persona ?? '',
         isExpanded: true,
@@ -753,7 +1427,7 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         ],
         onChanged: (v) => _editar((x) => x.copiar(persona: () => v == null || v.isEmpty ? null : v)),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: Espacos.esp3),
       DropdownButtonFormField<String>(
         key: ValueKey('chefe-${p.id}-${chefe?.id}'),
         initialValue: chefe?.id ?? '',
@@ -765,20 +1439,24 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         ],
         onChanged: (v) => widget.estado.aplicar((e) => v == null || v.isEmpty ? soltar(e, p.id) : ligarAbaixo(e, p.id, v)),
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: Espacos.esp2),
       Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(
           onPressed: () async {
-            final titulo = await pedirTexto(context, titulo: 'Subordinada de ${p.titulo}', rotulo: 'Título (ex.: executor)');
+            final titulo = await pedirTexto(
+              context,
+              titulo: 'Subordinada de ${p.titulo}',
+              rotulo: 'Título (ex.: executor)',
+              acao: 'Criar posição',
+            );
             if (titulo != null) widget.estado.novaSubordinada(p.id, titulo);
           },
           icon: const Icon(Symbols.subdirectory_arrow_right),
           label: const Text('Adicionar subordinada'),
         ),
       ),
-      const SizedBox(height: 8),
-      Text('Capacidades', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+      const _TituloDeSecao('Capacidades'),
       for (final c in capacidadesDePosicao)
         CheckboxListTile(
           dense: true,
@@ -809,7 +1487,7 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         onChanged: (v) => _editar((x) => x.copiar(delegaDireto: v)),
       ),
       _DepoisDaEntrega(estado: widget.estado, equipe: equipe, posicao: p),
-      const SizedBox(height: 12),
+      const SizedBox(height: Espacos.esp3),
       SecaoDeSkills(
         itens: skillsDaPosicao(widget.skills.lista, p),
         anexaveis: anexaveis(widget.skills.lista, p.skills),
@@ -817,30 +1495,35 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         aoTirar: (id) => widget.estado.aplicar((e) => tirarSkillDaPosicao(e, p.id, id)),
       ),
       if (comandos) ...[
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp3),
         DropdownButtonFormField<String>(
           initialValue: politicasDeAprovacao.containsKey(p.aprovacao) ? p.aprovacao : 'sempre',
           isExpanded: true,
           decoration: const InputDecoration(labelText: 'Aprovação de comando'),
-          items: [for (final MapEntry(:key, :value) in politicasDeAprovacao.entries) DropdownMenuItem(value: key, child: Text(value))],
+          items: [
+            for (final MapEntry(:key, :value) in politicasDeAprovacao.entries) DropdownMenuItem(value: key, child: Text(value)),
+          ],
           onChanged: (v) => _editar((x) => x.copiar(aprovacao: v)),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp3),
         TextField(
           controller: _diretorio,
-          decoration: const InputDecoration(labelText: 'Diretório dos comandos (vazio = pasta de dados)'),
+          decoration: const InputDecoration(
+            labelText: 'Diretório dos comandos',
+            helperText: 'Vazio usa a pasta de dados.',
+          ),
           onChanged: (v) => _editar((x) => x.copiar(diretorio: () => v.trim().isEmpty ? null : v.trim())),
         ),
       ],
-      const SizedBox(height: 20),
-      OutlinedButton.icon(
-        style: OutlinedButton.styleFrom(foregroundColor: cores.error),
-        onPressed: () {
-          widget.estado.aplicar((e) => removerPosicao(e, p.id));
-          widget.estado.selecionar(null);
-        },
-        icon: const Icon(Symbols.delete),
-        label: const Text('Remover posição'),
+      const SizedBox(height: Espacos.esp5),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(foregroundColor: cores.error, side: BorderSide(color: cores.error)),
+          onPressed: _remover,
+          icon: const Icon(Symbols.delete),
+          label: const Text('Remover posição'),
+        ),
       ),
     ]);
   }
@@ -877,53 +1560,61 @@ class _DepoisDaEntrega extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final politica = posicao.politica;
     final outras = [for (final x in equipe.posicoes) if (x.id != posicao.id) x];
     final erros = errosDaPolitica(equipe, posicao);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SizedBox(height: 12),
-      Text('Depois da entrega', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+      const _TituloDeSecao('Depois da entrega'),
       if (politica.isEmpty)
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text('a entrega vai direto para você', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp1),
+          child: Text('a entrega vai direto para você', style: secundario),
         ),
       for (final (i, etapa) in politica.indexed)
         ListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
-          leading: Text('${i + 1}.'),
-          minLeadingWidth: 16,
+          leading: Text(
+            '${i + 1}.',
+            style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+          ),
+          minLeadingWidth: Espacos.esp4,
           title: Text(rotuloDaEtapa(etapa, equipe, _nomeDaPersona)),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             IconButton(
               tooltip: 'Subir',
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Symbols.arrow_upward, size: 18),
+              icon: const Icon(Symbols.arrow_upward, size: 20),
               onPressed: i == 0 ? null : () => _aplicar((e) => moverEtapa(e, posicao.id, i, i - 1)),
             ),
             IconButton(
               tooltip: 'Descer',
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Symbols.arrow_downward, size: 18),
+              icon: const Icon(Symbols.arrow_downward, size: 20),
               onPressed: i == politica.length - 1 ? null : () => _aplicar((e) => moverEtapa(e, posicao.id, i, i + 1)),
             ),
             IconButton(
               tooltip: 'Remover etapa',
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Symbols.close, size: 18),
+              icon: const Icon(Symbols.close, size: 20),
               onPressed: () => _aplicar((e) => removerEtapa(e, posicao.id, i)),
             ),
           ]),
         ),
       for (final erro in erros)
         Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text(erro, style: TextStyle(color: cores.error, fontSize: 12)),
+          padding: const EdgeInsets.only(bottom: Espacos.esp1),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Symbols.error, size: 16, color: cores.error),
+            const SizedBox(width: Espacos.esp1),
+            Expanded(child: Text(erro, style: tema.textTheme.bodySmall?.copyWith(color: cores.error))),
+          ]),
         ),
-      const SizedBox(height: 4),
-      Wrap(spacing: 8, runSpacing: 8, children: [
+      const SizedBox(height: Espacos.esp1),
+      Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, children: [
         _menu('Adicionar revisão', Symbols.rate_review, [
           for (final x in outras) (_rotuloDaOpcao(x), EtapaDePolitica.revisaoPor(x.id)),
           ('Board da equipe', const EtapaDePolitica.revisaoDoBoard()),
@@ -958,7 +1649,6 @@ class _PainelDePersonas extends StatelessWidget {
     if (limites != null) estado.salvarOrcamento(p.chave, usd: limites.usd, tokens: limites.tokens);
   }
 
-
   Future<void> _nova(BuildContext context) async {
     final dados = await showDialog<_NovaPersona>(context: context, builder: (_) => const _DialogoNovaPersona());
     if (dados == null) return;
@@ -968,65 +1658,89 @@ class _PainelDePersonas extends StatelessWidget {
   Future<void> _excluir(BuildContext context, Perfil p) async {
     final confirmacao = await pedirTexto(
       context,
-      titulo: 'Excluir ${p.nome}?',
+      titulo: 'Excluir persona ${p.nome}?',
       rotulo: 'Digite ${p.nome} para confirmar',
       explicacao: 'As posições dela ficam vagas e as conversas viram só leitura. A memória fica guardada, e o nome não pode ser reusado.',
-      acao: 'Excluir',
+      acao: 'Excluir persona',
+      destrutivo: true,
     );
     if (confirmacao != null) estado.excluirPersona(p.chave, confirmacao);
   }
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      Row(children: [
-        Expanded(child: Text('Personas', style: Theme.of(context).textTheme.titleSmall)),
-        if (gerenciar) ...[
-          FilledButton.icon(onPressed: () => _nova(context), icon: const Icon(Symbols.person_add_alt), label: const Text('Nova')),
-          IconButton(tooltip: 'Ocultar personas', icon: const Icon(Symbols.close), onPressed: () => estado.alternarPersonas(personasVisiveis)),
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final semanticas = CoresSemanticas.de(context);
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
+    final numeros = secundario?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    return ListView(padding: const EdgeInsets.all(Espacos.esp4), children: [
+      _CabecalhoDoPainel(
+        titulo: 'Personas',
+        acoes: [
+          if (gerenciar) ...[
+            FilledButton.tonalIcon(onPressed: () => _nova(context), icon: const Icon(Symbols.person_add), label: const Text('Nova')),
+            IconButton(
+              tooltip: 'Ocultar personas',
+              icon: const Icon(Symbols.close),
+              onPressed: () => estado.alternarPersonas(personasVisiveis),
+            ),
+          ],
         ],
-      ]),
-      const SizedBox(height: 4),
-      if (gerenciar) Text('Clique num cartão para editar a posição.', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
-      const SizedBox(height: 8),
+      ),
+      if (gerenciar)
+        Padding(
+          padding: const EdgeInsets.only(top: Espacos.esp1),
+          child: Text('Clique num cartão para editar a posição.', style: secundario),
+        ),
+      const SizedBox(height: Espacos.esp2),
       for (final p in Perfil.todos)
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp2),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Avatar.doPerfil(p.chave, tamanho: 28),
-            const SizedBox(width: 10),
+            const SizedBox(width: Espacos.esp3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(p.nome),
+                Text(p.nome, style: tema.textTheme.titleSmall),
                 Text(
-                  [p.papel, p.modelo, if (p.gerandoPerfil) 'gerando perfil…', if (p.pausa != null) nomesDePausa[p.pausa] ?? p.pausa]
+                  [p.papel, p.modelo, if (p.gerandoPerfil) 'gerando perfil…']
                       .whereType<String>()
                       .where((s) => s.isNotEmpty)
                       .join(' · '),
-                  style: TextStyle(color: p.pausa != null ? cores.error : cores.onSurfaceVariant, fontSize: 12),
+                  style: secundario,
                 ),
+                if (estadoDaPausa(p.pausa) case final estadoDaPersona?)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Espacos.esp1),
+                    child: RotuloDeEstado(estado: estadoDaPersona, rotulo: nomesDePausa[p.pausa] ?? p.pausa!),
+                  ),
                 Text(
                   'tarefas no mês: US\$ ${p.gastoMesUSD.toStringAsFixed(2)}'
                   '${p.orcamentoMensalUSD != null ? ' de US\$ ${p.orcamentoMensalUSD!.toStringAsFixed(2)}' : ' · sem limite'}',
-                  style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
+                  style: numeros,
                 ),
                 Text(
                   'tokens no mês: ${formatarTokens(p.tokensMes)}'
                   '${p.orcamentoMensalTokens != null ? ' de ${formatarTokens(p.orcamentoMensalTokens!)}' : ' · sem limite'}',
-                  style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
+                  style: numeros,
                 ),
                 if (p.proporcaoDoOrcamento case final proporcao?)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: Espacos.esp1),
                     child: LinearProgressIndicator(
                       value: proporcao,
-                      color: proporcao >= 1 ? cores.error : proporcao >= 0.8 ? const Color(0xFFE0A458) : const Color(0xFF4FAE7C),
+                      backgroundColor: cores.surfaceContainerHighest,
+                      color: proporcao >= 1
+                          ? cores.error
+                          : proporcao >= 0.8
+                              ? semanticas.aviso.cor
+                              : semanticas.sucesso.cor,
                     ),
                   ),
                 if (gerenciar || skillsDaPersona(skills.lista, p).isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.only(top: Espacos.esp2),
                     child: SecaoDeSkills(
                       itens: skillsDaPersona(skills.lista, p),
                       anexaveis: anexaveis(skills.lista, p.skills),
@@ -1044,7 +1758,12 @@ class _PainelDePersonas extends StatelessWidget {
             if (gerenciar)
               IconButton(tooltip: 'Orçamento', icon: const Icon(Symbols.savings), onPressed: () => _orcamento(context, p)),
             if (gerenciar && p.excluivel)
-              IconButton(tooltip: 'Excluir ${p.nome}', icon: const Icon(Symbols.person_remove), onPressed: () => _excluir(context, p)),
+              IconButton(
+                tooltip: 'Excluir ${p.nome}',
+                color: cores.error,
+                icon: const Icon(Symbols.person_remove),
+                onPressed: () => _excluir(context, p),
+              ),
           ]),
         ),
     ]);
@@ -1053,7 +1772,16 @@ class _PainelDePersonas extends StatelessWidget {
 
 typedef _NovaPersona = ({String nome, String titulo, String base, String? modelo, String? cor});
 
-const _coresSugeridas = ['#e0a458', '#9a6ee8', '#4fae7c', '#e06a8a', '#58b7c9', '#c9a227', '#5b8def', '#d9774b'];
+const _coresSugeridas = [
+  ('#e0a458', 'âmbar'),
+  ('#9a6ee8', 'roxo'),
+  ('#4fae7c', 'verde'),
+  ('#e06a8a', 'rosa'),
+  ('#58b7c9', 'ciano'),
+  ('#c9a227', 'mostarda'),
+  ('#5b8def', 'azul'),
+  ('#d9774b', 'laranja'),
+];
 
 class _DialogoNovaPersona extends StatefulWidget {
   const _DialogoNovaPersona();
@@ -1068,6 +1796,7 @@ class _DialogoNovaPersonaState extends State<_DialogoNovaPersona> {
   final _base = TextEditingController();
   String? _modelo;
   String? _cor;
+  bool _tentou = false;
 
   @override
   void dispose() {
@@ -1077,62 +1806,104 @@ class _DialogoNovaPersonaState extends State<_DialogoNovaPersona> {
     super.dispose();
   }
 
+  String? get _erroDoNome =>
+      _tentou && _nome.text.trim().isEmpty ? 'Falta o nome. Escreva como ela vai aparecer nas conversas.' : null;
+
+  String? get _erroDaBase =>
+      _tentou && _base.text.trim().isEmpty ? 'Falta a descrição. Sem ela não dá para gerar o perfil.' : null;
+
+  void _revalidar(String _) {
+    if (_tentou) setState(() {});
+  }
+
+  void _criar() {
+    if (_nome.text.trim().isEmpty || _base.text.trim().isEmpty) {
+      setState(() => _tentou = true);
+      return;
+    }
+    Navigator.pop<_NovaPersona>(
+      context,
+      (nome: _nome.text, titulo: _titulo.text, base: _base.text, modelo: _modelo, cor: _cor),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Nova persona'),
-        content: SizedBox(
-          width: 440,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              TextField(controller: _nome, maxLength: 40, decoration: const InputDecoration(labelText: 'Nome', counterText: '')),
-              const SizedBox(height: 8),
-              TextField(controller: _titulo, maxLength: 60, decoration: const InputDecoration(labelText: 'Papel curto (aparece na lista)', counterText: '')),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _base,
-                minLines: 4,
-                maxLines: 8,
-                maxLength: 4000,
-                decoration: const InputDecoration(labelText: 'Quem é, que papel tem com você e qual é o jeito dela'),
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return AlertDialog(
+      title: const Text('Nova persona'),
+      content: SizedBox(
+        width: 440,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(
+              controller: _nome,
+              maxLength: 40,
+              onChanged: _revalidar,
+              decoration: InputDecoration(
+                labelText: 'Nome',
+                helperText: 'Aparece nas conversas e no organograma.',
+                errorText: _erroDoNome,
+                counterText: '',
               ),
-              DropdownButtonFormField<String>(
-                initialValue: _modelo,
-                decoration: const InputDecoration(labelText: 'Modelo'),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('padrão')),
-                  DropdownMenuItem(value: 'sonnet', child: Text('Sonnet')),
-                  DropdownMenuItem(value: 'opus', child: Text('Opus')),
-                ],
-                onChanged: (v) => setState(() => _modelo = v),
+            ),
+            const SizedBox(height: Espacos.esp3),
+            TextField(
+              controller: _titulo,
+              maxLength: 60,
+              decoration: const InputDecoration(labelText: 'Papel curto (aparece na lista)', counterText: ''),
+            ),
+            const SizedBox(height: Espacos.esp3),
+            TextField(
+              controller: _base,
+              minLines: 4,
+              maxLines: 8,
+              maxLength: 4000,
+              onChanged: _revalidar,
+              decoration: InputDecoration(
+                labelText: 'Quem é, que papel tem com você e qual é o jeito dela',
+                helperText: 'O perfil completo é gerado a partir deste texto.',
+                errorText: _erroDaBase,
+                alignLabelWithHint: true,
               ),
-              const SizedBox(height: 12),
-              Wrap(spacing: 8, children: [
-                ChoiceChip(label: const Text('cor automática'), selected: _cor == null, onSelected: (_) => setState(() => _cor = null)),
-                for (final c in _coresSugeridas)
-                  ChoiceChip(
-                    label: const SizedBox(width: 12, height: 12),
-                    avatar: CircleAvatar(backgroundColor: Color(corDeHex(c))),
-                    selected: _cor == c,
-                    onSelected: (_) => setState(() => _cor = c),
-                  ),
-              ]),
+            ),
+            const SizedBox(height: Espacos.esp3),
+            DropdownButtonFormField<String>(
+              initialValue: _modelo,
+              decoration: const InputDecoration(labelText: 'Modelo'),
+              items: const [
+                DropdownMenuItem(value: null, child: Text('padrão')),
+                DropdownMenuItem(value: 'sonnet', child: Text('Sonnet')),
+                DropdownMenuItem(value: 'opus', child: Text('Opus')),
+              ],
+              onChanged: (v) => setState(() => _modelo = v),
+            ),
+            const SizedBox(height: Espacos.esp4),
+            Text('Cor', style: tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.onSurfaceVariant)),
+            const SizedBox(height: Espacos.esp2),
+            Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp2, children: [
+              ChoiceChip(
+                label: const Text('automática'),
+                selected: _cor == null,
+                onSelected: (_) => setState(() => _cor = null),
+              ),
+              for (final (hex, nome) in _coresSugeridas)
+                ChoiceChip(
+                  label: Text(nome),
+                  avatar: CircleAvatar(backgroundColor: Color(corDeHex(hex))),
+                  selected: _cor == hex,
+                  onSelected: (_) => setState(() => _cor = hex),
+                ),
             ]),
-          ),
+          ]),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              if (_nome.text.trim().isEmpty || _base.text.trim().isEmpty) return;
-              Navigator.pop<_NovaPersona>(
-                context,
-                (nome: _nome.text, titulo: _titulo.text, base: _base.text, modelo: _modelo, cor: _cor),
-              );
-            },
-            child: const Text('Criar'),
-          ),
-        ],
-      );
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(onPressed: _criar, child: const Text('Criar')),
+      ],
+    );
+  }
 }
 
 class _DetalheDaPosicao extends StatelessWidget {
@@ -1144,55 +1915,64 @@ class _DetalheDaPosicao extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final secundario = tema.textTheme.bodySmall?.copyWith(color: tema.colorScheme.onSurfaceVariant);
     final chefe = posicao.respondeA == null ? null : equipe.posicao(posicao.respondeA!);
     final abertas = sala.tarefas.lista
         .where((t) => t.equipe == equipe.id && t.posicao == posicao.id && t.status != 'concluida' && t.status != 'cancelada')
         .toList();
-    return Material(
-      color: cores.surfaceContainerHighest,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(posicao.titulo, style: Theme.of(context).textTheme.titleSmall)),
-              IconButton(icon: const Icon(Symbols.close), onPressed: () => sala.equipes.selecionar(null)),
-            ]),
-            Text('Persona: ${posicao.persona == null ? 'vaga' : Perfil.porChave(posicao.persona!).nome}'),
-            Text('Responde a: ${chefe?.titulo ?? 'ninguém (solta, responde a você)'}'),
-            Text('Capacidades: ${posicao.capacidades.map((c) => nomesDeCapacidade[c] ?? c).join(', ')}'),
-            if (posicao.capacidades.contains('comandos')) Text('Aprovação: ${politicasDeAprovacao[posicao.aprovacao] ?? posicao.aprovacao}'),
-            if (posicao.politica.isNotEmpty) ...[
-              const Text('Depois da entrega:'),
-              for (final (i, etapa) in posicao.politica.indexed)
-                Text('${i + 1}. ${rotuloDaEtapa(etapa, equipe, _nomeDaPersona)}'),
-            ],
-            if (posicao.skills.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SecaoDeSkills(itens: skillsDaPosicao(sala.skills.lista, posicao), anexaveis: const []),
-            ],
-            if (abertas.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              for (final t in abertas.take(5))
-                InkWell(
-                  onTap: () {
-                    sala.tarefas.escolherEquipe(equipe.id);
-                    sala.ir(Tela.tarefas);
-                    sala.tarefas.abrir(t.id);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Text('#${t.id} ${t.titulo} · ${nomesDeStatus[t.status] ?? t.status}',
-                        style: TextStyle(color: cores.primary)),
-                  ),
-                ),
-            ],
+    Widget campo(String rotulo, String valor) => Padding(
+          padding: const EdgeInsets.only(bottom: Espacos.esp2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(rotulo, style: secundario),
+            Text(valor, style: tema.textTheme.bodyMedium),
           ]),
-        ),
+        );
+    return ListView(padding: const EdgeInsets.all(Espacos.esp4), children: [
+      _CabecalhoDoPainel(
+        titulo: posicao.titulo,
+        subtitulo: 'Posição ${posicao.id}',
+        acoes: [
+          IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: () => sala.equipes.selecionar(null)),
+        ],
       ),
-    );
+      const SizedBox(height: Espacos.esp3),
+      campo('Persona', posicao.persona == null ? 'vaga' : Perfil.porChave(posicao.persona!).nome),
+      campo('Responde a', chefe?.titulo ?? 'ninguém (solta, responde a você)'),
+      campo('Capacidades', posicao.capacidades.map((c) => nomesDeCapacidade[c] ?? c).join(', ')),
+      if (posicao.capacidades.contains('comandos'))
+        campo('Aprovação', politicasDeAprovacao[posicao.aprovacao] ?? posicao.aprovacao),
+      if (posicao.politica.isNotEmpty)
+        campo(
+          'Depois da entrega',
+          [
+            for (final (i, etapa) in posicao.politica.indexed) '${i + 1}. ${rotuloDaEtapa(etapa, equipe, _nomeDaPersona)}',
+          ].join('\n'),
+        ),
+      if (posicao.skills.isNotEmpty) ...[
+        const SizedBox(height: Espacos.esp2),
+        SecaoDeSkills(itens: skillsDaPosicao(sala.skills.lista, posicao), anexaveis: const []),
+      ],
+      if (abertas.isNotEmpty) ...[
+        const _TituloDeSecao('Tarefas abertas'),
+        for (final t in abertas.take(5))
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text('#${t.id} ${t.titulo}', maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Align(
+              alignment: Alignment.centerLeft,
+              child: RotuloDeEstado(estado: t.status, rotulo: nomesDeStatus[t.status] ?? t.status),
+            ),
+            trailing: const Icon(Symbols.chevron_right),
+            onTap: () {
+              sala.tarefas.escolherEquipe(equipe.id);
+              sala.ir(Tela.tarefas);
+              sala.tarefas.abrir(t.id);
+            },
+          ),
+      ],
+    ]);
   }
 }
 
@@ -1201,9 +1981,11 @@ Future<String?> pedirTexto(
   required String titulo,
   required String rotulo,
   String? explicacao,
+  String? ajuda,
   String acao = 'Ok',
   bool vazioVale = false,
   bool multilinha = false,
+  bool destrutivo = false,
 }) =>
     showDialog<String>(
       context: context,
@@ -1211,9 +1993,11 @@ Future<String?> pedirTexto(
         titulo: titulo,
         rotulo: rotulo,
         explicacao: explicacao,
+        ajuda: ajuda,
         acao: acao,
         vazioVale: vazioVale,
         multilinha: multilinha,
+        destrutivo: destrutivo,
       ),
     );
 
@@ -1222,17 +2006,21 @@ class _DialogoDeTexto extends StatefulWidget {
     required this.titulo,
     required this.rotulo,
     this.explicacao,
+    this.ajuda,
     required this.acao,
     this.vazioVale = false,
     this.multilinha = false,
+    this.destrutivo = false,
   });
 
   final String titulo;
   final String rotulo;
   final String? explicacao;
+  final String? ajuda;
   final String acao;
   final bool vazioVale;
   final bool multilinha;
+  final bool destrutivo;
 
   @override
   State<_DialogoDeTexto> createState() => _DialogoDeTextoState();
@@ -1250,37 +2038,60 @@ class _DialogoDeTextoState extends State<_DialogoDeTexto> {
   void _confirmar() => Navigator.pop(context, _controle.text.trim().isEmpty && !widget.vazioVale ? null : _controle.text);
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: Text(widget.titulo),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (widget.explicacao != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(widget.explicacao!)),
-          TextField(
-            controller: _controle,
-            autofocus: true,
-            minLines: widget.multilinha ? 3 : 1,
-            maxLines: widget.multilinha ? 8 : 1,
-            decoration: InputDecoration(labelText: widget.rotulo),
-            onSubmitted: (_) => _confirmar(),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(onPressed: _confirmar, child: Text(widget.acao)),
-        ],
-      );
+  Widget build(BuildContext context) {
+    final cores = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text(widget.titulo),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (widget.explicacao != null)
+          Padding(padding: const EdgeInsets.only(bottom: Espacos.esp3), child: Text(widget.explicacao!)),
+        TextField(
+          controller: _controle,
+          autofocus: true,
+          minLines: widget.multilinha ? 3 : 1,
+          maxLines: widget.multilinha ? 8 : 1,
+          decoration: InputDecoration(labelText: widget.rotulo, helperText: widget.ajuda),
+          onSubmitted: widget.destrutivo ? null : (_) => _confirmar(),
+        ),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(
+          style: widget.destrutivo
+              ? FilledButton.styleFrom(backgroundColor: cores.error, foregroundColor: cores.onError)
+              : null,
+          onPressed: _confirmar,
+          child: Text(widget.acao),
+        ),
+      ],
+    );
+  }
 }
 
-Future<bool> confirmar(BuildContext context, String titulo, String texto) async =>
+Future<bool> confirmar(
+  BuildContext context,
+  String titulo,
+  String texto, {
+  String acao = 'Confirmar',
+  bool destrutivo = false,
+}) async =>
     await showDialog<bool>(
       context: context,
-      builder: (contexto) => AlertDialog(
-        title: Text(titulo),
-        content: Text(texto),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(contexto, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(contexto, true), child: const Text('Confirmar')),
-        ],
-      ),
+      builder: (contexto) {
+        final cores = Theme.of(contexto).colorScheme;
+        return AlertDialog(
+          title: Text(titulo),
+          content: Text(texto),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(contexto, false), child: const Text('Cancelar')),
+            FilledButton(
+              style: destrutivo ? FilledButton.styleFrom(backgroundColor: cores.error, foregroundColor: cores.onError) : null,
+              onPressed: () => Navigator.pop(contexto, true),
+              child: Text(acao),
+            ),
+          ],
+        );
+      },
     ) ==
     true;
 
@@ -1381,23 +2192,27 @@ class _DialogoDeOrcamentoState extends State<_DialogoDeOrcamento> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(
             'Neste mês, em tarefas: US\$ ${p.gastoMesUSD.toStringAsFixed(2)} e ${formatarTokens(p.tokensMes)}. '
-            'O que estourar primeiro segura as tarefas. Vazio = sem limite.',
+            'O que estourar primeiro segura as tarefas.',
+            style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: Espacos.esp4),
           TextField(
             controller: _usd,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Limite mensal em US\$'),
+            decoration: const InputDecoration(labelText: 'Limite mensal em US\$', helperText: 'Vazio fica sem limite.'),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: Espacos.esp3),
           TextField(
             controller: _tokens,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Limite mensal em tokens (ex.: 2000000)'),
+            decoration: InputDecoration(
+              labelText: 'Limite mensal em tokens (ex.: 2000000)',
+              helperText: 'Vazio fica sem limite.',
+              errorText: _erro,
+            ),
             onSubmitted: (_) => _salvar(),
           ),
-          if (_erro != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_erro!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         ]),
       ),
       actions: [

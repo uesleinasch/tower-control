@@ -37,19 +37,22 @@ mixin PanEZoom<T extends StatefulWidget> on State<T> {
     vista = deslocarVista(nova, d.focalPointDelta.dx, d.focalPointDelta.dy);
   }
 
-  Widget mundo({required double largura, required double altura, required Widget child}) => OverflowBox(
-        alignment: Alignment.topLeft,
-        minWidth: 0,
-        minHeight: 0,
-        maxWidth: double.infinity,
-        maxHeight: double.infinity,
-        child: Transform(
-          transform: Matrix4.identity()
-            ..translateByDouble(v.dx, v.dy, 0, 1)
-            ..scaleByDouble(v.escala, v.escala, 1, 1),
-          child: IgnorePointer(child: SizedBox(width: largura, height: altura, child: child)),
-        ),
-      );
+  Widget mundo({required double largura, required double altura, required Widget child, bool interativo = false}) {
+    final area = SizedBox(width: largura, height: altura, child: child);
+    return OverflowBox(
+      alignment: Alignment.topLeft,
+      minWidth: 0,
+      minHeight: 0,
+      maxWidth: double.infinity,
+      maxHeight: double.infinity,
+      child: Transform(
+        transform: Matrix4.identity()
+          ..translateByDouble(v.dx, v.dy, 0, 1)
+          ..scaleByDouble(v.escala, v.escala, 1, 1),
+        child: interativo ? area : IgnorePointer(child: area),
+      ),
+    );
+  }
 
   Widget controlesDeZoom({required VoidCallback aoAjustar}) => ControlesDeZoom(
         escala: v.escala,
@@ -78,11 +81,28 @@ class ControlesDeZoom extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        elevation: 3,
+        margin: EdgeInsets.zero,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(tooltip: 'Afastar (Ctrl + roda)', onPressed: escala > escalaMinima ? aoAfastar : null, icon: const Icon(Symbols.remove)),
-          TextButton(onPressed: aoTamanhoReal, child: Text('${(escala * 100).round()}%')),
-          IconButton(tooltip: 'Aproximar (Ctrl + roda)', onPressed: escala < escalaMaxima ? aoAproximar : null, icon: const Icon(Symbols.add)),
+          IconButton(
+            tooltip: 'Afastar (Ctrl + roda)',
+            onPressed: escala > escalaMinima ? aoAfastar : null,
+            icon: const Icon(Symbols.zoom_out),
+          ),
+          Tooltip(
+            message: 'Tamanho real',
+            child: TextButton(
+              onPressed: aoTamanhoReal,
+              child: Text(
+                '${(escala * 100).round()}%',
+                style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Aproximar (Ctrl + roda)',
+            onPressed: escala < escalaMaxima ? aoAproximar : null,
+            icon: const Icon(Symbols.zoom_in),
+          ),
           IconButton(tooltip: 'Ajustar à tela', onPressed: aoAjustar, icon: const Icon(Symbols.fit_screen)),
         ]),
       );

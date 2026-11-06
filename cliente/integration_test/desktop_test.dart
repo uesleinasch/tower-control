@@ -157,13 +157,13 @@ void main() {
     await irPara(t, 'Equipes');
     await tocar(t, botao('Nova equipe'));
     await digitar(t, campoRotulado('Nome da equipe'), 'Teste');
-    await tocar(t, botao('Ok'));
+    await tocar(t, botao('Criar equipe'));
     await esperarAte(t, () => salaDe(t).equipes.atual?.id == 'teste', descricao: 'a equipe Teste em edição');
 
     for (final (titulo, persona) in [('auditoria', 'Vera'), ('execução', 'Alfred')]) {
       await tocar(t, botao('Posição'));
       await digitar(t, campoRotulado('Título (ex.: revisora)'), titulo);
-      await tocar(t, botao('Ok'));
+      await tocar(t, botao('Criar posição'));
       await escolherNoSeletor(t, seletorRotulado('Persona'), persona);
       await tocar(t, find.byTooltip('Fechar'));
     }
@@ -211,14 +211,14 @@ void main() {
     await rolarAte(t, find.byTooltip('Excluir Vera'), dentroDe: painelDePersonas());
     await tocar(t, find.byTooltip('Excluir Vera'));
     await digitar(t, campoRotulado('Digite Vera para confirmar'), 'Vero');
-    await tocar(t, botao('Excluir'));
+    await tocar(t, botao('Excluir persona'));
     await aparecer(t, find.textContaining('digite o nome exato da persona'), descricao: 'a recusa do nome errado');
     expect(Directory(dados('profiles/vera')).existsSync(), isTrue);
 
     await rolarAte(t, find.byTooltip('Excluir Vera'), dentroDe: painelDePersonas());
     await tocar(t, find.byTooltip('Excluir Vera'));
     await digitar(t, campoRotulado('Digite Vera para confirmar'), 'Vera');
-    await tocar(t, botao('Excluir'));
+    await tocar(t, botao('Excluir persona'));
     await esperarSumir(dados('profiles/vera'));
     await esperarAte(t, () => !Perfil.todos.any((p) => p.chave == 'vera'), descricao: 'a Vera sair do elenco');
 

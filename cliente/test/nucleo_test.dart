@@ -1006,6 +1006,35 @@ void main() {
       expect(chefesPossiveis(codigo(), 'tech-lead').map((p) => p.id), isEmpty);
     });
 
+    test('deslocar move o cartão em passos e para no zero', () {
+      final e = deslocar(codigo(), 'revisora', passoDeMover, -passoDeMover);
+      expect(e.ponto('revisora'), (x: 280 + passoDeMover, y: 320 - passoDeMover));
+      expect(deslocar(codigo(), 'tech-lead', -passoDeMover, -passoDeMover).ponto('tech-lead'), (x: 0, y: 0));
+      expect(() => deslocar(codigo(), 'nada', passoDeMover, 0), throwsA(isA<ErroDeOrganograma>()));
+    });
+
+    test('vistaComCartao só desloca a vista quando o cartão sai da tela', () {
+      final e = codigo();
+      const v = (dx: 100.0, dy: 100.0, escala: 1.0);
+      expect(vistaComCartao(v, e, 'tech-lead', 800, 600), v);
+      final aDireita = vistaComCartao(v, e, 'revisora', 400, 600);
+      final canto = cantoDoCartao(e, 'revisora');
+      expect(canto.x + larguraDoCartao + aDireita.dx, 400 - 24);
+      expect(aDireita.dy, 100);
+      final abaixo = vistaComCartao(v, e, 'revisora', 800, 300);
+      expect(canto.y + alturaDoCartao + abaixo.dy, 300 - 24);
+      final aEsquerda = vistaComCartao((dx: -500.0, dy: 0.0, escala: 1.0), e, 'tech-lead', 800, 600);
+      expect(cantoDoCartao(e, 'tech-lead').x + aEsquerda.dx, 24);
+      expect(vistaComCartao(v, e, 'nada', 800, 600), v);
+    });
+
+    test('estado da pausa da persona segue o mapa de estados', () {
+      expect(estadoDaPausa(null), isNull);
+      expect(estadoDaPausa('ueslei'), 'pausada');
+      expect(estadoDaPausa('tudo'), 'pausada');
+      expect(estadoDaPausa('orcamento'), 'sem_orcamento');
+    });
+
     test('organizar põe cada nível numa linha e os filhos sob o pai, sem sobrepor', () {
       final e = organizar(ligar(soltar(codigo(), 'revisora'), 'revisora', 'tech-lead'));
       expect(e.ponto('tech-lead'), (x: 140.0, y: 0.0));
