@@ -1,7 +1,6 @@
 import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/estado/servidor.dart';
-import 'package:control_tower/nucleo/modelos.dart';
 import 'package:control_tower/nucleo/organograma.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/tela/equipes.dart';
@@ -55,9 +54,8 @@ Future<void> _tocarNoCartao(WidgetTester t, String titulo) async {
 }
 
 void main() {
-  testWidgets('a partir de expanded o painel de personas fica ao lado e o menu do cartão liga a posição', (t) async {
+  testWidgets('a partir de expanded o menu do cartão liga a posição', (t) async {
     final estado = await _montar(t, 1300);
-    expect(find.text('Clique num cartão para editar a posição.'), findsOneWidget);
     expect(find.byType(SegmentedButton<AbaDaEquipe>), findsOneWidget);
 
     await t.tap(find.byTooltip('Mais opções de revisora'));
@@ -108,7 +106,6 @@ void main() {
 
   testWidgets('abaixo de expanded o painel vira folha embaixo do organograma', (t) async {
     final estado = await _montar(t, 700);
-    expect(find.text('Clique num cartão para editar a posição.'), findsNothing);
     await _tocarNoCartao(t, 'revisora');
     expect(estado.selecionada, 'revisora');
     expect(find.byTooltip('Fechar'), findsOneWidget);
@@ -131,21 +128,62 @@ void main() {
     expect(find.text('Responde a'), findsOneWidget);
   });
 
-  testWidgets('equipe nova começa sem personas e "Adicionar à equipe" cria a posição da persona', (t) async {
+  testWidgets('Personas da equipe abre a gaveta, Remover tira a persona e Desfazer volta', (t) async {
     final estado = await _montar(t, 1300);
-    estado.novaEquipe('Pesquisa');
+    await t.tap(find.text('Personas da equipe (2)'));
+    await t.pumpAndSettle();
+
+    expect(find.text('Personas da Código'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'Nati'), findsOneWidget);
+    expect(find.widgetWithText(ListTile, 'Alfred'), findsOneWidget);
+    expect(find.text('Remover'), findsNWidgets(2));
+
+    await t.tap(find.byTooltip('Remover Alfred da equipe'));
+    await t.pumpAndSettle();
+    expect(estado.atual!.posicao('executor'), isNull);
+    expect(estado.atual!.posicao('revisora')!.respondeA, 'tech-lead');
+    expect(find.widgetWithText(ListTile, 'Alfred'), findsNothing);
+    expect(find.text('Alfred saiu da equipe.'), findsOneWidget);
+
+    await t.tap(find.text('Desfazer'));
+    await t.pumpAndSettle();
+    expect(estado.atual!.posicao('executor')!.persona, 'alfred');
+    expect(find.widgetWithText(ListTile, 'Alfred'), findsOneWidget);
+
+    await t.tap(find.byTooltip('Fechar'));
+    await t.pumpAndSettle();
+    expect(find.text('Personas da Código'), findsNothing);
+  });
+
+  testWidgets('Adicionar personas com duas marcadas cria as duas posições', (t) async {
+    final estado = await _montar(t, 1300);
+    await t.tap(find.text('Adicionar personas'));
+    await t.pumpAndSettle();
+
+    expect(find.text('Adicionar personas à Código'), findsOneWidget);
+    expect(find.text('Nati e Alfred já estão nesta equipe.'), findsOneWidget);
+    final confirmar = find.widgetWithText(FilledButton, 'Adicionar personas').last;
+    expect(t.widget<FilledButton>(confirmar).onPressed, isNull);
+
+    await t.tap(find.text('Poe'));
+    await t.tap(find.text('Lucas'));
     await t.pump();
+    await t.tap(find.text('Adicionar 2 personas'));
+    await t.pumpAndSettle();
 
-    expect(estado.atual!.posicoes, isEmpty);
-    expect(find.text('Nenhuma persona nesta equipe ainda.'), findsOneWidget);
-    expect(find.text('Adicionar à equipe'), findsWidgets);
+    final novas = estado.atual!.posicoes.where((p) => p.persona == 'poe' || p.persona == 'lucas').toList();
+    expect([for (final p in novas) p.titulo], ['o amigo', 'o gestor']);
+    expect(novas.every((p) => p.respondeA == null), isTrue);
+    expect(estado.selecionada, isNull);
+    expect(find.text('Personas da equipe (4)'), findsOneWidget);
+  });
 
-    final escolhida = Perfil.todos.first;
-    await t.tap(find.text('Adicionar à equipe').first);
-    await t.pump();
-
-    expect(estado.atual!.posicoes.single.persona, escolhida.chave);
-    expect(find.text('Nenhuma persona nesta equipe ainda.'), findsNothing);
-    expect(find.text('Ocupa: ${escolhida.papel.trim().isEmpty ? escolhida.nome : escolhida.papel}'), findsOneWidget);
+  testWidgets('sem edição a gaveta mostra as personas sem Remover e não há Adicionar personas', (t) async {
+    await _montar(t, 1300, edicao: false);
+    expect(find.text('Adicionar personas'), findsNothing);
+    await t.tap(find.text('Personas da equipe (2)'));
+    await t.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Nati'), findsOneWidget);
+    expect(find.text('Remover'), findsNothing);
   });
 }
