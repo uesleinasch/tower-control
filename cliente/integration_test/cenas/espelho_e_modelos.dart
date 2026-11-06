@@ -107,7 +107,7 @@ void cenaDoEspelho() {
     );
 
     await irPara(t, 'Configuração');
-    await tocar(t, find.widgetWithText(SwitchListTile, 'Espelhar no TickTask'));
+    await tocar(t, find.widgetWithText(CheckboxListTile, 'Espelhar no TickTask'));
     await digitar(t, campoRotulado('Projeto do TickTask'), 'Control Tower teste');
     await digitar(t, campoRotulado('Tag'), 'ct-teste');
     await tocar(t, botao('Salvar'));
