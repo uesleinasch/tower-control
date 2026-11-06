@@ -3,9 +3,10 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/areas.dart';
 import '../estado/sala.dart';
-import '../nucleo/modelos.dart';
+import '../nucleo/design.dart';
 import 'chat.dart';
 import 'comum.dart';
+import 'tema.dart';
 
 class TelaBoard extends StatefulWidget {
   const TelaBoard({super.key, required this.sala});
@@ -37,132 +38,206 @@ class _TelaBoardState extends State<TelaBoard> {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
     return ListenableBuilder(
       listenable: Listenable.merge([widget.sala.board, widget.sala.canal]),
-      builder: (context, _) {
+      builder: (context, _) => LayoutBuilder(builder: (context, limites) {
         final board = widget.sala.board;
+        final margem = ClasseDeJanela.de(limites.maxWidth).margemLateral;
         final podeConvocar = widget.sala.canal.conectado && !board.emCurso;
         return Column(children: [
           Material(
-            color: cores.surface,
+            color: tema.colorScheme.surface,
             child: SafeArea(
               bottom: false,
-              child: ListTile(
-                leading: const Avatar(cor: Color(Perfil.corBoard), inicial: 'B', tamanho: 32),
-                title: const Text('Board'),
-                subtitle: Text('deliberação em conselho', style: TextStyle(color: cores.onSurfaceVariant)),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(margem, Espacos.esp4, margem, Espacos.esp3),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Board', style: tema.textTheme.titleLarge),
+                    Text(
+                      'deliberação em conselho',
+                      style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.onSurfaceVariant),
+                    ),
+                  ]),
+                ),
               ),
             ),
           ),
-          const Divider(),
+          const Divider(height: 1),
           Expanded(
-            child: ListView(
-              reverse: true,
-              padding: const EdgeInsets.all(12),
-              children: [
-                if (board.emCurso) const Padding(padding: EdgeInsets.all(8), child: LinearProgressIndicator()),
-                for (final item in board.itens.reversed) _item(context, item),
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    'Apresente a pauta. Os quatro perfis deliberam em paralelo e você recebe a síntese; '
-                    'a ata completa fica em board/minutes/.',
-                    style: TextStyle(color: cores.onSurfaceVariant, fontSize: 13),
+            child: board.itens.isEmpty && !board.emCurso
+                ? const _SemPauta()
+                : ListView(
+                    reverse: true,
+                    padding: EdgeInsets.symmetric(horizontal: margem, vertical: Espacos.esp3),
+                    children: [
+                      if (board.emCurso) const _Deliberando(),
+                      for (final item in board.itens.reversed) _item(context, item),
+                    ].map((w) => Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: larguraDeLeitura), child: w))).toList(),
                   ),
-                ),
-              ].map((w) => Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: w))).toList(),
-            ),
           ),
+          const Divider(height: 1),
           Material(
-            color: cores.surface,
+            color: tema.colorScheme.surface,
             child: SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  if (_comContexto)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: TextField(
-                        controller: _contexto,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: larguraDeLeitura),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(margem, Espacos.esp3, margem, Espacos.esp3),
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      if (_comContexto)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Espacos.esp2),
+                          child: TextField(
+                            controller: _contexto,
+                            minLines: 2,
+                            maxLines: 6,
+                            decoration: const InputDecoration(
+                              labelText: 'Contexto adicional',
+                              helperText: 'Opcional. Entra junto com a pauta.',
+                            ),
+                          ),
+                        ),
+                      TextField(
+                        controller: _pauta,
                         minLines: 2,
                         maxLines: 6,
-                        decoration: const InputDecoration(hintText: 'Contexto adicional (opcional)'),
-                      ),
-                    ),
-                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    IconButton(
-                      tooltip: _comContexto ? 'Sem contexto' : 'Adicionar contexto',
-                      icon: Icon(_comContexto ? Symbols.notes : Symbols.note_add),
-                      onPressed: () => setState(() => _comContexto = !_comContexto),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _pauta,
-                        minLines: 1,
-                        maxLines: 6,
                         textCapitalization: TextCapitalization.sentences,
-                        decoration: const InputDecoration(hintText: 'Pauta para o board…'),
+                        decoration: const InputDecoration(
+                          labelText: 'Pauta para o board',
+                          helperText: 'Os quatro perfis deliberam em paralelo e você recebe a síntese.',
+                          alignLabelWithHint: true,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    IconButton.filled(
-                      tooltip: 'Convocar',
-                      icon: const Icon(Symbols.gavel),
-                      onPressed: podeConvocar ? _convocar : null,
-                    ),
-                  ]),
-                ]),
+                      const SizedBox(height: Espacos.esp2),
+                      Row(children: [
+                        IconButton(
+                          tooltip: _comContexto ? 'Sem contexto' : 'Adicionar contexto',
+                          icon: Icon(_comContexto ? Symbols.notes : Symbols.note_add),
+                          onPressed: () => setState(() => _comContexto = !_comContexto),
+                        ),
+                        const Spacer(),
+                        FilledButton.icon(
+                          icon: const Icon(Symbols.gavel),
+                          label: const Text('Convocar'),
+                          onPressed: podeConvocar ? _convocar : null,
+                        ),
+                      ]),
+                    ]),
+                  ),
+                ),
               ),
             ),
           ),
         ]);
-      },
+      }),
     );
   }
 
   Widget _item(BuildContext context, ItemBoard item) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     return switch (item) {
       Pauta(:final texto, :final contexto) => Align(
           alignment: Alignment.centerRight,
           child: Container(
-            margin: const EdgeInsets.only(top: 10, left: 48),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-                color: cores.primary.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(16)),
+            margin: const EdgeInsets.only(top: Espacos.esp3, left: Espacos.esp7),
+            padding: const EdgeInsets.all(Espacos.esp3),
+            decoration: BoxDecoration(color: cores.primaryContainer, borderRadius: BorderRadius.circular(Raios.lg)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(texto),
+              Text(texto, style: tema.textTheme.bodyLarge?.copyWith(color: cores.onPrimaryContainer)),
               if (contexto != null)
-                Text(contexto, style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+                Text(contexto, style: tema.textTheme.bodySmall?.copyWith(color: cores.onPrimaryContainer)),
             ]),
           ),
         ),
       StatusBoard(:final texto) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          child: Text(texto, style: TextStyle(color: cores.onSurfaceVariant, fontSize: 13)),
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp1, horizontal: Espacos.esp2),
+          child: Text(texto, style: tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant)),
         ),
       ErroBoard(:final texto) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          child: Text(texto, style: TextStyle(color: cores.error, fontSize: 13)),
-        ),
-      Sintese(:final texto, :final ata) => Container(
-          margin: const EdgeInsets.only(top: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: cores.surfaceContainerHighest, borderRadius: BorderRadius.circular(16)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Síntese do board',
-                style: TextStyle(color: Color(Perfil.corBoard), fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            TextoMarkdown(texto),
-            const SizedBox(height: 8),
-            InkWell(
-              onTap: () => copiar(context, ata, aviso: 'Caminho da ata copiado'),
-              child: Text('Ata completa: $ata', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
-            ),
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp1, horizontal: Espacos.esp2),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Symbols.error, size: 16, color: cores.error),
+            const SizedBox(width: Espacos.esp2),
+            Expanded(child: Text(texto, style: tema.textTheme.bodySmall?.copyWith(color: cores.error))),
           ]),
         ),
+      Sintese(:final texto, :final ata) => Card(
+          margin: const EdgeInsets.only(top: Espacos.esp3),
+          child: Padding(
+            padding: const EdgeInsets.all(Espacos.esp4),
+            child: SelectionArea(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Symbols.gavel, size: 20, color: cores.primary),
+                  const SizedBox(width: Espacos.esp2),
+                  Text('Síntese do board', style: tema.textTheme.titleSmall?.copyWith(color: cores.primary)),
+                ]),
+                const SizedBox(height: Espacos.esp2),
+                TextoMarkdown(texto),
+                const SizedBox(height: Espacos.esp2),
+                InkWell(
+                  onTap: () => copiar(context, ata, aviso: 'Caminho da ata copiado'),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: Espacos.esp1),
+                    child: Text('Ata completa: $ata',
+                        style: tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant, fontFamily: familiaMono)),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
     };
+  }
+}
+
+class _Deliberando extends StatelessWidget {
+  const _Deliberando();
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Espacos.esp3, horizontal: Espacos.esp2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          'Os conselheiros estão respondendo. A síntese chega quando todos terminarem.',
+          style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: Espacos.esp2),
+        const LinearProgressIndicator(),
+      ]),
+    );
+  }
+}
+
+class _SemPauta extends StatelessWidget {
+  const _SemPauta();
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cor = tema.colorScheme.onSurfaceVariant;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(Espacos.esp5),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Symbols.gavel, color: cor),
+          const SizedBox(height: Espacos.esp2),
+          Text(
+            'Apresente a pauta. Os quatro perfis deliberam em paralelo e você recebe a síntese; '
+            'a ata completa fica em board/minutes/.',
+            textAlign: TextAlign.center,
+            style: tema.textTheme.bodyMedium?.copyWith(color: cor),
+          ),
+        ]),
+      ),
+    );
   }
 }
