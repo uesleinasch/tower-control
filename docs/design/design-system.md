@@ -210,7 +210,7 @@ A classe vem da largura da janela (`MediaQuery.sizeOf`) ou do espaço do widget 
 | Classe | Largura (dp) | Margem lateral | Navegação | Painéis |
 |---|---|---|---|---|
 | compact | < 600 | 16 | `NavigationBar` (80 dp) | 1 |
-| medium | 600 a 839 | 24 | `NavigationRail` sem rótulos | 1, ou 2 em lista e detalhe |
+| medium | 600 a 839 | 24 | `NavigationRail` com rótulos abaixo do ícone (ícone sozinho fere a seção 12) | 1 |
 | expanded | 840 a 1199 | 24 | `NavigationRail` com rótulos | 2 |
 | large | 1200 a 1599 | 24 | `NavigationRail(extended: true)` | 2 ou 3 |
 | extra-large | ≥ 1600 | 24 | `NavigationRail(extended: true)` | 3, com conteúdo limitado em largura |
