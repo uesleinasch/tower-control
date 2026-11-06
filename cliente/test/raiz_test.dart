@@ -1,7 +1,11 @@
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/estado/servidor.dart';
+import 'package:control_tower/nucleo/modelos.dart';
+import 'package:control_tower/nucleo/protocolo.dart';
+import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/tela/raiz.dart';
 import 'package:control_tower/tela/tema.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -12,12 +16,19 @@ class _SemServidor implements Servidor {
   Future<String?> resolver() async => null;
 }
 
-Future<Sala> montar(WidgetTester t, double largura, Tela tela, {Map<String, Object> prefs = const {}}) async {
+Future<Sala> montar(
+  WidgetTester t,
+  double largura,
+  Tela tela, {
+  Map<String, Object> prefs = const {},
+  void Function(Sala sala)? preparar,
+}) async {
   SharedPreferences.setMockInitialValues(prefs);
   t.view.physicalSize = Size(largura, 900);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
   final sala = Sala(_SemServidor())..ir(tela);
+  preparar?.call(sala);
   await t.pumpWidget(MaterialApp(
     theme: temaEscuro,
     home: Raiz(sala: sala, configuracao: (_) => const Text('tela de configuração')),
@@ -25,6 +36,26 @@ Future<Sala> montar(WidgetTester t, double largura, Tela tela, {Map<String, Obje
   await t.pump();
   return sala;
 }
+
+Future<void> comCtrl(WidgetTester t, LogicalKeyboardKey tecla) async {
+  await t.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+  await t.sendKeyEvent(tecla);
+  await t.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+  await t.pump();
+}
+
+final _tarefa = Tarefa(
+  id: 7,
+  equipe: 'casa',
+  posicao: 'executor',
+  titulo: 'Fechar o mês',
+  status: 'em_revisao',
+  atualizadaEm: DateTime(2026, 11, 6, 10),
+);
+
+void comTarefaAberta(Sala sala) => sala.tarefas
+  ..tratar(TarefasRecebidas([_tarefa]))
+  ..tratar(TarefaRecebida(_tarefa, const [], pedida: true));
 
 bool estendido(WidgetTester t) => t.widget<NavigationRail>(find.byType(NavigationRail)).extended;
 
@@ -105,5 +136,66 @@ void main() {
     await t.tap(noTrilho);
     await t.pump();
     expect(sala.tela, Tela.configuracao);
+  });
+
+  testWidgets('Ctrl+N abre a folha de nova conversa de qualquer tela', (t) async {
+    await montar(t, 700, Tela.painel);
+    await comCtrl(t, LogicalKeyboardKey.keyN);
+    await t.pump(const Duration(milliseconds: 600));
+    expect(find.text('Nova conversa'), findsOneWidget);
+    expect(find.text('CONSELHO'), findsOneWidget);
+  });
+
+  testWidgets('Esc fecha o detalhe de tarefas, mas não enquanto se digita', (t) async {
+    final sala = await montar(t, 1300, Tela.tarefas, preparar: comTarefaAberta);
+    expect(sala.tarefas.aberta?.tarefa.id, 7);
+
+    await t.tap(find.byType(TextField).first);
+    await t.pump();
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pump();
+    expect(sala.tarefas.aberta?.tarefa.id, 7);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.pump();
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pump();
+    expect(sala.tarefas.aberta, isNull);
+  });
+
+  testWidgets('Ctrl+K põe o foco na busca de decisões', (t) async {
+    await montar(
+      t,
+      1300,
+      Tela.decisoes,
+      preparar: (sala) => sala.decisoes.tratar(const Decisoes([
+        Decisao(id: '1', data: '2026-11-01', titulo: 'Usar Bun', status: 'aceita', tags: [], projeto: ''),
+      ])),
+    );
+    final busca = find.widgetWithText(TextField, 'Buscar decisões');
+    expect(t.widget<TextField>(busca).focusNode?.hasFocus, isFalse);
+    await comCtrl(t, LogicalKeyboardKey.keyK);
+    expect(t.widget<TextField>(busca).focusNode?.hasFocus, isTrue);
+  });
+
+  testWidgets('Ctrl+/ abre a folha de atalhos, e Esc a fecha', (t) async {
+    await montar(t, 1300, Tela.painel);
+    await comCtrl(t, LogicalKeyboardKey.slash);
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('Atalhos de teclado'), findsOneWidget);
+    expect(find.text('Começar uma conversa nova'), findsOneWidget);
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pumpAndSettle();
+    expect(find.text('Atalhos de teclado'), findsNothing);
+  });
+
+  testWidgets('no desktop o trilho tem o botão dos atalhos de teclado', (t) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    await montar(t, 1300, Tela.painel);
+    await t.tap(find.text('Atalhos de teclado'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('Mostrar os atalhos de teclado'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 }
