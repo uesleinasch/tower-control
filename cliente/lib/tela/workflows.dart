@@ -15,6 +15,7 @@ import 'canvas.dart';
 import 'comum.dart' show CartaoDePedido;
 import 'equipes.dart' show confirmar, pedirTexto, quandoCurto;
 import 'importacao.dart';
+import 'paineis.dart';
 import 'tema.dart';
 
 const _larguraDoPainel = 320.0;
@@ -623,14 +624,14 @@ class _VistaDoGrafo extends StatelessWidget {
         } else {
           final detalhe = _DetalheDaCaixa(sala: sala, caixa: caixa, fluxo: f);
           corpo = classe.comDoisPaineis
-              ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Expanded(child: grafo),
-                  const VerticalDivider(width: 1),
-                  SizedBox(
-                    width: _larguraDoPainel,
-                    child: Material(color: cores.surfaceContainer, child: detalhe),
-                  ),
-                ])
+              ? LadoALado(
+                  painel: 'workflows',
+                  rotulo: 'Largura do painel da caixa',
+                  inicial: _larguraDoPainel,
+                  lateralADireita: true,
+                  principal: grafo,
+                  lateral: Material(color: cores.surfaceContainer, child: detalhe),
+                )
               : LayoutBuilder(
                   builder: (context, area) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Expanded(child: grafo),
@@ -969,6 +970,7 @@ List<Widget> itensDoMenuDaCaixa({
       MenuItemButton(
         focusNode: primeiro,
         leadingIcon: const Icon(Symbols.edit),
+        shortcut: const SingleActivator(LogicalKeyboardKey.enter),
         onPressed: () => ed.aoEditar(id),
         child: const Text('Editar caixa'),
       ),
@@ -1012,6 +1014,7 @@ List<Widget> itensDoMenuDaCaixa({
     MenuItemButton(
       leadingIcon: Icon(Symbols.delete, color: cores.error),
       style: MenuItemButton.styleFrom(foregroundColor: cores.error),
+      shortcut: const SingleActivator(LogicalKeyboardKey.delete),
       onPressed: () => ed.aoRemover(id),
       child: const Text('Remover caixa'),
     ),
@@ -1155,9 +1158,15 @@ class EstadoDoCanvasDoGrafo extends State<CanvasDoGrafo> with PanEZoom {
       arestaEm(widget.workflow.arestas, layout, _pontos, m.x, m.y, tolerancia: 6 / v.escala);
 
   void _aoPassar(PointerHoverEvent e) {
-    if (_ed == null) return;
     final layout = _base;
     final m = paraMundo(v, e.localPosition.dx, e.localPosition.dy);
+    if (_ed == null) {
+      final cursor = widget.aoTocar != null && caixaEm(layout, m.x, m.y) != null
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.grab;
+      if (cursor != _cursor) setState(() => _cursor = cursor);
+      return;
+    }
     final gesto = _gestoEm(m, layout);
     final linha = gesto == _Gesto.fundo ? _arestaEm(layout, m) : null;
     final cursor = switch (gesto) {
@@ -1407,7 +1416,7 @@ class EstadoDoCanvasDoGrafo extends State<CanvasDoGrafo> with PanEZoom {
           if (ed != null) _foco.requestFocus();
         },
         child: MouseRegion(
-          cursor: ed == null ? MouseCursor.defer : _cursor,
+          cursor: _cursor,
           onHover: _aoPassar,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,

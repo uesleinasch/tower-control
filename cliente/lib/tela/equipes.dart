@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -16,15 +15,13 @@ import 'canvas.dart';
 import 'comum.dart';
 import 'editor_de_workflow.dart';
 import 'importacao.dart';
+import 'paineis.dart';
 import 'rotinas.dart';
 import 'skills.dart';
 import 'tema.dart';
 import 'workflows.dart';
 
-bool get edicaoDisponivel =>
-    defaultTargetPlatform == TargetPlatform.linux ||
-    defaultTargetPlatform == TargetPlatform.windows ||
-    defaultTargetPlatform == TargetPlatform.macOS;
+bool get edicaoDisponivel => ehDesktop;
 
 const _larguraDoPainel = 320.0;
 const _ladoDoBotaoDeMenu = 32.0;
@@ -142,14 +139,14 @@ class TelaEquipes extends StatelessWidget {
     if (apoio == null) return canvas;
     final Widget painel = apoio;
     if (classe.comDoisPaineis) {
-      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: canvas),
-        const VerticalDivider(width: 1),
-        SizedBox(
-          width: _larguraDoPainel,
-          child: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: painel),
-        ),
-      ]);
+      return LadoALado(
+        painel: 'equipes',
+        rotulo: 'Largura do painel lateral',
+        inicial: _larguraDoPainel,
+        lateralADireita: true,
+        principal: canvas,
+        lateral: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: painel),
+      );
     }
     return LayoutBuilder(
       builder: (context, limites) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -690,6 +687,7 @@ class _CanvasDoOrganogramaState extends State<CanvasDoOrganograma> with PanEZoom
       MenuItemButton(
         focusNode: _primeiroItem,
         leadingIcon: const Icon(Symbols.edit),
+        shortcut: const SingleActivator(LogicalKeyboardKey.enter),
         onPressed: () => widget.estado.selecionar(p.id),
         child: const Text('Editar posição'),
       ),

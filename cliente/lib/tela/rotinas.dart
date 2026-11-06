@@ -13,6 +13,7 @@ import '../nucleo/workflows.dart';
 import 'comum.dart' show copiar;
 import 'equipes.dart' show confirmar;
 import 'importacao.dart' show CaixaDeMensagens, EscolhaSegmentada, TomDaMensagem;
+import 'paineis.dart';
 import 'tema.dart';
 
 const _larguraDoEditor = 420.0;
@@ -73,14 +74,16 @@ class PainelDeRotinas extends StatelessWidget {
               child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: larguraDeLeitura), child: editor),
             );
           }
-          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: lista),
-            const VerticalDivider(width: 1),
-            SizedBox(
-              width: _larguraDoEditor,
-              child: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: editor),
-            ),
-          ]);
+          return LadoALado(
+            painel: 'rotinas',
+            rotulo: 'Largura do editor de rotina',
+            inicial: _larguraDoEditor,
+            minimo: 360,
+            maximo: 640,
+            lateralADireita: true,
+            principal: lista,
+            lateral: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: editor),
+          );
         },
       );
 }

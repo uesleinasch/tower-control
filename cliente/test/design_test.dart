@@ -119,4 +119,13 @@ void main() {
     expect(t.colorScheme.primary, gerado.primary);
     expect(t.scaffoldBackgroundColor, gerado.surface);
   });
+
+  test('a largura do painel fica entre o mínimo e o máximo e deixa espaço ao lado', () {
+    expect(limitarLargura(320, minimo: 240, maximo: 560), 320);
+    expect(limitarLargura(100, minimo: 240, maximo: 560), 240);
+    expect(limitarLargura(900, minimo: 240, maximo: 560), 560);
+    expect(limitarLargura(500, minimo: 240, maximo: 560, disponivel: 800, restoMinimo: 400), 400);
+    expect(limitarLargura(500, minimo: 240, maximo: 560, disponivel: 500, restoMinimo: 400), 240);
+    expect(passoDoDivisor, 16);
+  });
 }

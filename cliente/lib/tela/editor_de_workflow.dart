@@ -10,6 +10,7 @@ import '../nucleo/modelos.dart';
 import '../nucleo/tarefas.dart';
 import '../nucleo/workflows.dart';
 import 'equipes.dart' show confirmar;
+import 'paineis.dart';
 import 'workflows.dart';
 import 'tema.dart';
 
@@ -485,14 +486,14 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
       ]);
     }
     if (largo) {
-      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: canvas),
-        const VerticalDivider(width: 1),
-        SizedBox(
-          width: _larguraDoPainel,
-          child: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: painel),
-        ),
-      ]);
+      return LadoALado(
+        painel: 'editorDeWorkflow',
+        rotulo: 'Largura do painel do editor',
+        inicial: _larguraDoPainel,
+        lateralADireita: true,
+        principal: canvas,
+        lateral: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: painel),
+      );
     }
     return LayoutBuilder(
       builder: (context, limites) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

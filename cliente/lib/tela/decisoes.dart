@@ -6,6 +6,7 @@ import '../estado/sala.dart';
 import '../nucleo/design.dart';
 import 'chat.dart';
 import 'comum.dart';
+import 'paineis.dart';
 import 'tema.dart';
 
 const _larguraDaLista = 360.0;
@@ -18,9 +19,10 @@ String estadoDaDecisao(String status) => switch (status) {
     };
 
 class TelaDecisoes extends StatelessWidget {
-  const TelaDecisoes({super.key, required this.sala});
+  const TelaDecisoes({super.key, required this.sala, this.focoDaBusca});
 
   final Sala sala;
+  final FocusNode? focoDaBusca;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -30,22 +32,22 @@ class TelaDecisoes extends StatelessWidget {
           final aberta = sala.decisoes.aberta;
           if (!classe.comDoisPaineis) {
             return aberta == null
-                ? _Lista(sala: sala, margem: classe.margemLateral, comCabecalho: true)
+                ? _Lista(sala: sala, margem: classe.margemLateral, comCabecalho: true, focoDaBusca: focoDaBusca)
                 : _Detalhe(sala: sala, conteudo: aberta.conteudo, emPainel: false);
           }
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _Cabecalho(estado: sala.decisoes, margem: classe.margemLateral),
             const Divider(height: 1),
             Expanded(
-              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                SizedBox(width: _larguraDaLista, child: _Lista(sala: sala, margem: Espacos.esp3, comCabecalho: false)),
-                const VerticalDivider(width: 1),
-                Expanded(
-                  child: aberta == null
-                      ? _NadaSelecionado(estado: sala.decisoes)
-                      : _Detalhe(key: ValueKey(aberta.id), sala: sala, conteudo: aberta.conteudo, emPainel: true),
-                ),
-              ]),
+              child: LadoALado(
+                painel: 'decisoes',
+                rotulo: 'Largura da lista de decisões',
+                inicial: _larguraDaLista,
+                lateral: _Lista(sala: sala, margem: Espacos.esp3, comCabecalho: false, focoDaBusca: focoDaBusca),
+                principal: aberta == null
+                    ? _NadaSelecionado(estado: sala.decisoes)
+                    : _Detalhe(key: ValueKey(aberta.id), sala: sala, conteudo: aberta.conteudo, emPainel: true),
+              ),
             ),
           ]);
         }),
@@ -131,11 +133,12 @@ class _NadaSelecionado extends StatelessWidget {
 }
 
 class _Lista extends StatefulWidget {
-  const _Lista({required this.sala, required this.margem, required this.comCabecalho});
+  const _Lista({required this.sala, required this.margem, required this.comCabecalho, this.focoDaBusca});
 
   final Sala sala;
   final double margem;
   final bool comCabecalho;
+  final FocusNode? focoDaBusca;
 
   @override
   State<_Lista> createState() => _ListaState();
@@ -169,6 +172,7 @@ class _ListaState extends State<_Lista> {
         padding: EdgeInsets.fromLTRB(widget.margem, Espacos.esp2, widget.margem, Espacos.esp3),
         child: TextField(
           controller: _busca,
+          focusNode: widget.focoDaBusca,
           onChanged: estado.filtrar,
           decoration: InputDecoration(
             prefixIcon: const Icon(Symbols.search),
@@ -196,23 +200,26 @@ class _ListaState extends State<_Lista> {
                         texto: 'Nenhuma decisão com essa busca.',
                         acao: OutlinedButton(onPressed: _limpar, child: const Text('Limpar busca')),
                       ))
-                : ListView.separated(
-                    itemCount: lista.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1, indent: Espacos.esp4, endIndent: Espacos.esp4),
-                    itemBuilder: (context, i) {
-                      final d = lista[i];
-                      final detalhes = [if (d.projeto.isNotEmpty) d.projeto, if (d.tags.isNotEmpty) d.tags.join(', ')];
-                      return ListTile(
-                        selected: d.id == aberta,
-                        title: Text(d.titulo, style: tema.textTheme.titleSmall),
-                        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(d.data, style: tema.textTheme.bodySmall?.copyWith(fontFeatures: _numeros)),
-                          if (detalhes.isNotEmpty) Text(detalhes.join(' · '), style: tema.textTheme.bodySmall),
-                        ]),
-                        trailing: RotuloDeEstado(estado: estadoDaDecisao(d.status), rotulo: d.status),
-                        onTap: () => estado.abrir(d.id),
-                      );
-                    },
+                : RolagemDeDesktop(
+                    builder: (context, controle) => ListView.separated(
+                      controller: controle,
+                      itemCount: lista.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1, indent: Espacos.esp4, endIndent: Espacos.esp4),
+                      itemBuilder: (context, i) {
+                        final d = lista[i];
+                        final detalhes = [if (d.projeto.isNotEmpty) d.projeto, if (d.tags.isNotEmpty) d.tags.join(', ')];
+                        return ListTile(
+                          selected: d.id == aberta,
+                          title: Text(d.titulo, style: tema.textTheme.titleSmall),
+                          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(d.data, style: tema.textTheme.bodySmall?.copyWith(fontFeatures: _numeros)),
+                            if (detalhes.isNotEmpty) Text(detalhes.join(' · '), style: tema.textTheme.bodySmall),
+                          ]),
+                          trailing: RotuloDeEstado(estado: estadoDaDecisao(d.status), rotulo: d.status),
+                          onTap: () => estado.abrir(d.id),
+                        );
+                      },
+                    ),
                   ),
       ),
     ]);
