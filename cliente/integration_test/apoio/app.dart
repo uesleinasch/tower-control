@@ -5,7 +5,7 @@ import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/main.dart' as app;
 import 'package:control_tower/tela/painel.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';

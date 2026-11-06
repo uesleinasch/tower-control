@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'conexao/pareamento.dart';
@@ -100,6 +100,9 @@ class ControlTower extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: temaClaro,
         darkTheme: temaEscuro,
+        // flutter_markdown_plus, window_manager e flutter_foreground_task ainda importam o material antigo.
+        // ignore: deprecated_member_use
+        builder: (context, child) => MaterialUiCompatibilityBridge(child: child!),
         home: Raiz(sala: sala, configuracao: configuracao, bloqueio: bloqueio),
       );
 }
