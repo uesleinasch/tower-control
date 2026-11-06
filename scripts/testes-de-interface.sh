@@ -232,15 +232,21 @@ reverso() {
 }
 
 marca_do_app_real() {
-  adb -s "$SERIAL" shell dumpsys package dev.ueslei.controltower 2> /dev/null | sed -n 's/^ *lastUpdateTime=//p' | head -1
+  if ! adb -s "$SERIAL" shell pm path dev.ueslei.controltower 2> /dev/null | grep -q '^package:'; then
+    echo ausente
+    return
+  fi
+  local marca
+  marca=$(adb -s "$SERIAL" shell dumpsys package dev.ueslei.controltower 2> /dev/null | sed -n 's/^ *lastUpdateTime=//p' | head -1)
+  echo "${marca:-sem-marca}"
 }
 
 conferir_app_real() {
   local antes=$1 depois
   depois=$(marca_do_app_real)
-  [ "$antes" = "$depois" ] && return 0
-  printf '\033[31m!!! o app dev.ueslei.controltower mudou no aparelho (lastUpdateTime %s -> %s)\033[0m\n' "${antes:-ausente}" "${depois:-ausente}" >&2
-  MOTIVO="o app real dev.ueslei.controltower mudou no aparelho (lastUpdateTime ${antes:-ausente} -> ${depois:-ausente})"
+  [ "$antes" = "$depois" ] && [ "$antes" != sem-marca ] && return 0
+  printf '\033[31m!!! o app dev.ueslei.controltower mudou ou não pôde ser conferido no aparelho (lastUpdateTime %s -> %s)\033[0m\n' "$antes" "$depois" >&2
+  MOTIVO="o app real dev.ueslei.controltower mudou ou não pôde ser conferido no aparelho (lastUpdateTime $antes -> $depois)"
   return 1
 }
 
