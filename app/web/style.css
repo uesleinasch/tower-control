@@ -471,7 +471,7 @@ body {
 
 #lista-conversas li.pressionado { background: var(--ct-cor-surface-container-high); color: var(--ct-cor-on-surface); }
 
-#confirmacao {
+#confirmacao, #cancelar-tarefa {
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -480,8 +480,8 @@ body {
   padding: var(--ct-esp-5);
   background: var(--ct-cor-scrim);
 }
-#confirmacao[hidden] { display: none; }
-#confirmacao .caixa {
+#confirmacao[hidden], #cancelar-tarefa[hidden] { display: none; }
+#confirmacao .caixa, #cancelar-tarefa .caixa {
   width: 100%;
   max-width: 360px;
   padding: var(--ct-esp-4);
@@ -491,8 +491,8 @@ body {
   box-shadow: var(--ct-sombra-5);
 }
 #confirmacao p { margin-bottom: var(--ct-esp-4); font-size: var(--ct-tipo-corpo-tam); }
-#confirmacao .acoes { display: flex; justify-content: flex-end; gap: var(--ct-esp-2); }
-#confirmacao button {
+#confirmacao .acoes, #cancelar-tarefa .acoes { display: flex; justify-content: flex-end; gap: var(--ct-esp-2); }
+#confirmacao button, #cancelar-tarefa .acoes button {
   min-height: 40px;
   padding: 0 var(--ct-esp-4);
   border: 1px solid var(--ct-cor-outline-variant);
@@ -502,8 +502,18 @@ body {
   font: inherit;
   cursor: pointer;
 }
-#confirmacao button:hover { background: var(--ct-cor-surface-container); }
+#confirmacao button:hover, #cancelar-tarefa .acoes button:hover { background: var(--ct-cor-surface-container); }
 #confirmacao button.perigo { border-color: var(--ct-cor-error); color: var(--ct-cor-error); }
+#cancelar-tarefa .caixa { max-width: 440px; }
+#cancelar-tarefa h2 { margin: 0 0 var(--ct-esp-2); font-size: 1.25rem; font-weight: 400; }
+#cancelar-tarefa p { margin: 0 0 var(--ct-esp-4); font-size: var(--ct-tipo-corpo-tam); color: var(--ct-cor-on-surface-variant); }
+#cancelar-tarefa .opcoes { display: flex; flex-direction: column; gap: var(--ct-esp-2); margin-bottom: var(--ct-esp-4); }
+#cancelar-tarefa .opcoes label { display: flex; gap: var(--ct-esp-3); padding: var(--ct-esp-3); border: 1px solid var(--ct-cor-outline-variant); border-radius: var(--ct-raio-md); cursor: pointer; }
+#cancelar-tarefa .opcoes label:has(input:checked) { border: 2px solid var(--ct-cor-primary); background: var(--ct-cor-surface-container); }
+#cancelar-tarefa .opcoes input { margin-top: 2px; accent-color: var(--ct-cor-primary); }
+#cancelar-tarefa .opcoes span { display: flex; flex-direction: column; gap: var(--ct-esp-1); font-size: var(--ct-tipo-corpo-tam); }
+#cancelar-tarefa .opcoes small { color: var(--ct-cor-on-surface-variant); }
+#cancelar-tarefa .acoes .perigo { border-color: var(--ct-cor-error); background: var(--ct-cor-error); color: var(--ct-cor-on-error); }
 
 #citacao {
   display: flex;
@@ -946,6 +956,8 @@ body {
 .item-atencao.comando, .item-atencao.aprovacao { border-left-color: var(--ct-cor-error); }
 .item-atencao.plano { border-left-color: var(--ct-cor-tertiary); }
 .item-atencao.entrega { border-left-color: var(--ct-cor-sucesso); }
+.item-atencao.parada { border-left-color: var(--ct-cor-tertiary); }
+.acoes-tarefa button.perigo { color: var(--ct-cor-error); }
 .cartoes-persona { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--ct-esp-2); }
 .cartao-persona { padding: var(--ct-esp-2) var(--ct-esp-3); border: 1px solid var(--ct-cor-outline-variant); border-left: 4px solid var(--ct-cor-outline-variant); border-radius: var(--ct-raio-md); background: var(--ct-cor-surface-container-high); font-size: var(--ct-tipo-corpo-tam); overflow-wrap: anywhere; }
 .cartao-persona.pausada, .cartao-persona.sem_orcamento { opacity: 0.7; }
@@ -953,6 +965,7 @@ body {
 .grafo .caixa rect { fill: var(--ct-cor-surface-container-high); stroke: var(--ct-cor-outline-variant); stroke-width: 1.5; }
 .grafo .caixa.concluida rect { stroke: var(--ct-cor-sucesso); stroke-width: 2.5; }
 .grafo .caixa.esperando rect { stroke: var(--ct-cor-tertiary); stroke-width: 3; }
+.grafo .caixa.parada rect { stroke: var(--ct-cor-aviso); stroke-width: 3; stroke-dasharray: 8 4; }
 .grafo .caixa.cancelada rect { stroke: var(--ct-cor-on-surface-variant); stroke-dasharray: 4 3; }
 .grafo .caixa.escolhido rect { fill: var(--ct-cor-surface-container); }
 .grafo .caixa { cursor: pointer; }
