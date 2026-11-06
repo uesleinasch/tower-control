@@ -72,7 +72,7 @@ void main() {
     await t.tap(find.byTooltip('Menu'));
     await t.pump();
     await t.pump(const Duration(milliseconds: 600));
-    for (final rotulo in ['Equipes', 'Board', 'Decisões']) {
+    for (final rotulo in ['Equipes', 'Personas', 'Board', 'Decisões']) {
       expect(find.descendant(of: find.byType(NavigationDrawer), matching: find.text(rotulo)), findsOneWidget);
     }
     await t.tap(find.descendant(of: find.byType(NavigationDrawer), matching: find.text('Decisões')));
@@ -83,11 +83,12 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
   });
 
-  testWidgets('a partir de 600 dp o trilho mostra os seis destinos com rótulo', (t) async {
+  testWidgets('a partir de 600 dp o trilho mostra os sete destinos com rótulo', (t) async {
     final sala = await montar(t, 700, Tela.painel);
     expect(find.byType(NavigationBar), findsNothing);
     final trilho = t.widget<NavigationRail>(find.byType(NavigationRail));
-    expect(trilho.destinations.length, 6);
+    expect(trilho.destinations.length, 7);
+    expect(find.descendant(of: find.byType(NavigationRail), matching: find.text('Personas')), findsOneWidget);
     expect(trilho.extended, isFalse);
     expect(trilho.labelType, NavigationRailLabelType.all);
     await t.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Board')));
@@ -108,6 +109,27 @@ void main() {
     await t.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await t.pump();
     expect(sala.tela, Tela.tarefas);
+  });
+
+  testWidgets('Ctrl+7 leva a Personas, e Ctrl+5 e Ctrl+6 continuam no Board e em Decisões', (t) async {
+    final sala = await montar(t, 1300, Tela.conversas);
+    await comCtrl(t, LogicalKeyboardKey.digit7);
+    expect(sala.tela, Tela.personas);
+    expect(find.text('Buscar personas'), findsOneWidget);
+    await comCtrl(t, LogicalKeyboardKey.digit5);
+    expect(sala.tela, Tela.board);
+    await comCtrl(t, LogicalKeyboardKey.digit6);
+    expect(sala.tela, Tela.decisoes);
+  });
+
+  testWidgets('no celular a tela de personas tem o botão Nova persona e some no detalhe', (t) async {
+    final sala = await montar(t, 400, Tela.personas);
+    expect(find.widgetWithText(FloatingActionButton, 'Nova persona'), findsOneWidget);
+    await t.tap(find.text('Nati'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 500));
+    expect(sala.personas.aberta?.chave, 'nati');
+    expect(find.byType(FloatingActionButton), findsNothing);
   });
 
   testWidgets('o botão do trilho recolhe e expande, e a escolha fica salva', (t) async {
