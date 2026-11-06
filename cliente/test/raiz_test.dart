@@ -72,7 +72,7 @@ void main() {
     await t.tap(find.byTooltip('Menu'));
     await t.pump();
     await t.pump(const Duration(milliseconds: 600));
-    for (final rotulo in ['Equipes', 'Personas', 'Board', 'Decisões']) {
+    for (final rotulo in ['Equipes', 'Personas', 'Skills', 'Board', 'Decisões']) {
       expect(find.descendant(of: find.byType(NavigationDrawer), matching: find.text(rotulo)), findsOneWidget);
     }
     await t.tap(find.descendant(of: find.byType(NavigationDrawer), matching: find.text('Decisões')));
@@ -83,12 +83,13 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
   });
 
-  testWidgets('a partir de 600 dp o trilho mostra os sete destinos com rótulo', (t) async {
+  testWidgets('a partir de 600 dp o trilho mostra os oito destinos com rótulo', (t) async {
     final sala = await montar(t, 700, Tela.painel);
     expect(find.byType(NavigationBar), findsNothing);
     final trilho = t.widget<NavigationRail>(find.byType(NavigationRail));
-    expect(trilho.destinations.length, 7);
+    expect(trilho.destinations.length, 8);
     expect(find.descendant(of: find.byType(NavigationRail), matching: find.text('Personas')), findsOneWidget);
+    expect(find.descendant(of: find.byType(NavigationRail), matching: find.text('Skills')), findsOneWidget);
     expect(trilho.extended, isFalse);
     expect(trilho.labelType, NavigationRailLabelType.all);
     await t.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('Board')));
@@ -120,6 +121,31 @@ void main() {
     expect(sala.tela, Tela.board);
     await comCtrl(t, LogicalKeyboardKey.digit6);
     expect(sala.tela, Tela.decisoes);
+  });
+
+  testWidgets('Ctrl+8 leva a Skills, que pede a lista ao servidor', (t) async {
+    final sala = await montar(t, 1300, Tela.conversas);
+    await comCtrl(t, LogicalKeyboardKey.digit8);
+    expect(sala.tela, Tela.skills);
+    expect(find.text('A biblioteca da Casa e as skills de cada persona'), findsOneWidget);
+  });
+
+  testWidgets('no celular Skills fica no menu, depois de Personas', (t) async {
+    final sala = await montar(t, 400, Tela.painel);
+    await t.tap(find.byTooltip('Menu'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 600));
+    final gaveta = find.byType(NavigationDrawer);
+    final rotulos = t
+        .widgetList<NavigationDrawerDestination>(find.descendant(of: gaveta, matching: find.byType(NavigationDrawerDestination)))
+        .map((d) => (d.label as Text).data)
+        .toList();
+    expect(rotulos, ['Equipes', 'Personas', 'Skills', 'Board', 'Decisões']);
+    await t.tap(find.descendant(of: gaveta, matching: find.text('Skills')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 600));
+    expect(sala.tela, Tela.skills);
+    expect(find.text('Nova skill'), findsOneWidget);
   });
 
   testWidgets('no celular a tela de personas tem o botão Nova persona e some no detalhe', (t) async {

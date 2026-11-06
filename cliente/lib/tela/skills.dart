@@ -10,9 +10,11 @@ import '../nucleo/design.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/skills.dart';
 import 'comum.dart';
+import 'paineis.dart';
 import 'tema.dart';
 
 const _larguraDoItemDoMenu = 320.0;
+const _larguraDaLista = 400.0;
 
 String nomeDaPosicaoDaSkill(Sala sala, String chave) {
   final barra = chave.indexOf('/');
@@ -26,22 +28,107 @@ String nomeDaPosicaoDaSkill(Sala sala, String chave) {
 double _margemDeLeitura(double largura) =>
     math.max(ClasseDeJanela.de(largura).margemLateral, (largura - larguraDeLeitura) / 2);
 
-class PainelDeSkills extends StatelessWidget {
-  const PainelDeSkills({super.key, required this.sala});
+class TelaSkills extends StatelessWidget {
+  const TelaSkills({super.key, required this.sala});
 
   final Sala sala;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: sala.skills,
-        builder: (context, _) {
+        listenable: Listenable.merge([sala.skills, sala.equipes, sala.personas]),
+        builder: (context, _) => LayoutBuilder(builder: (context, limites) {
           final estado = sala.skills;
-          if (estado.rascunho != null) {
-            return _EditorDeSkill(key: ValueKey(estado.geracao), sala: sala, estado: estado);
+          final classe = ClasseDeJanela.de(limites.maxWidth);
+          final editor = estado.rascunho == null
+              ? null
+              : _EditorDeSkill(
+                  key: ValueKey(estado.geracao),
+                  sala: sala,
+                  estado: estado,
+                  emPainel: classe.comDoisPaineis,
+                  compacto: classe == ClasseDeJanela.compact,
+                );
+          if (!classe.comDoisPaineis) {
+            return editor ??
+                Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  _Cabecalho(estado: estado, margem: classe.margemLateral),
+                  Expanded(child: _ListaDeSkills(sala: sala, estado: estado, margem: classe.margemLateral)),
+                ]);
           }
-          return _ListaDeSkills(sala: sala, estado: estado);
-        },
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _Cabecalho(estado: estado, margem: classe.margemLateral),
+            const Divider(height: 1),
+            Expanded(
+              child: LadoALado(
+                painel: 'skills',
+                rotulo: 'Largura da lista de skills',
+                inicial: _larguraDaLista,
+                maximo: 640,
+                lateral: _ListaDeSkills(sala: sala, estado: estado, margem: Espacos.esp3),
+                principal: editor ?? const _NenhumaAberta(),
+              ),
+            ),
+          ]);
+        }),
       );
+}
+
+class _Cabecalho extends StatelessWidget {
+  const _Cabecalho({required this.estado, required this.margem});
+
+  final EstadoSkills estado;
+  final double margem;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    return Material(
+      color: tema.colorScheme.surface,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(margem, Espacos.esp4, margem, Espacos.esp3),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Skills', style: tema.textTheme.titleLarge),
+                Text(
+                  'A biblioteca da Casa e as skills de cada persona',
+                  style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.onSurfaceVariant),
+                ),
+              ]),
+            ),
+            const SizedBox(width: Espacos.esp3),
+            _MenuDeDono(aoEscolher: estado.nova),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _NenhumaAberta extends StatelessWidget {
+  const _NenhumaAberta();
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cor = tema.colorScheme.onSurfaceVariant;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(Espacos.esp5),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Symbols.extension, color: cor),
+          const SizedBox(height: Espacos.esp2),
+          Text(
+            'Escolha uma skill para editar, ou crie uma em Nova skill.',
+            textAlign: TextAlign.center,
+            style: tema.textTheme.bodyMedium?.copyWith(color: cor),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 class _BannerDeErro extends StatelessWidget {
@@ -98,10 +185,11 @@ class _MenuDeDono extends StatelessWidget {
 }
 
 class _ListaDeSkills extends StatelessWidget {
-  const _ListaDeSkills({required this.sala, required this.estado});
+  const _ListaDeSkills({required this.sala, required this.estado, required this.margem});
 
   final Sala sala;
   final EstadoSkills estado;
+  final double margem;
 
   Future<void> _excluir(BuildContext context, Skill s) async {
     final ok = await confirmar(
@@ -120,70 +208,65 @@ class _ListaDeSkills extends StatelessWidget {
     final tema = Theme.of(context);
     final cores = tema.colorScheme;
     final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
-    return LayoutBuilder(builder: (context, limites) {
-      final margem = ClasseDeJanela.de(limites.maxWidth).margemLateral;
-      return ListView(padding: EdgeInsets.fromLTRB(margem, Espacos.esp4, margem, Espacos.esp5), children: [
-        Row(children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Skills', style: tema.textTheme.titleMedium),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: larguraDeLeitura),
-                child: Text(
-                  'A persona vê só o nome e a descrição e abre a skill quando o pedido casa com ela. '
-                  'As da Casa valem para quem as tiver anexadas; as próprias valem sempre para a persona.',
-                  style: secundario,
-                ),
+    final aberta = estado.rascunho;
+    return ListView(padding: EdgeInsets.fromLTRB(margem, Espacos.esp3, margem, Espacos.esp5), children: [
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: larguraDeLeitura),
+        child: Text(
+          'A persona vê só o nome e a descrição e abre a skill quando o pedido casa com ela. '
+          'As da Casa valem para quem as tiver anexadas; as próprias valem sempre para a persona.',
+          style: secundario,
+        ),
+      ),
+      if (estado.erro != null && aberta == null)
+        Padding(
+          padding: const EdgeInsets.only(top: Espacos.esp3),
+          child: _BannerDeErro(texto: estado.erro!, aoFechar: estado.limparErro),
+        ),
+      if (!estado.carregada)
+        const Padding(padding: EdgeInsets.all(Espacos.esp5), child: Center(child: CircularProgressIndicator()))
+      else
+        for (final grupo in agruparSkills(estado.lista)) ...[
+          const SizedBox(height: Espacos.esp5),
+          Row(children: [
+            if (grupo.dono == donoCasa)
+              Icon(Symbols.home, size: 20, color: cores.onSurfaceVariant)
+            else
+              Avatar.doPerfil(grupo.dono, tamanho: 20),
+            const SizedBox(width: Espacos.esp2),
+            Text(grupo.dono == donoCasa ? 'Casa' : rotuloDoDono(grupo.dono), style: tema.textTheme.titleSmall),
+          ]),
+          const SizedBox(height: Espacos.esp2),
+          if (grupo.skills.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Espacos.esp4),
+              child: Row(children: [
+                Icon(Symbols.extension, size: 20, color: cores.onSurfaceVariant),
+                const SizedBox(width: Espacos.esp2),
+                Expanded(child: Text('Nenhuma skill na biblioteca da Casa.', style: secundario)),
+              ]),
+            ),
+          for (final s in grupo.skills)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Espacos.esp3),
+              child: _CartaoDeSkill(
+                sala: sala,
+                skill: s,
+                aberta: aberta != null && !aberta.nova && aberta.dono == s.dono && aberta.id == s.id,
+                aoExcluir: () => _excluir(context, s),
               ),
-            ]),
-          ),
-          const SizedBox(width: Espacos.esp3),
-          _MenuDeDono(aoEscolher: estado.nova),
-        ]),
-        if (estado.erro != null)
-          Padding(
-            padding: const EdgeInsets.only(top: Espacos.esp3),
-            child: _BannerDeErro(texto: estado.erro!, aoFechar: estado.limparErro),
-          ),
-        if (!estado.carregada)
-          const Padding(padding: EdgeInsets.all(Espacos.esp5), child: Center(child: CircularProgressIndicator()))
-        else
-          for (final grupo in agruparSkills(estado.lista)) ...[
-            const SizedBox(height: Espacos.esp5),
-            Row(children: [
-              if (grupo.dono == donoCasa)
-                Icon(Symbols.home, size: 20, color: cores.onSurfaceVariant)
-              else
-                Avatar.doPerfil(grupo.dono, tamanho: 20),
-              const SizedBox(width: Espacos.esp2),
-              Text(grupo.dono == donoCasa ? 'Casa' : rotuloDoDono(grupo.dono), style: tema.textTheme.titleSmall),
-            ]),
-            const SizedBox(height: Espacos.esp2),
-            if (grupo.skills.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: Espacos.esp4),
-                child: Row(children: [
-                  Icon(Symbols.extension, size: 20, color: cores.onSurfaceVariant),
-                  const SizedBox(width: Espacos.esp2),
-                  Expanded(child: Text('Nenhuma skill na biblioteca da Casa.', style: secundario)),
-                ]),
-              ),
-            for (final s in grupo.skills)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Espacos.esp3),
-                child: _CartaoDeSkill(sala: sala, skill: s, aoExcluir: () => _excluir(context, s)),
-              ),
-          ],
-      ]);
-    });
+            ),
+        ],
+    ]);
   }
 }
 
 class _CartaoDeSkill extends StatefulWidget {
-  const _CartaoDeSkill({required this.sala, required this.skill, required this.aoExcluir});
+  const _CartaoDeSkill({required this.sala, required this.skill, required this.aberta, required this.aoExcluir});
 
   final Sala sala;
   final Skill skill;
+  final bool aberta;
   final VoidCallback aoExcluir;
 
   @override
@@ -230,6 +313,7 @@ class _CartaoDeSkillState extends State<_CartaoDeSkill> {
         onSecondaryTapUp: (d) => _menu.open(position: d.localPosition),
         child: Card(
           margin: EdgeInsets.zero,
+          color: widget.aberta ? cores.secondaryContainer : null,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(Espacos.esp4, Espacos.esp3, Espacos.esp2, Espacos.esp4),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -279,10 +363,12 @@ class _CartaoDeSkillState extends State<_CartaoDeSkill> {
 }
 
 class _EditorDeSkill extends StatefulWidget {
-  const _EditorDeSkill({super.key, required this.sala, required this.estado});
+  const _EditorDeSkill({super.key, required this.sala, required this.estado, required this.emPainel, required this.compacto});
 
   final Sala sala;
   final EstadoSkills estado;
+  final bool emPainel;
+  final bool compacto;
 
   @override
   State<_EditorDeSkill> createState() => _EditorDeSkillState();
@@ -342,11 +428,15 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
     final descricaoLonga = r.descricao.trim().length > limiteDaDescricao;
     final corpoLongo = r.corpo.length > limiteDoCorpo;
     final titulo = r.nova ? 'Nova skill em ${rotuloDoDono(r.dono)}' : 'Skill ${r.id} (${rotuloDoDono(r.dono)})';
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final descartar = estado.salvando ? null : _descartar;
+    final conteudo = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(Espacos.esp2, Espacos.esp2, Espacos.esp4, Espacos.esp2),
         child: Row(children: [
-          IconButton(tooltip: 'Voltar às skills', icon: const Icon(Symbols.arrow_back), onPressed: _descartar),
+          if (widget.emPainel)
+            IconButton(tooltip: 'Fechar o editor', icon: const Icon(Symbols.close), onPressed: _descartar)
+          else
+            IconButton(tooltip: 'Voltar às skills', icon: const Icon(Symbols.arrow_back), onPressed: _descartar),
           const SizedBox(width: Espacos.esp1),
           Expanded(child: Text(titulo, style: tema.textTheme.titleMedium, overflow: TextOverflow.ellipsis)),
           if (estado.salvando)
@@ -354,7 +444,10 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
               padding: EdgeInsets.only(right: Espacos.esp3),
               child: SizedBox.square(dimension: Espacos.esp4, child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-          OutlinedButton.icon(onPressed: estado.salvando ? null : _descartar, icon: const Icon(Symbols.undo), label: const Text('Descartar')),
+          if (widget.compacto)
+            IconButton(tooltip: 'Descartar', icon: const Icon(Symbols.undo), onPressed: descartar)
+          else
+            OutlinedButton.icon(onPressed: descartar, icon: const Icon(Symbols.undo), label: const Text('Descartar')),
           const SizedBox(width: Espacos.esp2),
           FilledButton.icon(
             onPressed: estado.salvando ? null : _salvar,
@@ -454,6 +547,13 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
         }),
       ),
     ]);
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (saiu, _) {
+        if (!saiu && !estado.salvando) _descartar();
+      },
+      child: conteudo,
+    );
   }
 }
 

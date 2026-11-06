@@ -21,7 +21,7 @@ import 'skills.dart';
 import 'tarefas.dart';
 import 'workflows.dart';
 
-enum Tela { conversas, chat, board, decisoes, painel, tarefas, equipes, personas, configuracao }
+enum Tela { conversas, chat, board, decisoes, painel, tarefas, equipes, personas, skills, configuracao }
 
 class Sala extends ChangeNotifier {
   Sala(this.servidor) : canal = Canal(servidor.resolver) {
@@ -83,10 +83,10 @@ class Sala extends ChangeNotifier {
     tela = nova;
     if (nova == Tela.decisoes && !decisoes.carregada) decisoes.carregar();
     if ((nova == Tela.tarefas || nova == Tela.personas) && !tarefas.carregada) tarefas.carregar();
-    final comEquipes = nova == Tela.equipes || nova == Tela.painel || nova == Tela.personas;
+    final comEquipes = nova == Tela.equipes || nova == Tela.painel || nova == Tela.personas || nova == Tela.skills;
     if (comEquipes && !equipes.carregada) equipes.carregar();
     if ((nova == Tela.equipes || nova == Tela.tarefas) && !rotinas.carregada) rotinas.carregar();
-    if ((nova == Tela.equipes || nova == Tela.personas) && !skills.carregada) skills.carregar();
+    if ((nova == Tela.equipes || nova == Tela.personas || nova == Tela.skills) && !skills.carregada) skills.carregar();
     if ((nova == Tela.equipes || nova == Tela.painel || nova == Tela.tarefas) && !workflows.carregada) {
       workflows.carregar();
     }

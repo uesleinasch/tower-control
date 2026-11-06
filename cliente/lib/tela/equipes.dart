@@ -114,7 +114,6 @@ class _TelaEquipesState extends State<TelaEquipes> {
       return PainelDeRotinas(sala: sala, equipe: equipe, editar: editar, largo: classe.comDoisPaineis);
     }
     if (estado.vendoWorkflows) return PainelDeWorkflows(sala: sala, equipe: equipe, desenhar: editar);
-    if (estado.vendoSkills && editar) return PainelDeSkills(sala: sala);
     final selecionada = estado.selecionada == null ? null : equipe.posicao(estado.selecionada!);
     final canvas = CanvasDoOrganograma(
       key: _chaveDoCanvas,
@@ -507,7 +506,7 @@ class _Topo extends StatelessWidget {
     final ids = {for (final e in estado.equipes) e.id};
     final larga = classe.comDoisPaineis;
     final compacta = classe == ClasseDeJanela.compact;
-    final aba = estado.vendoSkills && !editar ? AbaDaEquipe.organograma : estado.aba;
+    final aba = estado.aba;
 
     Widget acao(IconData icone, String rotulo, VoidCallback? aoTocar, {bool principal = false, bool marcado = false}) {
       if (!larga) {
@@ -592,12 +591,6 @@ class _Topo extends StatelessWidget {
           label: const Text('Workflows'),
           icon: compacta ? null : const Icon(Symbols.schema),
         ),
-        if (editar)
-          ButtonSegment(
-            value: AbaDaEquipe.skills,
-            label: const Text('Skills'),
-            icon: compacta ? null : const Icon(Symbols.extension),
-          ),
       ],
       selected: {aba},
       onSelectionChanged: (escolha) => estado.verAba(escolha.first),
@@ -636,7 +629,7 @@ class _Topo extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Equipes', style: tema.textTheme.titleLarge),
               Text(
-                'Organograma, rotinas, workflows e skills de cada equipe',
+                'Organograma, rotinas e workflows de cada equipe',
                 style: tema.textTheme.bodyMedium?.copyWith(color: cores.onSurfaceVariant),
               ),
             ]),
