@@ -1,8 +1,10 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/editor_de_workflow.dart';
 import '../estado/sala.dart';
+import '../nucleo/design.dart';
 import '../nucleo/editor_de_workflow.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/tarefas.dart';
@@ -12,19 +14,15 @@ import 'workflows.dart';
 import 'tema.dart';
 
 const _larguraDaPaleta = 210.0;
-const _larguraDoPainel = 360.0;
-const _larguraParaPainelFixo = 760.0;
+const _larguraDoPainel = 320.0;
+const _larguraDoMenuDeProblemas = 460.0;
+const _numeros = [FontFeature.tabularFigures()];
 
 typedef _AoMudarCampos = String? Function(List<CampoTipado> campos, {bool digitando});
 typedef _AoMudarRegra = void Function(Map<String, dynamic> regra, {bool digitando});
 
 String _rotuloDaPosicao(PosicaoResumo p) =>
     p.persona == null ? '${p.titulo} (vaga)' : '${p.personaNome ?? Perfil.porChave(p.persona!).nome} · ${p.titulo}';
-
-String _rotuloDaCaixa(WorkflowJson w, String id) {
-  final titulo = caixaDe(w, id)?['titulo'];
-  return titulo is String && titulo.trim().isNotEmpty ? titulo.trim() : id;
-}
 
 class EditorDeWorkflow extends StatefulWidget {
   const EditorDeWorkflow({super.key, required this.sala});
@@ -43,7 +41,7 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
 
   EstadoEditorDeWorkflow get _e => _sala.editorDeWorkflow;
 
-  String _rotulo(String id) => _rotuloDaCaixa(_e.rascunho ?? const {}, id);
+  String _rotulo(String id) => rotuloNoRascunho(_e.rascunho ?? const {}, id);
 
   void _avisar(String texto, {bool desfazer = true}) {
     final mensageiro = ScaffoldMessenger.maybeOf(context);
@@ -71,6 +69,11 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
 
   void _criarNoCentro(String tipo) => _criar(tipo, _canvas.currentState?.pontoNoCentro() ?? (x: 0, y: 0));
 
+  void _criarDepois(String de, String? quando, String tipo) {
+    _e.criarDepois(de, quando, tipo);
+    _avisar('Caixa ${nomesDeCaixa[tipo] ?? tipo} criada depois de ${_rotulo(de)}.');
+  }
+
   void _ligar(String de, String? quando, String? para) {
     if (para == null || para == de) {
       _avisar('Solte o ponto em cima de outra caixa para ligar.', desfazer: false);
@@ -85,6 +88,10 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
     if (_mudouCom((w) => desligar(w, a))) _avisar('Ligação de ${_rotulo(a.de)} para ${_rotulo(a.para)} desfeita.');
   }
 
+  void _definirInicio(String id) {
+    if (_mudouCom((w) => definirInicio(w, id))) _avisar('${_rotulo(id)} agora é o início.');
+  }
+
   RelativeRect _posicaoDoMenu(Offset global) {
     final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
     return RelativeRect.fromRect(global & Size.zero, Offset.zero & overlay.size);
@@ -92,8 +99,10 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
 
   Future<void> _tocarPonto(String caixa, PontoDeSaida ponto, Offset global) async {
     if (!ponto.livre) {
-      _avisar('Esse ponto já tem ligação: arraste dele até outra caixa para trocar o destino, ou clique na linha para desligar.',
-          desfazer: false);
+      _avisar(
+        'Esse ponto já tem ligação: arraste dele até outra caixa para trocar o destino, ou clique na linha para desfazer a ligação.',
+        desfazer: false,
+      );
       return;
     }
     final tipo = await showMenu<String>(
@@ -103,47 +112,21 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
         for (final t in tiposDeCaixa)
           PopupMenuItem(
             value: t,
-            child: ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(iconesDeCaixa[t]),
-              title: Text(nomesDeCaixa[t] ?? t),
-            ),
+            child: Row(children: [
+              Icon(iconeDaCaixa(t), size: 20),
+              const SizedBox(width: Espacos.esp3),
+              Text(nomesDeCaixa[t] ?? t),
+            ]),
           ),
       ],
     );
     if (tipo == null || !mounted) return;
-    _e.criarDepois(caixa, ponto.quando, tipo);
-    _avisar('Caixa ${nomesDeCaixa[tipo] ?? tipo} criada depois de ${_rotulo(caixa)}.');
-  }
-
-  void _acaoDaCaixa(String id, String acao) {
-    switch (acao) {
-      case 'inicio':
-        if (_mudouCom((w) => definirInicio(w, id))) _avisar('${_rotulo(id)} agora é o início.');
-      case 'remover':
-        _remover(id);
-    }
-  }
-
-  Future<void> _menuDaCaixa(String id, Offset global) async {
-    _e.selecionar(id);
-    final acao = await showMenu<String>(
-      context: context,
-      position: _posicaoDoMenu(global),
-      items: _itensDoMenuDaCaixa(_e.rascunho?['inicio'] == id),
-    );
-    if (acao != null && mounted) _acaoDaCaixa(id, acao);
+    _criarDepois(caixa, ponto.quando, tipo);
   }
 
   void _remover(String id) {
     final rotulo = _rotulo(id);
     if (_mudouCom((w) => removerCaixa(w, id))) _avisar('Caixa $rotulo removida, com as ligações dela.');
-  }
-
-  void _removerSelecionada() {
-    final id = _e.selecionada;
-    if (id != null) _remover(id);
   }
 
   void _organizar() {
@@ -152,8 +135,19 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
     _avisar('Caixas organizadas por níveis a partir do início.');
   }
 
+  void _salvar() {
+    if (_e.podeSalvar) _e.salvar();
+  }
+
   Future<void> _fechar() async {
-    if (_e.alterado && !await confirmar(context, 'Descartar o rascunho?', 'As mudanças neste workflow ainda não foram salvas.')) {
+    if (_e.alterado &&
+        !await confirmar(
+          context,
+          'Descartar o rascunho?',
+          'As mudanças neste workflow ainda não foram salvas.',
+          acao: 'Descartar rascunho',
+          destrutivo: true,
+        )) {
       return;
     }
     _e.fechar();
@@ -165,6 +159,8 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
       context,
       'Excluir o workflow $nome?',
       'O arquivo sai da pasta de dados. O servidor recusa se ele estiver rodando ou se uma rotina o disparar.',
+      acao: 'Excluir workflow',
+      destrutivo: true,
     );
     if (ok) _e.excluir();
   }
@@ -192,6 +188,23 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
     }
   }
 
+  EdicaoDoGrafo _edicao(WorkflowJson r) => EdicaoDoGrafo(
+        rascunho: r,
+        aoMover: (id, ponto) => _e.aplicar((x) => moverCaixa(x, id, ponto)),
+        aoLigar: _ligar,
+        aoDesligar: _desligar,
+        aoTocarPonto: _tocarPonto,
+        aoSoltarTipo: _criar,
+        aoCriarDepois: _criarDepois,
+        aoEditar: _e.selecionar,
+        aoDefinirInicio: _definirInicio,
+        aoRemover: _remover,
+        aoDeslocar: (id, dx, dy, grupo) => _e.aplicar((x) => deslocarCaixa(x, id, dx, dy), grupo: grupo),
+        aoMoveu: (id) => _avisar('${_rotulo(id)} mudou de lugar.'),
+        aoDesfazer: _e.desfazer,
+        aoRefazer: _e.refazer,
+      );
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: Listenable.merge([_e, _sala.workflows, _sala.rotinas]),
@@ -199,118 +212,167 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
           final r = _e.rascunho;
           final equipe = _e.equipe;
           if (r == null || equipe == null) return const SizedBox.shrink();
-          final cores = Theme.of(context).colorScheme;
+          final tema = Theme.of(context);
+          final cores = tema.colorScheme;
           final w = Workflow.deJson(r);
           final id = _e.id ?? '';
           final abertos = _sala.workflows.abertos(equipe.id, id);
           final salvo = _sala.workflows.definicao(equipe.id, id);
           final escolhido = _e.sobreposto == null ? null : _sala.workflows.fluxo(_e.sobreposto!);
           final sobreposto = escolhido != null && escolhido.versao == _e.versaoBase && !_e.alterado ? escolhido : null;
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Material(color: cores.surface, child: SafeArea(bottom: false, child: _topo(context, w, salvo))),
-            if (_e.erro != null)
-              MaterialBanner(
-                content: Text(_e.erro!),
-                backgroundColor: cores.errorContainer,
-                actions: [TextButton(onPressed: _e.limparErro, child: const Text('Ok'))],
-              ),
-            if (abertos.isNotEmpty) _avisoDeExecucoes(cores, abertos, sobreposto),
-            const Divider(height: 1),
-            Expanded(
-              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                SizedBox(width: _larguraDaPaleta, child: _Paleta(aoCriar: _criarNoCentro)),
-                const VerticalDivider(width: 1),
-                Expanded(child: _area(w, r, sobreposto)),
+          return LayoutBuilder(builder: (context, limites) {
+            final classe = ClasseDeJanela.de(limites.maxWidth);
+            final editar = classe != ClasseDeJanela.compact;
+            final ed = _edicao(r);
+            return CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.keyS, control: true): _salvar,
+                const SingleActivator(LogicalKeyboardKey.keyS, meta: true): _salvar,
+              },
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Material(
+                  color: cores.surface,
+                  child: SafeArea(bottom: false, child: _topo(context, w, salvo, classe, editar)),
+                ),
+                if (_e.erro != null)
+                  MaterialBanner(
+                    leading: Icon(Symbols.error, color: cores.onErrorContainer),
+                    content: Text(_e.erro!, style: tema.textTheme.bodyMedium?.copyWith(color: cores.onErrorContainer)),
+                    backgroundColor: cores.errorContainer,
+                    actions: [
+                      TextButton(
+                        style: TextButton.styleFrom(foregroundColor: cores.onErrorContainer),
+                        onPressed: _e.limparErro,
+                        child: const Text('Fechar'),
+                      ),
+                    ],
+                  ),
+                if (abertos.isNotEmpty) _avisoDeExecucoes(context, abertos, sobreposto, classe),
+                const Divider(height: 1),
+                Expanded(
+                  child: editar
+                      ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          SizedBox(width: _larguraDaPaleta, child: _Paleta(aoCriar: _criarNoCentro)),
+                          const VerticalDivider(width: 1),
+                          Expanded(child: _area(w, ed, sobreposto, classe)),
+                        ])
+                      : CanvasDoGrafo(
+                          key: _canvas,
+                          workflow: w,
+                          estados: sobreposto == null ? const {} : estadoDasCaixas(sobreposto),
+                          percorridas: sobreposto == null ? const {} : arestasPercorridas(sobreposto),
+                          erros: _e.erros,
+                          aviso: 'Alargue a janela para editar o workflow.',
+                        ),
+                ),
               ]),
-            ),
-          ]);
+            );
+          });
         },
       );
 
-  Widget _topo(BuildContext context, Workflow w, Workflow? salvo) {
-    final cores = Theme.of(context).colorScheme;
-    return LayoutBuilder(builder: (context, limites) {
-      final compacto = limites.maxWidth < 1000;
-      Widget acao(IconData icone, String rotulo, VoidCallback? aoTocar, {bool principal = false}) {
-        if (compacto) {
-          return IconButton(
-            tooltip: rotulo,
-            onPressed: aoTocar,
-            icon: Icon(icone),
-            style: principal ? IconButton.styleFrom(backgroundColor: cores.primaryContainer) : null,
-          );
-        }
-        if (principal) return FilledButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
-        return OutlinedButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+  Widget _topo(BuildContext context, Workflow w, Workflow? salvo, ClasseDeJanela classe, bool editar) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final largo = classe.comDoisPaineis;
+    Widget acao(IconData icone, String rotulo, VoidCallback? aoTocar, {bool principal = false, bool tonal = false, String? dica}) {
+      if (!largo) {
+        if (principal) return IconButton.filled(tooltip: dica ?? rotulo, onPressed: aoTocar, icon: Icon(icone));
+        if (tonal) return IconButton.filledTonal(tooltip: dica ?? rotulo, onPressed: aoTocar, icon: Icon(icone));
+        return IconButton(tooltip: dica ?? rotulo, onPressed: aoTocar, icon: Icon(icone));
       }
+      final Widget botao;
+      if (principal) {
+        botao = FilledButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+      } else if (tonal) {
+        botao = FilledButton.tonalIcon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+      } else {
+        botao = OutlinedButton.icon(onPressed: aoTocar, icon: Icon(icone), label: Text(rotulo));
+      }
+      return dica == null ? botao : Tooltip(message: dica, child: botao);
+    }
 
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Row(children: [
-          IconButton(tooltip: 'Fechar o editor', icon: const Icon(Symbols.close), onPressed: _fechar),
-          Flexible(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(w.nome, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(
-                [
-                  _e.novo ? 'novo, ainda não salvo' : 'versão ${_e.versaoBase}',
-                  'id ${w.id}',
-                  if (_e.mudou && !_e.novo) 'não salvo',
-                ].join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
-              ),
-            ]),
+    final salvar = acao(
+      Symbols.save,
+      _e.salvando ? 'Salvando…' : (_e.alterado ? 'Salvar' : 'Salvo'),
+      _e.podeSalvar ? _e.salvar : null,
+      principal: true,
+      dica: 'Salvar workflow (Ctrl+S)',
+    );
+    final acoes = <Widget>[
+      if (editar) ...[
+        IconButton(
+          tooltip: 'Desfazer (Ctrl+Z)',
+          onPressed: _e.podeDesfazer ? _e.desfazer : null,
+          icon: const Icon(Symbols.undo),
+        ),
+        IconButton(
+          tooltip: 'Refazer (Ctrl+Shift+Z)',
+          onPressed: _e.podeRefazer ? _e.refazer : null,
+          icon: const Icon(Symbols.redo),
+        ),
+        acao(Symbols.auto_awesome_mosaic, 'Organizar', _organizar),
+        if (salvo != null && !_e.alterado) acao(Symbols.play_arrow, 'Iniciar', () => _iniciar(salvo), tonal: true),
+        if (_e.mudou)
+          largo
+              ? TextButton.icon(onPressed: _e.descartar, icon: const Icon(Symbols.restore), label: const Text('Descartar'))
+              : IconButton(tooltip: 'Descartar', onPressed: _e.descartar, icon: const Icon(Symbols.restore)),
+        salvar,
+        if (!_e.novo)
+          IconButton(
+            tooltip: 'Excluir workflow',
+            color: cores.error,
+            onPressed: _e.salvando ? null : _excluir,
+            icon: const Icon(Symbols.delete),
           ),
-          const SizedBox(width: 8),
-          _problemas(cores),
-          Expanded(
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                IconButton(
-                  tooltip: 'Desfazer (Ctrl+Z)',
-                  onPressed: _e.podeDesfazer ? _e.desfazer : null,
-                  icon: const Icon(Symbols.undo),
-                ),
-                IconButton(
-                  tooltip: 'Refazer (Ctrl+Shift+Z)',
-                  onPressed: _e.podeRefazer ? _e.refazer : null,
-                  icon: const Icon(Symbols.redo),
-                ),
-                acao(Symbols.account_tree, 'Organizar', _organizar),
-                if (salvo != null && !_e.alterado) acao(Symbols.play_arrow, 'Iniciar', () => _iniciar(salvo)),
-                acao(
-                  Symbols.save,
-                  _e.salvando ? 'Salvando…' : (_e.alterado ? 'Salvar' : 'Salvo'),
-                  _e.podeSalvar ? _e.salvar : null,
-                  principal: true,
-                ),
-                if (_e.mudou) acao(Symbols.restore, 'Descartar', _e.descartar),
-                if (!_e.novo)
-                  IconButton(
-                    tooltip: 'Excluir workflow',
-                    onPressed: _e.salvando ? null : _excluir,
-                    icon: const Icon(Symbols.delete),
-                  ),
-              ],
+      ] else if (_e.alterado)
+        salvar,
+    ];
+    return Padding(
+      padding: EdgeInsets.fromLTRB(Espacos.esp1, Espacos.esp2, classe.margemLateral, Espacos.esp2),
+      child: Row(children: [
+        IconButton(tooltip: 'Fechar o editor', icon: const Icon(Symbols.close), onPressed: _fechar),
+        const SizedBox(width: Espacos.esp1),
+        Flexible(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(w.nome, maxLines: 1, overflow: TextOverflow.ellipsis, style: tema.textTheme.titleMedium),
+            Text(
+              [
+                _e.novo ? 'novo, ainda não salvo' : 'versão ${_e.versaoBase}',
+                'id ${w.id}',
+                if (_e.mudou && !_e.novo) 'não salvo',
+              ].join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant, fontFeatures: _numeros),
             ),
+          ]),
+        ),
+        const SizedBox(width: Espacos.esp3),
+        _problemas(context),
+        const SizedBox(width: Espacos.esp3),
+        Expanded(
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Espacos.esp2,
+            runSpacing: Espacos.esp1,
+            children: acoes,
           ),
-        ]),
-      );
-    });
+        ),
+      ]),
+    );
   }
 
-  Widget _problemas(ColorScheme cores) {
+  Widget _problemas(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final n = _e.problemas;
     if (n == 0) {
-      return const Chip(
-        avatar: Icon(Symbols.check_circle, size: 18, color: Color(0xFF4FAE7C)),
-        label: Text('sem problemas'),
+      return Chip(
+        avatar: Icon(Symbols.check_circle, color: CoresSemanticas.de(context).sucesso.cor),
+        label: const Text('sem problemas'),
+        labelStyle: tema.textTheme.labelMedium,
         visualDensity: VisualDensity.compact,
       );
     }
@@ -320,124 +382,126 @@ class _EditorDeWorkflowState extends State<EditorDeWorkflow> {
         for (final MapEntry(key: lugar, value: mensagens) in _e.erros.entries)
           for (final m in mensagens)
             MenuItemButton(
-              leadingIcon: Icon(Symbols.error, size: 18, color: cores.error),
+              leadingIcon: Icon(Symbols.error, color: cores.error),
               onPressed: () => _irPara(lugar),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: Text('${lugar == lugarDoWorkflow ? 'Workflow' : _rotuloDaCaixa(r, lugar)}: $m'),
+                constraints: const BoxConstraints(maxWidth: _larguraDoMenuDeProblemas),
+                child: Text('${lugar == lugarDoWorkflow ? 'Workflow' : rotuloNoRascunho(r, lugar)}: $m'),
               ),
             ),
       ],
       builder: (context, controle, _) => ActionChip(
-        avatar: Icon(Symbols.error, size: 18, color: cores.error),
-        label: Text(n == 1 ? '1 problema' : '$n problemas'),
+        avatar: Icon(Symbols.error, color: cores.error),
+        label: Text(n == 1 ? '1 problema' : '$n problemas', style: const TextStyle(fontFeatures: _numeros)),
+        labelStyle: tema.textTheme.labelMedium,
+        tooltip: 'Ver os problemas e ir até cada um',
         visualDensity: VisualDensity.compact,
         onPressed: () => controle.isOpen ? controle.close() : controle.open(),
       ),
     );
   }
 
-  Widget _avisoDeExecucoes(ColorScheme cores, List<Fluxo> abertos, Fluxo? sobreposto) => Material(
-        color: cores.surfaceContainerHigh,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              abertos.length == 1
-                  ? '1 execução em andamento segue na versão em que começou.'
-                  : '${abertos.length} execuções em andamento seguem na versão em que começaram.',
-              style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12),
-            ),
-            const SizedBox(height: 4),
-            Wrap(spacing: 6, runSpacing: 4, children: [
-              for (final f in abertos)
-                FilterChip(
-                  selected: sobreposto?.id == f.id,
-                  visualDensity: VisualDensity.compact,
-                  tooltip: f.versao == _e.versaoBase && !_e.alterado
-                      ? 'Mostrar o andamento no desenho'
-                      : 'Abrir a execução com o desenho da versão dela',
-                  label: Text('#${f.id} · versão ${f.versao} · ${nomesDeStatusDoFluxo[f.status] ?? f.status}'),
-                  onSelected: (_) => _verFluxo(f),
-                ),
-            ]),
-          ]),
-        ),
-      );
-
-  Widget _area(Workflow w, WorkflowJson r, Fluxo? sobreposto) => LayoutBuilder(builder: (context, limites) {
-        final largo = limites.maxWidth >= _larguraParaPainelFixo;
-        final verWorkflow = _painelDoWorkflow ?? largo;
-        final canvas = CanvasDoGrafo(
-          key: _canvas,
-          workflow: w,
-          estados: sobreposto == null ? const {} : estadoDasCaixas(sobreposto),
-          percorridas: sobreposto == null ? const {} : arestasPercorridas(sobreposto),
-          selecionada: _e.selecionada,
-          comErro: {for (final k in _e.erros.keys) if (k != lugarDoWorkflow) k},
-          aoTocar: (id) => _e.selecionar(id == null || id == _e.selecionada ? null : id),
-          edicao: EdicaoDoGrafo(
-            rascunho: r,
-            aoMover: (id, ponto) => _e.aplicar((x) => moverCaixa(x, id, ponto)),
-            aoLigar: _ligar,
-            aoDesligar: _desligar,
-            aoTocarPonto: _tocarPonto,
-            aoSoltarTipo: _criar,
-            aoMenuDaCaixa: _menuDaCaixa,
-            aoRemover: _removerSelecionada,
-            aoDesfazer: _e.desfazer,
-            aoRefazer: _e.refazer,
+  Widget _avisoDeExecucoes(BuildContext context, List<Fluxo> abertos, Fluxo? sobreposto, ClasseDeJanela classe) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final margem = classe.margemLateral;
+    return Material(
+      color: cores.surfaceContainer,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(margem, Espacos.esp2, margem, Espacos.esp2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            abertos.length == 1
+                ? '1 execução em andamento segue na versão em que começou.'
+                : '${abertos.length} execuções em andamento seguem na versão em que começaram.',
+            style: tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant, fontFeatures: _numeros),
           ),
-        );
-        final selecionada = _e.selecionada;
-        final Widget? painel = selecionada != null
-            ? _PainelDaCaixa(
-                key: ValueKey('$selecionada/${_e.geracao}'),
-                sala: _sala,
-                caixa: selecionada,
-                aoAcao: (acao) => _acaoDaCaixa(selecionada, acao),
-              )
-            : verWorkflow
-                ? _PainelDoWorkflow(
-                    key: ValueKey('workflow/${_e.geracao}'),
-                    sala: _sala,
-                    aoFechar: () => setState(() => _painelDoWorkflow = false),
-                    aoVerFluxo: _verFluxo,
-                  )
-                : null;
-        if (painel == null) {
-          return Stack(children: [
-            Positioned.fill(child: canvas),
-            Positioned(
-              top: 12,
-              right: 12,
-              child: FilledButton.tonalIcon(
-                onPressed: () => setState(() => _painelDoWorkflow = true),
-                icon: const Icon(Symbols.tune),
-                label: const Text('Workflow'),
+          const SizedBox(height: Espacos.esp1),
+          Wrap(spacing: Espacos.esp2, runSpacing: Espacos.esp1, children: [
+            for (final f in abertos)
+              FilterChip(
+                selected: sobreposto?.id == f.id,
+                showCheckmark: false,
+                visualDensity: VisualDensity.compact,
+                avatar: Icon(iconeDoEstado(estadoDoFluxo(f.status)), color: corDoEstado(context, estadoDoFluxo(f.status))),
+                tooltip: f.versao == _e.versaoBase && !_e.alterado
+                    ? 'Mostrar o andamento no desenho'
+                    : 'Abrir a execução com o desenho da versão dela',
+                label: Text(
+                  '#${f.id} · versão ${f.versao} · ${nomesDeStatusDoFluxo[f.status] ?? f.status}',
+                  style: const TextStyle(fontFeatures: _numeros),
+                ),
+                labelStyle: tema.textTheme.labelMedium,
+                onSelected: (_) => _verFluxo(f),
               ),
-            ),
-          ]);
-        }
-        if (largo) {
-          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: canvas),
-            const VerticalDivider(width: 1),
-            SizedBox(width: _larguraDoPainel, child: painel),
-          ]);
-        }
-        final largura = limites.maxWidth * 0.9 < _larguraDoPainel ? limites.maxWidth * 0.9 : _larguraDoPainel;
-        return Stack(children: [
-          Positioned.fill(child: canvas),
-          Positioned(top: 0, bottom: 0, right: 0, width: largura, child: Material(elevation: 8, child: painel)),
-        ]);
-      });
-}
+          ]),
+        ]),
+      ),
+    );
+  }
 
-List<PopupMenuEntry<String>> _itensDoMenuDaCaixa(bool inicio) => [
-      PopupMenuItem(value: 'inicio', enabled: !inicio, child: const Text('Definir como início')),
-      const PopupMenuItem(value: 'remover', child: Text('Remover caixa')),
-    ];
+  Widget _area(Workflow w, EdicaoDoGrafo ed, Fluxo? sobreposto, ClasseDeJanela classe) {
+    final largo = classe.comDoisPaineis;
+    final verWorkflow = _painelDoWorkflow ?? largo;
+    final canvas = CanvasDoGrafo(
+      key: _canvas,
+      workflow: w,
+      estados: sobreposto == null ? const {} : estadoDasCaixas(sobreposto),
+      percorridas: sobreposto == null ? const {} : arestasPercorridas(sobreposto),
+      selecionada: _e.selecionada,
+      erros: _e.erros,
+      aoTocar: (id) => _e.selecionar(id == null || id == _e.selecionada ? null : id),
+      edicao: ed,
+    );
+    final selecionada = _e.selecionada;
+    final Widget? painel = selecionada != null
+        ? _PainelDaCaixa(
+            key: ValueKey('$selecionada/${_e.geracao}'),
+            sala: _sala,
+            caixa: selecionada,
+            edicao: ed,
+            aoMover: () => _canvas.currentState?.comecarMovimento(selecionada),
+          )
+        : verWorkflow
+            ? _PainelDoWorkflow(
+                key: ValueKey('workflow/${_e.geracao}'),
+                sala: _sala,
+                aoFechar: () => setState(() => _painelDoWorkflow = false),
+                aoVerFluxo: _verFluxo,
+              )
+            : null;
+    if (painel == null) {
+      return Stack(children: [
+        Positioned.fill(child: canvas),
+        Positioned(
+          top: Espacos.esp3,
+          right: Espacos.esp3,
+          child: FilledButton.tonalIcon(
+            onPressed: () => setState(() => _painelDoWorkflow = true),
+            icon: const Icon(Symbols.tune),
+            label: const Text('Workflow'),
+          ),
+        ),
+      ]);
+    }
+    if (largo) {
+      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: canvas),
+        const VerticalDivider(width: 1),
+        SizedBox(
+          width: _larguraDoPainel,
+          child: Material(color: Theme.of(context).colorScheme.surfaceContainer, child: painel),
+        ),
+      ]);
+    }
+    return LayoutBuilder(
+      builder: (context, limites) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: canvas),
+        SizedBox(height: limites.maxHeight * 0.45, child: FolhaDeApoio(child: painel)),
+      ]),
+    );
+  }
+}
 
 class _Paleta extends StatelessWidget {
   const _Paleta({required this.aoCriar});
@@ -446,48 +510,69 @@ class _Paleta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
-    return ListView(padding: const EdgeInsets.fromLTRB(8, 12, 8, 12), children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Text('CAIXAS', style: TextStyle(color: cores.onSurfaceVariant, fontSize: 11, letterSpacing: 1)),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
-        child: Text('Arraste para o canvas ou clique para criar no centro.',
-            style: TextStyle(color: cores.onSurfaceVariant, fontSize: 11)),
-      ),
-      for (final t in tiposDeCaixa) ...[
-        if (t == 'decisao_humana' || t == 'paralelo') const Divider(height: 12),
-        Draggable<String>(
-          data: t,
-          dragAnchorStrategy: pointerDragAnchorStrategy,
-          feedback: Material(
-            elevation: 4,
-            borderRadius: BorderRadius.circular(8),
-            color: cores.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(iconesDeCaixa[t], size: 18),
-                const SizedBox(width: 6),
-                Text(nomesDeCaixa[t] ?? t),
-              ]),
-            ),
-          ),
-          child: ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            minLeadingWidth: 20,
-            leading: Icon(iconesDeCaixa[t], size: 20),
-            title: Text(nomesDeCaixa[t] ?? t),
-            subtitle: Text(descricoesDeCaixa[t] ?? '', style: const TextStyle(fontSize: 11)),
-            onTap: () => aoCriar(t),
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    return Material(
+      color: cores.surfaceContainer,
+      child: ListView(padding: const EdgeInsets.symmetric(vertical: Espacos.esp3, horizontal: Espacos.esp2), children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Espacos.esp2),
+          child: Text('Caixas', style: tema.textTheme.titleSmall),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Espacos.esp2, Espacos.esp1, Espacos.esp2, Espacos.esp2),
+          child: Text(
+            'Arraste para o canvas ou clique para criar no centro.',
+            style: tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant),
           ),
         ),
-      ],
-    ]);
+        for (final t in tiposDeCaixa) ...[
+          if (t == 'decisao_humana' || t == 'paralelo') const Divider(height: Espacos.esp3),
+          Draggable<String>(
+            data: t,
+            dragAnchorStrategy: pointerDragAnchorStrategy,
+            feedback: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(Raios.sm),
+              color: cores.surfaceContainerHigh,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Espacos.esp3, vertical: Espacos.esp2),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(iconeDaCaixa(t), size: 20),
+                  const SizedBox(width: Espacos.esp2),
+                  Text(nomesDeCaixa[t] ?? t, style: tema.textTheme.labelLarge),
+                ]),
+              ),
+            ),
+            child: Tooltip(
+              message: 'Caixa ${nomesDeCaixa[t] ?? t}: ${descricoesDeCaixa[t] ?? ''}',
+              child: ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: Espacos.esp2),
+                horizontalTitleGap: Espacos.esp3,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Raios.sm)),
+                leading: Icon(iconeDaCaixa(t), size: 20),
+                title: Text(nomesDeCaixa[t] ?? t),
+                onTap: () => aoCriar(t),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
   }
+}
+
+class _TituloDeSecao extends StatelessWidget {
+  const _TituloDeSecao(this.texto);
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: Espacos.esp4, bottom: Espacos.esp1),
+        child: Text(texto, style: Theme.of(context).textTheme.titleSmall),
+      );
 }
 
 class _ListaDeErros extends StatelessWidget {
@@ -497,15 +582,16 @@ class _ListaDeErros extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cor = Theme.of(context).colorScheme.error;
+    final tema = Theme.of(context);
+    final cor = tema.colorScheme.error;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       for (final e in erros)
         Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(top: Espacos.esp1),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Icon(Symbols.error, size: 16, color: cor),
-            const SizedBox(width: 6),
-            Expanded(child: Text(e, style: TextStyle(color: cor, fontSize: 12))),
+            const SizedBox(width: Espacos.esp2),
+            Expanded(child: Text(e, style: tema.textTheme.bodySmall?.copyWith(color: cor))),
           ]),
         ),
     ]);
@@ -513,11 +599,12 @@ class _ListaDeErros extends StatelessWidget {
 }
 
 class _PainelDaCaixa extends StatefulWidget {
-  const _PainelDaCaixa({super.key, required this.sala, required this.caixa, required this.aoAcao});
+  const _PainelDaCaixa({super.key, required this.sala, required this.caixa, required this.edicao, required this.aoMover});
 
   final Sala sala;
   final String caixa;
-  final ValueChanged<String> aoAcao;
+  final EdicaoDoGrafo edicao;
+  final VoidCallback aoMover;
 
   @override
   State<_PainelDaCaixa> createState() => _PainelDaCaixaState();
@@ -551,8 +638,9 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
     final caixa = r == null ? null : caixaDe(r, _caixa);
     final equipe = _e.equipe;
     if (r == null || caixa == null || equipe == null) return const SizedBox.shrink();
-    final cores = Theme.of(context).colorScheme;
-    final pequeno = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final pequeno = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final tipo = caixa['tipo'] is String ? caixa['tipo'] as String : '';
     final referencias = referenciasDisponiveis(r, _caixa);
     final arquivos = _e.textosEmArquivo[_caixa] ?? const {};
@@ -570,29 +658,50 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
         );
     final implicitas = saidasDaCaixa(caixa);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(Espacos.esp4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Icon(iconesDeCaixa[tipo] ?? Symbols.crop_square, size: 20),
-          const SizedBox(width: 8),
-          Expanded(child: Text(nomesDeCaixa[tipo] ?? tipo, style: Theme.of(context).textTheme.titleSmall)),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: Espacos.esp1),
+            child: Icon(iconeDaCaixa(tipo), size: 20, color: cores.onSurfaceVariant),
+          ),
+          const SizedBox(width: Espacos.esp2),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Caixa ${nomesDeCaixa[tipo] ?? tipo}', style: tema.textTheme.titleMedium),
+              Text(descricoesDeCaixa[tipo] ?? '', style: pequeno),
+            ]),
+          ),
           if (r['inicio'] == _caixa)
-            const Padding(
-              padding: EdgeInsets.only(right: 4),
-              child: Chip(label: Text('início'), visualDensity: VisualDensity.compact),
+            Padding(
+              padding: const EdgeInsets.only(right: Espacos.esp1),
+              child: Chip(
+                avatar: Icon(Symbols.play_circle, color: cores.primary),
+                label: const Text('início'),
+                labelStyle: tema.textTheme.labelMedium,
+                visualDensity: VisualDensity.compact,
+              ),
             ),
-          PopupMenuButton<String>(
-            tooltip: 'Menu da caixa',
-            itemBuilder: (_) => _itensDoMenuDaCaixa(r['inicio'] == _caixa),
-            onSelected: widget.aoAcao,
+          MenuAnchor(
+            menuChildren: itensDoMenuDaCaixa(
+              ed: widget.edicao,
+              id: _caixa,
+              cores: cores,
+              comEditar: false,
+              aoMover: widget.aoMover,
+            ),
+            builder: (context, controle, _) => IconButton(
+              tooltip: 'Menu da caixa',
+              onPressed: () => controle.isOpen ? controle.close() : controle.open(),
+              icon: const Icon(Symbols.more_vert),
+            ),
           ),
           IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: () => _e.selecionar(null)),
         ]),
-        Text(descricoesDeCaixa[tipo] ?? '', style: pequeno),
         _ListaDeErros(erros: _e.erros[_caixa] ?? const []),
-        const SizedBox(height: 12),
+        const SizedBox(height: Espacos.esp4),
         campoDeTexto('titulo', 'Título (opcional)'),
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp3),
         TextField(
           controller: _id,
           decoration: InputDecoration(
@@ -607,15 +716,13 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
             if (_erroDoId != null) setState(() => _erroDoId = null);
           },
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp3),
         campoDeTexto('prazo', tipo == 'espera' ? 'Prazo de espera (opcional)' : 'Prazo (opcional)', ajuda: 'duração, como 30m, 2h ou 1d'),
-        const SizedBox(height: 16),
+        const SizedBox(height: Espacos.esp4),
         ..._camposDoTipo(tipo, caixa, r, equipe, referencias, campoDeTexto, texto, pequeno),
         if (tipo != 'executar' && implicitas.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text('Saídas desta caixa', style: pequeno),
-          for (final MapEntry(:key, :value) in implicitas.entries)
-            Text('$key · ${value.descricao}', style: pequeno.copyWith(color: cores.outline)),
+          const _TituloDeSecao('Saídas desta caixa'),
+          for (final MapEntry(:key, :value) in implicitas.entries) Text('$key · ${value.descricao}', style: pequeno),
         ],
       ]),
     );
@@ -629,9 +736,9 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
     List<ReferenciaDisponivel> referencias,
     Widget Function(String chave, String rotulo, {bool multilinha, bool comReferencias, String? ajuda}) campoDeTexto,
     String Function(String) texto,
-    TextStyle pequeno,
+    TextStyle? pequeno,
   ) {
-    const espaco = SizedBox(height: 12);
+    const espaco = SizedBox(height: Espacos.esp3);
     switch (tipo) {
       case 'executar':
         return [
@@ -640,7 +747,6 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
           campoDeTexto('instrucao', 'Instrução', multilinha: true, comReferencias: true),
           espaco,
           campoDeTexto('criterio', 'Critério (opcional)', multilinha: true, comReferencias: true),
-          const SizedBox(height: 16),
           _CamposTipados(
             titulo: 'Saídas que a persona devolve',
             campos: camposTipados(caixa['saidas']),
@@ -658,7 +764,7 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
             isExpanded: true,
             hint: Text(de.isEmpty ? 'escolha a caixa executar' : '$de (não é executar)'),
             decoration: InputDecoration(labelText: tipo == 'revisar' ? 'Revisa a entrega de' : 'Aprova a entrega de'),
-            items: [for (final id in executores) DropdownMenuItem(value: id, child: Text(_rotuloDaCaixa(r, id)))],
+            items: [for (final id in executores) DropdownMenuItem(value: id, child: Text(rotuloNoRascunho(r, id)))],
             onChanged: (v) => v == null ? null : _campo('de', v),
           ),
           espaco,
@@ -699,28 +805,33 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
           Text('Regras em ordem: segue pela saída da primeira verdadeira; se nenhuma valer, por "senao".', style: pequeno),
           for (final (i, regra) in regras.indexed)
             Card(
-              margin: const EdgeInsets.only(top: 8),
+              margin: const EdgeInsets.only(top: Espacos.esp2),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 4, 4, 12),
+                padding: const EdgeInsets.fromLTRB(Espacos.esp3, Espacos.esp1, Espacos.esp1, Espacos.esp3),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Row(children: [
-                    Expanded(child: Text('Regra ${i + 1}', style: pequeno)),
+                    Expanded(
+                      child: Text(
+                        'Regra ${i + 1}',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontFeatures: _numeros),
+                      ),
+                    ),
                     IconButton(
                       tooltip: 'Subir',
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Symbols.arrow_upward, size: 18),
+                      icon: const Icon(Symbols.arrow_upward, size: 20),
                       onPressed: i == 0 ? null : () => _e.aplicar((w) => moverRegra(w, _caixa, i, i - 1)),
                     ),
                     IconButton(
                       tooltip: 'Descer',
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Symbols.arrow_downward, size: 18),
+                      icon: const Icon(Symbols.arrow_downward, size: 20),
                       onPressed: i == regras.length - 1 ? null : () => _e.aplicar((w) => moverRegra(w, _caixa, i, i + 1)),
                     ),
                     IconButton(
                       tooltip: 'Remover regra',
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Symbols.close, size: 18),
+                      icon: const Icon(Symbols.close, size: 20),
                       onPressed: () => _e.aplicar((w) => removerRegra(w, _caixa, i)),
                     ),
                   ]),
@@ -756,8 +867,7 @@ class _PainelDaCaixaState extends State<_PainelDaCaixa> {
             numero: true,
             aoMudar: (v) => _campo('maxVoltas', int.tryParse(v.trim()) ?? v, digitando: true),
           ),
-          espaco,
-          Text('Repete enquanto', style: pequeno),
+          const _TituloDeSecao('Repete enquanto'),
           _EditorDeRegra(
             chave: 'enquanto',
             rascunho: r,
@@ -864,7 +974,7 @@ class _QuemDecide extends StatelessWidget {
         onSelectionChanged: (s) => aoMudar(s.first == 'posicao' ? _com('posicao', '') : _com(s.first, true)),
       ),
       if (forma == 'posicao') ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: Espacos.esp3),
         _SeletorDePosicao(
           rotulo: tipo == 'revisar' ? 'Quem revisa' : 'Quem aprova',
           valor: por['posicao'] is String ? por['posicao'] as String : '',
@@ -884,49 +994,49 @@ class _Opcoes extends StatelessWidget {
   final List<String> opcoes;
 
   @override
-  Widget build(BuildContext context) {
-    final pequeno = TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('Opções (cada uma vira um ponto de ligação)', style: pequeno),
-      for (final (i, o) in opcoes.indexed)
-        Row(children: [
-          Expanded(
-            child: _CampoDeTexto(
-              key: ValueKey('opcao/$i'),
-              valor: o,
-              rotulo: 'Opção ${i + 1}',
-              aoMudar: (v) => editor.aplicar((w) => renomearOpcao(w, caixa, i, v), grupo: 'opcao/$caixa/$i'),
-            ),
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const _TituloDeSecao('Opções (cada uma vira um ponto de ligação)'),
+        for (final (i, o) in opcoes.indexed)
+          Padding(
+            padding: const EdgeInsets.only(top: Espacos.esp2),
+            child: Row(children: [
+              Expanded(
+                child: _CampoDeTexto(
+                  key: ValueKey('opcao/$i'),
+                  valor: o,
+                  rotulo: 'Opção ${i + 1}',
+                  aoMudar: (v) => editor.aplicar((w) => renomearOpcao(w, caixa, i, v), grupo: 'opcao/$caixa/$i'),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Subir',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Symbols.arrow_upward, size: 20),
+                onPressed: i == 0 ? null : () => editor.aplicar((w) => moverOpcao(w, caixa, i, i - 1)),
+              ),
+              IconButton(
+                tooltip: 'Descer',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Symbols.arrow_downward, size: 20),
+                onPressed: i == opcoes.length - 1 ? null : () => editor.aplicar((w) => moverOpcao(w, caixa, i, i + 1)),
+              ),
+              IconButton(
+                tooltip: 'Remover opção',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Symbols.close, size: 20),
+                onPressed: () => editor.aplicar((w) => removerOpcao(w, caixa, i)),
+              ),
+            ]),
           ),
-          IconButton(
-            tooltip: 'Subir',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Symbols.arrow_upward, size: 18),
-            onPressed: i == 0 ? null : () => editor.aplicar((w) => moverOpcao(w, caixa, i, i - 1)),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => editor.aplicar((w) => acrescentarOpcao(w, caixa, 'opção ${opcoes.length + 1}')),
+            icon: const Icon(Symbols.add),
+            label: const Text('Acrescentar opção'),
           ),
-          IconButton(
-            tooltip: 'Descer',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Symbols.arrow_downward, size: 18),
-            onPressed: i == opcoes.length - 1 ? null : () => editor.aplicar((w) => moverOpcao(w, caixa, i, i + 1)),
-          ),
-          IconButton(
-            tooltip: 'Remover opção',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Symbols.close, size: 18),
-            onPressed: () => editor.aplicar((w) => removerOpcao(w, caixa, i)),
-          ),
-        ]),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          onPressed: () => editor.aplicar((w) => acrescentarOpcao(w, caixa, 'opção ${opcoes.length + 1}')),
-          icon: const Icon(Symbols.add),
-          label: const Text('Acrescentar opção'),
         ),
-      ),
-    ]);
-  }
+      ]);
 }
 
 class _CamposTipados extends StatefulWidget {
@@ -953,58 +1063,69 @@ class _CamposTipadosState extends State<_CamposTipados> {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
-    final pequeno = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final pequeno = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final campos = widget.campos;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text(widget.titulo, style: pequeno),
+      _TituloDeSecao(widget.titulo),
       for (final MapEntry(:key, :value) in widget.implicitas.entries)
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text('$key · ${value.descricao} · sempre devolvida', style: pequeno.copyWith(color: cores.outline)),
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp1),
+          child: Text('$key · ${value.descricao} · sempre devolvida', style: pequeno),
         ),
       for (final (i, c) in campos.indexed) ...[
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(
-            flex: 3,
-            child: _CampoDeTexto(
-              key: ValueKey('nome/$i'),
-              valor: c.nome,
-              rotulo: 'Nome',
-              aoMudar: (v) => _mudar(_trocar(i, (nome: v.trim(), tipo: c.tipo)), digitando: true),
+        Padding(
+          padding: const EdgeInsets.only(top: Espacos.esp2),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              flex: 3,
+              child: _CampoDeTexto(
+                key: ValueKey('nome/$i'),
+                valor: c.nome,
+                rotulo: 'Nome',
+                aoMudar: (v) => _mudar(_trocar(i, (nome: v.trim(), tipo: c.tipo)), digitando: true),
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 2,
-            child: DropdownButtonFormField<String>(
-              initialValue: tipoDoCampoTipado(c.tipo),
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Tipo'),
-              items: [
-                for (final t in tiposDeCampo) DropdownMenuItem(value: t, child: Text(nomesDeTipoDeCampo[t] ?? t)),
-              ],
-              onChanged: (t) {
-                if (t != null) _mudar(_trocar(i, (nome: c.nome, tipo: tipoPadrao(t))));
-              },
+            const SizedBox(width: Espacos.esp2),
+            Expanded(
+              flex: 2,
+              child: DropdownButtonFormField<String>(
+                initialValue: tipoDoCampoTipado(c.tipo),
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Tipo'),
+                items: [
+                  for (final t in tiposDeCampo) DropdownMenuItem(value: t, child: Text(nomesDeTipoDeCampo[t] ?? t)),
+                ],
+                onChanged: (t) {
+                  if (t != null) _mudar(_trocar(i, (nome: c.nome, tipo: tipoPadrao(t))));
+                },
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: 'Remover campo',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Symbols.close, size: 18),
-            onPressed: () => _mudar([...campos]..removeAt(i)),
-          ),
-        ]),
+            IconButton(
+              tooltip: 'Remover campo',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Symbols.close, size: 20),
+              onPressed: () => _mudar([...campos]..removeAt(i)),
+            ),
+          ]),
+        ),
         if (tipoDoCampoTipado(c.tipo) == 'escolha')
-          _CampoDeTexto(
-            key: ValueKey('escolhas/$i'),
-            valor: escolhasDoCampoTipado(c.tipo).join(', '),
-            rotulo: 'Valores, separados por vírgula',
-            aoMudar: (v) => _mudar(_trocar(i, (nome: c.nome, tipo: tipoComEscolhas(v))), digitando: true),
+          Padding(
+            padding: const EdgeInsets.only(top: Espacos.esp2),
+            child: _CampoDeTexto(
+              key: ValueKey('escolhas/$i'),
+              valor: escolhasDoCampoTipado(c.tipo).join(', '),
+              rotulo: 'Valores, separados por vírgula',
+              aoMudar: (v) => _mudar(_trocar(i, (nome: c.nome, tipo: tipoComEscolhas(v))), digitando: true),
+            ),
           ),
       ],
-      if (_erro != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_erro!, style: TextStyle(color: cores.error, fontSize: 12))),
+      if (_erro != null)
+        Padding(
+          padding: const EdgeInsets.only(top: Espacos.esp1),
+          child: Text(_erro!, style: tema.textTheme.bodySmall?.copyWith(color: cores.error)),
+        ),
       Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
@@ -1049,7 +1170,8 @@ class _EditorDeRegra extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cores = Theme.of(context).colorScheme;
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
     final campo = regra['campo'] is String ? regra['campo'] as String : '';
     final tipo = tipoDoCampo(rascunho, campo);
     final op = regra['op'] is String ? regra['op'] as String : 'igual';
@@ -1070,11 +1192,19 @@ class _EditorDeRegra extends StatelessWidget {
             DropdownMenuItem(
               value: '#$caixa',
               enabled: false,
-              child: Text(caixa == 'entrada' ? 'entrada do workflow' : _rotuloDaCaixa(rascunho, caixa),
-                  style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
+              child: Text(
+                caixa == 'entrada' ? 'entrada do workflow' : rotuloNoRascunho(rascunho, caixa),
+                style: tema.textTheme.labelMedium?.copyWith(color: cores.onSurfaceVariant),
+              ),
             ),
             for (final r in lista)
-              DropdownMenuItem(value: r.campoDaRegra, child: Text('   ${r.campo} · ${r.tipo.descricao}', overflow: TextOverflow.ellipsis)),
+              DropdownMenuItem(
+                value: r.campoDaRegra,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: Espacos.esp3),
+                  child: Text('${r.campo} · ${r.tipo.descricao}', overflow: TextOverflow.ellipsis),
+                ),
+              ),
           ],
         ],
         onChanged: (v) {
@@ -1084,7 +1214,7 @@ class _EditorDeRegra extends StatelessWidget {
           aoMudar(_com({'campo': v, 'op': novaOp, 'valor': opPedeValor(novaOp) ? _valorPadrao(t) : null}));
         },
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: Espacos.esp2),
       DropdownButtonFormField<String>(
         initialValue: op,
         isExpanded: true,
@@ -1098,7 +1228,7 @@ class _EditorDeRegra extends StatelessWidget {
         },
       ),
       if (opPedeValor(op)) ...[
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp2),
         switch (tipo?.nome) {
           'escolha' => DropdownButtonFormField<String>(
               initialValue: tipo!.escolhas.contains('$valor') ? '$valor' : null,
@@ -1132,7 +1262,7 @@ class _EditorDeRegra extends StatelessWidget {
         },
       ],
       if (comSaida) ...[
-        const SizedBox(height: 8),
+        const SizedBox(height: Espacos.esp2),
         _CampoDeTexto(
           key: ValueKey('$chave/saida'),
           valor: regra['saida'] is String ? regra['saida'] as String : '',
@@ -1157,53 +1287,66 @@ class _PainelDoWorkflow extends StatelessWidget {
     final r = e.rascunho;
     final equipe = e.equipe;
     if (r == null || equipe == null) return const SizedBox.shrink();
-    final cores = Theme.of(context).colorScheme;
-    final pequeno = TextStyle(color: cores.onSurfaceVariant, fontSize: 12);
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final pequeno = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final id = e.id ?? '';
     final rotinas = [for (final x in sala.rotinas.daEquipe(equipe.id)) if (x.workflow == id) x];
     final abertos = sala.workflows.abertos(equipe.id, id);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(Espacos.esp4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(child: Text('Workflow', style: Theme.of(context).textTheme.titleSmall)),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: Espacos.esp1),
+            child: Icon(Symbols.schema, size: 20, color: cores.onSurfaceVariant),
+          ),
+          const SizedBox(width: Espacos.esp2),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Workflow', style: tema.textTheme.titleMedium),
+              Text('Clique numa caixa para editá-la.', style: pequeno),
+            ]),
+          ),
           IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: aoFechar),
         ]),
-        Text('Clique numa caixa para editá-la.', style: pequeno),
         _ListaDeErros(erros: e.erros[lugarDoWorkflow] ?? const []),
-        const SizedBox(height: 12),
+        const SizedBox(height: Espacos.esp4),
         _CampoDeTexto(
           key: const ValueKey('nome'),
           valor: r['nome'] is String ? r['nome'] as String : '',
           rotulo: 'Nome',
           aoMudar: (v) => e.aplicar((w) => editarWorkflow(w, (c) => c['nome'] = v), grupo: 'workflow/nome'),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: Espacos.esp1),
         Text('id $id (não muda: é o nome do arquivo)', style: pequeno),
-        const SizedBox(height: 16),
         _CamposTipados(
           titulo: 'Entrada: o que se informa ao iniciar',
           campos: camposTipados(r['entrada']),
           aoMudar: (campos, {digitando = false}) =>
               e.aplicar((w) => definirEntrada(w, campos), grupo: digitando ? 'workflow/entrada' : null),
         ),
-        const Divider(height: 32),
-        Text('Versão', style: pequeno),
-        Text(e.novo ? 'ainda não salvo' : '${e.versaoBase}'),
-        const SizedBox(height: 12),
-        Text('Rotinas que disparam este workflow', style: pequeno),
-        if (rotinas.isEmpty) const Text('nenhuma'),
+        const Divider(height: Espacos.esp6),
+        const _TituloDeSecao('Versão'),
+        Text(e.novo ? 'ainda não salvo' : '${e.versaoBase}', style: const TextStyle(fontFeatures: _numeros)),
+        const _TituloDeSecao('Rotinas que disparam este workflow'),
+        if (rotinas.isEmpty) Text('nenhuma', style: pequeno),
         for (final x in rotinas) Text('${x.nome}${x.ativa ? '' : ' (desativada)'}'),
-        const SizedBox(height: 12),
-        Text('Execuções abertas', style: pequeno),
-        if (abertos.isEmpty) const Text('nenhuma'),
+        const _TituloDeSecao('Execuções abertas'),
+        if (abertos.isEmpty) Text('nenhuma', style: pequeno),
         for (final f in abertos)
           ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
             selected: e.sobreposto == f.id,
-            leading: CircleAvatar(backgroundColor: corDoEstado(context, f.status), radius: 6),
-            title: Text('#${f.id} · versão ${f.versao} · ${nomesDeStatusDoFluxo[f.status] ?? f.status}'),
+            leading: Tooltip(
+              message: nomesDeStatusDoFluxo[f.status] ?? f.status,
+              child: Icon(iconeDoEstado(estadoDoFluxo(f.status)), color: corDoEstado(context, estadoDoFluxo(f.status))),
+            ),
+            title: Text(
+              '#${f.id} · versão ${f.versao} · ${nomesDeStatusDoFluxo[f.status] ?? f.status}',
+              style: const TextStyle(fontFeatures: _numeros),
+            ),
             onTap: () => aoVerFluxo(f),
           ),
       ]),
@@ -1272,12 +1415,15 @@ class _CampoDeTextoState extends State<_CampoDeTexto> {
       if (arquivo != null || referencias != null)
         Row(children: [
           if (arquivo != null)
-            Tooltip(
-              message: 'No disco este texto fica em $arquivo; ao salvar, ele volta para o arquivo.',
-              child: Chip(
-                avatar: const Icon(Symbols.description, size: 16),
-                label: Text('em $arquivo'),
-                visualDensity: VisualDensity.compact,
+            Flexible(
+              child: Tooltip(
+                message: 'No disco este texto fica em $arquivo; ao salvar, ele volta para o arquivo.',
+                child: Chip(
+                  avatar: const Icon(Symbols.description),
+                  label: Text('em $arquivo', overflow: TextOverflow.ellipsis),
+                  labelStyle: Theme.of(context).textTheme.labelMedium,
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ),
           const Spacer(),
@@ -1314,7 +1460,7 @@ class _InserirValor extends StatelessWidget {
             ],
       builder: (context, controle, _) => TextButton.icon(
         onPressed: () => controle.isOpen ? controle.close() : controle.open(),
-        icon: const Icon(Symbols.data_object, size: 18),
+        icon: const Icon(Symbols.data_object),
         label: const Text('Inserir valor'),
       ),
     );
