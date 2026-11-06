@@ -74,6 +74,42 @@ void main() {
     });
   }
 
+  test('inicial do avatar fica em preto ou branco com contraste de 4,5:1 sobre a cor da persona', () {
+    expect(corDoTextoSobre(const Color(0xFFA9B0BF)), Colors.black);
+    expect(corDoTextoSobre(const Color(0xFF10131A)), Colors.white);
+    for (final cor in const [
+      Color(0xFFA9B0BF),
+      Color(0xFF5B8DEF),
+      Color(0xFF9A6EE8),
+      Color(0xFFE05A5A),
+      Color(0xFF4FAE7C),
+      Color(0xFF1F3A93),
+      Color(0xFFFFD54F),
+    ]) {
+      expect(contraste(corDoTextoSobre(cor), cor), greaterThanOrEqualTo(4.5), reason: '$cor');
+      expect(razaoDeContraste(cor, Colors.white), closeTo(contraste(cor, Colors.white), 1e-9));
+    }
+  });
+
+  for (final brilho in Brightness.values) {
+    test('nome na cor da persona chega a 4,5:1 sobre o cartão no tema ${brilho.name}', () {
+      final fundo = tema(brilho).colorScheme.surfaceContainerLow;
+      for (final cor in const [Color(0xFFA9B0BF), Color(0xFF5B8DEF), Color(0xFF9A6EE8), Color(0xFF1F3A93)]) {
+        expect(contraste(corLegivelSobre(cor, fundo), fundo), greaterThanOrEqualTo(4.5), reason: '$cor');
+      }
+    });
+  }
+
+  test('cor da persona que já tem contraste não muda, e a clara escurece no tema claro', () {
+    final fundo = tema(Brightness.light).colorScheme.surfaceContainerLow;
+    const escura = Color(0xFF1F3A93);
+    expect(corLegivelSobre(escura, fundo), escura);
+    const alfred = Color(0xFFA9B0BF);
+    final ajustada = corLegivelSobre(alfred, fundo);
+    expect(ajustada, isNot(alfred));
+    expect(ajustada.computeLuminance(), lessThan(alfred.computeLuminance()));
+  });
+
   test('o tema usa a Inter e não sobrescreve papéis do esquema gerado', () {
     final t = tema(Brightness.dark);
     final gerado = ColorScheme.fromSeed(seedColor: corSemente, brightness: Brightness.dark);

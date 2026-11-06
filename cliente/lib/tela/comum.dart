@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 import '../conexao/canal.dart';
 import '../nucleo/design.dart';
 import '../nucleo/modelos.dart';
+import 'tema.dart';
+
+const _proporcaoDaInicial = 0.42;
+const _tamanhoDoPonto = 10.0;
 
 class Avatar extends StatelessWidget {
   const Avatar({super.key, required this.cor, required this.inicial, this.tamanho = 36});
@@ -23,9 +27,16 @@ class Avatar extends StatelessWidget {
         height: tamanho,
         alignment: Alignment.center,
         decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
-        child: Text(
-          inicial,
-          style: TextStyle(color: const Color(0xFF10131A), fontWeight: FontWeight.w700, fontSize: tamanho * 0.42),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            inicial,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: corDoTextoSobre(cor),
+                  fontSize: tamanho * _proporcaoDaInicial,
+                  height: 1,
+                ),
+          ),
         ),
       );
 }
@@ -37,14 +48,22 @@ class PontoConexao extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final semanticas = CoresSemanticas.de(context);
     final (cor, rotulo) = switch (estado) {
-      EstadoConexao.conectado => (const Color(0xFF4FAE7C), 'Conectado'),
-      EstadoConexao.reconectando => (const Color(0xFFE0A458), 'Reconectando…'),
-      EstadoConexao.semServidor => (const Color(0xFFE05A5A), 'Sem servidor'),
+      EstadoConexao.conectado => (semanticas.sucesso.cor, 'Conectado'),
+      EstadoConexao.reconectando => (semanticas.aviso.cor, 'Reconectando…'),
+      EstadoConexao.semServidor => (Theme.of(context).colorScheme.error, 'Sem servidor'),
     };
-    return Tooltip(
-      message: rotulo,
-      child: Container(width: 10, height: 10, decoration: BoxDecoration(color: cor, shape: BoxShape.circle)),
+    return Semantics(
+      label: 'Conexão com o servidor: $rotulo',
+      child: Tooltip(
+        message: rotulo,
+        excludeFromSemantics: true,
+        child: SizedBox.square(
+          dimension: _tamanhoDoPonto,
+          child: DecoratedBox(decoration: BoxDecoration(color: cor, shape: BoxShape.circle)),
+        ),
+      ),
     );
   }
 }
@@ -58,7 +77,10 @@ Future<bool> confirmar(BuildContext context, String titulo, String texto, {Strin
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
           onPressed: () => Navigator.pop(context, true),
           child: Text(acao),
         ),
@@ -148,7 +170,11 @@ class MenuDeToque extends StatelessWidget {
         for (var i = 0; i < lista.length; i++)
           PopupMenuItem(
             value: i,
-            child: Row(children: [Icon(lista[i].$1, size: 18), const SizedBox(width: 12), Text(lista[i].$2)]),
+            child: Row(children: [
+              Icon(lista[i].$1, size: 20),
+              const SizedBox(width: Espacos.esp3),
+              Text(lista[i].$2),
+            ]),
           ),
       ],
     );
