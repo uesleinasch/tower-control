@@ -124,7 +124,7 @@ Future<void> _respostaNoChat(WidgetTester t, {required String cena, required Str
   expect(pedido.tarefaId, isNull);
   expect(find.text(comando), findsOneWidget);
 
-  await tocar(t, find.widgetWithText(permitir ? FilledButton : TextButton, permitir ? 'Permitir' : 'Negar'));
+  await tocar(t, find.widgetWithText(permitir ? FilledButton : OutlinedButton, permitir ? 'Permitir' : 'Negar'));
   await esperarAte(
     t,
     () => escuta.resolvida(pedido.id) != null,
@@ -349,7 +349,7 @@ void main() {
     expect([for (final r in sala.chat.itens.whereType<Registro>()) r.comando], [comum]);
     expect(find.text(comum), findsOneWidget);
 
-    await tocar(t, find.widgetWithText(TextButton, 'Negar'));
+    await tocar(t, find.widgetWithText(OutlinedButton, 'Negar'));
     final pedido = escuta.pedidos.single;
     await esperarAte(
       t,
