@@ -36,7 +36,7 @@ void cenasConjuntas({
       addTearDown(c.fechar);
       await subir(t);
       final sala = salaDe(t);
-      await encontroDaConjunta('conjunta-2:pronto', lado);
+      await encontroDaConjunta('conjunta-2:pronto', lado, paciente: true);
 
       PedidoDePermissao? pedido;
       await esperarAte(
@@ -102,14 +102,31 @@ void cenasConjuntas({
       await ir(t, 'Painel');
       final item = find.text('#$id espera sua aprovação');
       await aparecerNoPainel(t, item, descricao: 'o pedido de aprovação de #$id no painel do $lado');
-      await encontroDaConjunta('conjunta-8:pronto', lado);
+      DateTime? sumiuNoRetratoDe;
+      void ouvir() {
+        final retrato = sala.painel.retrato;
+        if (sumiuNoRetratoDe != null || retrato == null || retrato.atencao.any((i) => i.tarefaId == id)) return;
+        sumiuNoRetratoDe = retrato.em;
+      }
+
+      sala.painel.addListener(ouvir);
+      addTearDown(() => sala.painel.removeListener(ouvir));
+      await encontroDaConjunta('conjunta-8:pronto', lado, paciente: true);
 
       await encontroDaConjunta('conjunta-8:resolvido', lado);
       await esperarAte(
         t,
-        () => !(sala.painel.retrato?.atencao.any((i) => i.tarefaId == id) ?? true) && item.evaluate().isEmpty,
+        () => sumiuNoRetratoDe != null && item.evaluate().isEmpty,
         descricao: 'o item de #$id sumir do painel do $lado depois da resolução na web',
-        prazo: const Duration(seconds: 5),
+        prazo: const Duration(seconds: 45),
+      );
+      final registros = ((await tarefaNoServidor(c, id))['registros'] as List).cast<Map>();
+      final aprovadoEm = DateTime.parse('${registros.lastWhere((r) => r['tipo'] == 'aprovado')['em']}');
+      final atraso = sumiuNoRetratoDe!.difference(aprovadoEm);
+      expect(
+        atraso,
+        lessThan(const Duration(seconds: 5)),
+        reason: 'o painel do $lado só perdeu o item ${atraso.inMilliseconds} ms depois da aprovação: veio do relógio de 30 s, e não da resolução',
       );
       await encontroDaConjunta('conjunta-8:fim', lado);
     },

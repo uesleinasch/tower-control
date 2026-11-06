@@ -163,8 +163,8 @@ export function ladosDaConjunta(): string[] {
   return (process.env.CT_LADOS ?? "").split(",").filter(Boolean)
 }
 
-export async function encontroDaConjunta(nome: string, lado: string): Promise<void> {
-  const limite = Date.now() + PRAZO_DA_CONJUNTA_MS
+export async function encontroDaConjunta(nome: string, lado: string, paciente = false): Promise<void> {
+  const limite = Date.now() + (paciente ? PRAZO_DA_CONJUNTA_MS : 0)
   while (true) {
     try {
       return await encontro(nome, lado, ladosDaConjunta())

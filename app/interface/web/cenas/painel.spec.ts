@@ -37,6 +37,19 @@ const equipeConjunta = {
   layout: {},
 }
 
+// O servidor também republica o painel num setInterval de 30 s. Dois retratos seguidos a 30 s um
+// do outro marcam esse relógio; clicar logo depois põe o próximo tique longe da aprovação.
+async function tiqueDoRelogio(conexao: Conexao): Promise<any> {
+  const limite = Date.now() + 95_000
+  let anterior: number | null = null
+  while (true) {
+    const m = await conexao.esperar("painel", undefined, Math.max(1, limite - Date.now()))
+    const em = Date.parse(m.retrato.em)
+    if (anterior !== null && Math.abs(em - anterior - 30_000) < 1_500) return m
+    anterior = em
+  }
+}
+
 let descer: (() => Promise<void>) | undefined
 let conexao: Conexao
 
@@ -80,7 +93,7 @@ test("conjunta: cena 2, comando de tarefa chega a todos e o desktop aprova", asy
       vezes: 1,
     },
   ])
-  await encontroDaConjunta("conjunta-2:pronto", "web")
+  await encontroDaConjunta("conjunta-2:pronto", "web", true)
 
   await page.goto(ambiente().servidor)
   const pedidoChegou = conexao.esperar("permissao", (m) => m.comando === comando, 120_000)
@@ -116,12 +129,22 @@ test("conjunta: cena 8, item resolvido na web some do painel", async ({ page }) 
   await page.locator("#botao-painel").click()
   const item = page.locator(".item-atencao", { hasText: `#${tarefa.id} espera sua aprovação` })
   await expect(item).toHaveCount(1)
-  await encontroDaConjunta("conjunta-8:pronto", "web")
+  await encontroDaConjunta("conjunta-8:pronto", "web", true)
+
+  await pedir(conexao, { tipo: "painel", ativo: true }, "painel")
+  const tique = await tiqueDoRelogio(conexao)
+  expect(tique.retrato.atencao.some((i: any) => i.tarefaId === tarefa.id)).toBe(true)
+  const semOItem = conexao.esperar("painel", (m) => !m.retrato.atencao.some((i: any) => i.tarefaId === tarefa.id), 45_000)
 
   await item.getByRole("button", { name: "Aprovar" }).click()
-  await esperarStatus(conexao, tarefa.id, "concluida")
+  const { registros } = await esperarStatus(conexao, tarefa.id, "concluida")
   await encontroDaConjunta("conjunta-8:resolvido", "web")
-  await expect(item).toHaveCount(0, { timeout: 5_000 })
+  const { retrato } = await semOItem
+  conexao.mandar({ tipo: "painel", ativo: false })
+  await expect(item).toHaveCount(0, { timeout: 45_000 })
+  const aprovado = [...registros].reverse().find((r: any) => r.tipo === "aprovado")
+  const atraso = Date.parse(retrato.em) - Date.parse(aprovado.em)
+  expect(atraso, `o painel só perdeu o item ${atraso} ms depois da aprovação: veio do relógio de 30 s, e não da resolução`).toBeLessThan(5_000)
 
   await encontroDaConjunta("conjunta-8:fim", "web")
 })
