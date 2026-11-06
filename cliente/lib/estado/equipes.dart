@@ -6,7 +6,7 @@ import '../nucleo/protocolo.dart';
 import '../nucleo/tarefas.dart';
 import 'chat.dart';
 
-enum AbaDaEquipe { organograma, rotinas, workflows, skills }
+enum AbaDaEquipe { organograma, rotinas, workflows }
 
 class EstadoEquipes extends ChangeNotifier {
   EstadoEquipes(this._enviar);
@@ -20,15 +20,12 @@ class EstadoEquipes extends ChangeNotifier {
   String? selecionada;
   String? erro;
   bool salvando = false;
-  bool? mostrarPersonas;
   bool pausadoTudo = false;
   AbaDaEquipe aba = AbaDaEquipe.organograma;
 
   bool get vendoRotinas => aba == AbaDaEquipe.rotinas;
 
   bool get vendoWorkflows => aba == AbaDaEquipe.workflows;
-
-  bool get vendoSkills => aba == AbaDaEquipe.skills;
 
   void verAba(AbaDaEquipe nova) {
     if (aba == nova) return;
@@ -57,6 +54,8 @@ class EstadoEquipes extends ChangeNotifier {
 
   Set<String> get idsDePersonas => {for (final p in Perfil.todos) p.chave};
 
+  String get nomeDaCasa => nomeDaCasaEm(equipes);
+
   void carregar() {
     _enviar(const PedirEquipes());
     _enviar(const PedirPersonas());
@@ -67,11 +66,6 @@ class EstadoEquipes extends ChangeNotifier {
     rascunho = null;
     selecionada = null;
     erro = null;
-    notifyListeners();
-  }
-
-  void alternarPersonas(bool visivelAgora) {
-    mostrarPersonas = !visivelAgora;
     notifyListeners();
   }
 
@@ -107,6 +101,14 @@ class EstadoEquipes extends ChangeNotifier {
     notifyListeners();
   }
 
+  void colocarNaEquipe(String persona, String titulo) {
+    final base = atual;
+    if (base == null) return;
+    rascunho = adicionarPersona(base, persona, titulo).equipe;
+    erro = null;
+    notifyListeners();
+  }
+
   void novaSubordinada(String chefe, String titulo) {
     final base = atual;
     if (base == null) return;
@@ -119,6 +121,12 @@ class EstadoEquipes extends ChangeNotifier {
       erro = e.mensagem;
     }
     notifyListeners();
+  }
+
+  void renomear(String nome) {
+    final limpo = nome.trim();
+    if (limpo.isEmpty || limpo == atual?.nome) return;
+    aplicar((e) => e.copiar(nome: limpo));
   }
 
   void novaEquipe(String nome) {

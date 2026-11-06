@@ -304,4 +304,48 @@ void main() {
     expect(h.podeRefazer, isFalse);
     expect(h.atual, 5);
   });
+
+  test('ligar sem arrastar: destinos de cada saída e ligações que saem', () {
+    final w = _base('exemplo');
+    final ok = pontosDeSaida(w, 'ok');
+    expect(destinosDaSaida(w, 'ok', ok.first), isNot(contains('ok')));
+    expect(destinosDaSaida(w, 'ok', ok.first), isNot(contains('frente')));
+    expect(destinosDaSaida(w, 'ok', ok.first), containsAllInOrder(['plano', 'risco', 'parou']));
+    final frente = pontosDeSaida(w, 'frente').single;
+    expect(destinosDaSaida(w, 'frente', frente), ['plano', 'risco', 'ok', 'revisa', 'junta', 'fim', 'parou']);
+    expect(destinosDaSaida(w, 'nada', frente), isEmpty);
+    final novo = ligar(w, 'ok', 'seguir', destinosDaSaida(w, 'ok', ok.first).first);
+    expect(pontosDeSaida(novo, 'ok').first.destinos, ['plano']);
+
+    expect(ligacoesQueSaem(w, 'ok').map((a) => '${a.para}/${a.quando}'), ['frente/seguir', 'parou/parar']);
+    expect(ligacoesQueSaem(w, 'fim'), isEmpty);
+    final sem = desligar(w, ligacoesQueSaem(w, 'ok').last);
+    expect(pontosDeSaida(sem, 'ok').last.livre, isTrue);
+  });
+
+  test('deslocar a caixa pelo teclado parte do layout calculado', () {
+    final w = _base('exemplo');
+    final antes = layoutDoRascunho(w)['risco']!;
+    final depois = deslocarCaixa(w, 'risco', 20, -20);
+    expect(layoutDoRascunho(depois)['risco'], (x: antes.x + 20, y: antes.y - 20));
+    expect(layoutDoRascunho(depois)['plano'], layoutDoRascunho(w)['plano']);
+    expect(() => deslocarCaixa(w, 'nada', 20, 0), throwsA(isA<ErroDeWorkflow>()));
+  });
+
+  test('vistaComCaixa só desloca a vista quando a caixa sai da tela', () {
+    final layout = {'a': (x: 0.0, y: 0.0), 'b': (x: 900.0, y: 0.0)};
+    const v = (dx: 0.0, dy: 0.0, escala: 1.0);
+    expect(vistaComCaixa(v, layout, 'a', 800, 600), v);
+    final longe = vistaComCaixa(v, layout, 'b', 800, 600);
+    final canto = cantoDaCaixa(layout, 'b');
+    expect(canto.x + larguraDaCaixa + longe.dx, 800 - 24);
+    expect(longe.dy, 0);
+    expect(vistaComCaixa(v, layout, 'nada', 800, 600), v);
+  });
+
+  test('o estado do fluxo esperando aparece como na fila', () {
+    expect(estadoDoFluxo('esperando'), 'na_fila');
+    expect(estadoDoFluxo('rodando'), 'rodando');
+    expect(estadoDoFluxo('concluido'), 'concluido');
+  });
 }

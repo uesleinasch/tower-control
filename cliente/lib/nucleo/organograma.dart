@@ -1,3 +1,4 @@
+import 'modelos.dart';
 import 'tarefas.dart';
 
 const capacidadesDePosicao = ['arquivos', 'comandos', 'ticktask', 'memoria', 'board'];
@@ -75,6 +76,19 @@ EquipeResumo mover(EquipeResumo e, String id, double x, double y) {
   return e.copiar(layout: {...e.layout, id: (x: x < 0 ? 0 : x.roundToDouble(), y: y < 0 ? 0 : y.roundToDouble())});
 }
 
+const passoDeMover = 20.0;
+
+EquipeResumo deslocar(EquipeResumo e, String id, double dx, double dy) {
+  final p = e.ponto(id);
+  return mover(e, id, p.x + dx, p.y + dy);
+}
+
+String? estadoDaPausa(String? pausa) => switch (pausa) {
+      null => null,
+      'orcamento' => 'sem_orcamento',
+      _ => 'pausada',
+    };
+
 EquipeResumo ligar(EquipeResumo e, String filho, String chefe) {
   if (filho == chefe) throw const ErroDeOrganograma('uma posição não pode responder a si mesma');
   if (e.posicao(chefe) == null) throw ErroDeOrganograma('a posição $chefe não existe');
@@ -94,6 +108,60 @@ EquipeResumo soltar(EquipeResumo e, String id) => _trocar(e, id, (p) => p.copiar
     id: id,
   );
 }
+
+({EquipeResumo equipe, String id}) adicionarPersona(EquipeResumo e, String persona, String titulo) {
+  final r = adicionarPosicao(e, titulo);
+  return (equipe: _trocar(r.equipe, r.id, (p) => p.copiar(persona: () => persona)), id: r.id);
+}
+
+({Map<String, List<String>> naEquipe, List<String> disponiveis}) personasDaEquipe(
+  EquipeResumo e,
+  Iterable<String> todas,
+) {
+  final naEquipe = <String, List<String>>{};
+  for (final p in e.posicoes) {
+    final persona = p.persona;
+    if (persona != null) (naEquipe[persona] ??= []).add(p.titulo);
+  }
+  return (naEquipe: naEquipe, disponiveis: [for (final id in todas) if (!naEquipe.containsKey(id)) id]);
+}
+
+EquipeResumo removerPersona(EquipeResumo e, String persona) {
+  var resultado = e;
+  for (final p in e.posicoes) {
+    if (p.persona == persona) resultado = removerPosicao(resultado, p.id);
+  }
+  return resultado;
+}
+
+String tituloAoEntrar(Perfil p) => p.papel.trim().isEmpty ? p.nome : p.papel.trim();
+
+List<({EquipeResumo equipe, List<String> posicoes})> equipesDaPersona(Iterable<EquipeResumo> equipes, String persona) => [
+      for (final e in equipes)
+        if ([for (final p in e.posicoes) if (p.persona == persona) p.titulo] case final titulos when titulos.isNotEmpty)
+          (equipe: e, posicoes: titulos),
+    ];
+
+int contarPosicoes(Iterable<EquipeResumo> equipes, String persona) =>
+    equipesDaPersona(equipes, persona).fold(0, (soma, x) => soma + x.posicoes.length);
+
+Set<String> personasRodando(Iterable<Tarefa> tarefas, Iterable<EquipeResumo> equipes) {
+  final porId = {for (final e in equipes) e.id: e};
+  final rodando = <String>{};
+  for (final t in tarefas.where((t) => t.rodando)) {
+    final etapa = t.etapaAtual;
+    final posicao = etapa == null ? t.posicao : etapa.posicao;
+    final persona = posicao == null ? null : porId[t.equipe]?.posicao(posicao)?.persona;
+    if (persona != null) rodando.add(persona);
+  }
+  return rodando;
+}
+
+String juntarComE(List<String> nomes) => switch (nomes.length) {
+      0 => '',
+      1 => nomes.single,
+      _ => '${nomes.sublist(0, nomes.length - 1).join(', ')} e ${nomes.last}',
+    };
 
 EquipeResumo removerPosicao(EquipeResumo e, String id) {
   final alvo = e.posicao(id);
@@ -361,6 +429,24 @@ Vista vistaQueMostra({
     dy: (altura - (maxY - minY) * escala) / 2 - minY * escala,
     escala: escala,
   );
+}
+
+Vista vistaComCartao(Vista v, EquipeResumo e, String id, double largura, double altura, {double folga = 24}) {
+  if (e.posicao(id) == null || largura <= 0 || altura <= 0) return v;
+  final c = cantoDoCartao(e, id);
+  double ajuste(double inicio, double fim, double limite) {
+    if (fim > limite - folga) return limite - folga - fim;
+    if (inicio < folga) return folga - inicio;
+    return 0;
+  }
+
+  final esquerda = c.x * v.escala + v.dx;
+  final topo = c.y * v.escala + v.dy;
+  var dx = ajuste(esquerda, esquerda + larguraDoCartao * v.escala, largura);
+  var dy = ajuste(topo, topo + alturaDoCartao * v.escala, altura);
+  if (esquerda + dx < folga) dx = folga - esquerda;
+  if (topo + dy < folga) dy = folga - topo;
+  return (dx: v.dx + dx, dy: v.dy + dy, escala: v.escala);
 }
 
 List<Ponto> caminhoDaLigacao(EquipeResumo e, String filho) {

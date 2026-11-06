@@ -5,7 +5,7 @@ import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/nucleo/editor_de_workflow.dart';
 import 'package:control_tower/tela/workflows.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../apoio/acoes.dart';
@@ -191,7 +191,7 @@ Future<void> _esperarSumirDaTela(WidgetTester t, Finder alvo) =>
 
 Future<void> _verEncerrado(WidgetTester t, int fluxo, String status) async {
   final linha = find.textContaining('#$fluxo · $status');
-  if (linha.evaluate().isEmpty) await tocar(t, find.textContaining('ENCERRADOS ('));
+  if (linha.evaluate().isEmpty) await tocar(t, find.textContaining('Encerrados ('));
   await aparecer(t, linha, descricao: 'o fluxo #$fluxo $status na lista de encerrados');
 }
 
@@ -308,7 +308,12 @@ void cenasDeWorkflows() {
     expect(ligacoesDe(rascunhoNaTela(t)), contains('$aprovarB>$decisao (aprovado)'));
     expect(t.widget<CanvasDoGrafo>(find.byType(CanvasDoGrafo)).comErro, contains(juncao));
     await selecionarCaixa(t, juncao);
-    await aparecer(t, find.text(erroDaJuncao), descricao: 'o erro da junção no painel da caixa');
+    final painelDaCaixa = find.ancestor(of: find.byTooltip('Menu da caixa'), matching: find.byType(SingleChildScrollView));
+    await aparecer(
+      t,
+      find.descendant(of: painelDaCaixa, matching: find.text(erroDaJuncao)),
+      descricao: 'o erro da junção no painel da caixa',
+    );
     expect(t.widget<ButtonStyleButton>(botao('Salvar')).onPressed, isNull, reason: 'o salvar fica desligado com erro');
     await tocar(t, find.byTooltip('Desfazer (Ctrl+Z)'));
     await esperarAte(
@@ -506,7 +511,11 @@ void cenasDeWorkflows() {
     final tarefa = _ficha(comTarefa, 'esperar')!['tarefa'] as int;
 
     await _abrirTarefa(t, tarefa, 'Cancelável: esperar');
-    await tocar(t, find.text('→ cancelada'));
+    await tocar(t, find.byTooltip('Mais opções'));
+    await tocar(t, find.text('Cancelar tarefa'));
+    await aparecer(t, find.text('Cancelar a tarefa #$tarefa?'), descricao: 'a janela de escolha do cancelamento');
+    await tocar(t, find.text('O workflow inteiro'));
+    await tocar(t, find.widgetWithText(FilledButton, 'Cancelar a tarefa'));
     final cancelado = await _esperarFluxo(t, c, fluxo, (f) => f['status'] == 'cancelado', descricao: 'o fluxo cancelado');
     expect(cancelado['erro'], 'a tarefa #$tarefa foi cancelada');
     expect(_ficha(cancelado, 'esperar')?['status'], 'cancelada');

@@ -627,7 +627,7 @@ function planejarEquipe(modelo: ModeloDeEquipe, atual: EstadoAtual, pedidas: Esc
   for (const { skill, id } of importadas) {
     escritas.push(...escritasDaSkill("skills", skill, id, erros, `skill ${skill.id}`))
     novos.push(`skills/${id}`)
-    entra.push(id === skill.id ? `skill ${id} na Casa` : `skill ${skill.id} na Casa como ${id}`)
+    entra.push(id === skill.id ? `skill ${id} na biblioteca` : `skill ${skill.id} na biblioteca como ${id}`)
     const extras = scripts(skill)
     if (extras.length) avisos.push(`a skill ${id} traz arquivos que as personas podem rodar: ${extras.join(", ")}`)
   }

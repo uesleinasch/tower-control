@@ -511,6 +511,23 @@ WorkflowJson desligar(WorkflowJson w, Aresta aresta) {
   return c;
 }
 
+List<String> destinosDaSaida(WorkflowJson w, String de, PontoDeSaida ponto) => [
+      if (caixaDe(w, de) != null)
+        for (final id in idsDe(w))
+          if (id != de && !ponto.destinos.contains(id)) id,
+    ];
+
+List<Aresta> ligacoesQueSaem(WorkflowJson w, String de) => [
+      for (final a in arestasDe(w))
+        if (_t(a['de']) == de) Aresta(de: de, para: _t(a['para']), quando: _quando(a)),
+    ];
+
+WorkflowJson deslocarCaixa(WorkflowJson w, String id, double dx, double dy) {
+  final p = layoutDoRascunho(w)[id];
+  if (p == null) throw ErroDeWorkflow('A caixa $id não existe.');
+  return moverCaixa(w, id, (x: p.x + dx, y: p.y + dy));
+}
+
 // ── tipos, saídas e referências ────────────────────────────────────
 
 TipoDeValor? _lerTipo(Object? bruto) {

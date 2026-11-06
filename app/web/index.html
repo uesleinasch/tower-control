@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
-  <meta name="theme-color" content="#171b25" />
+  <meta name="theme-color" content="#eeedf4" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1e1f25" media="(prefers-color-scheme: dark)" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tower" />
@@ -108,6 +109,21 @@
       <div class="acoes">
         <button id="confirmacao-nao">Cancelar</button>
         <button id="confirmacao-sim" class="perigo">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cancelar-tarefa" hidden>
+    <div class="caixa" role="dialog" aria-modal="true" aria-labelledby="cancelar-tarefa-titulo">
+      <h2 id="cancelar-tarefa-titulo"></h2>
+      <p id="cancelar-tarefa-texto"></p>
+      <div class="opcoes" role="radiogroup" aria-label="O que cancelar">
+        <label><input type="radio" name="escopo-do-cancelamento" value="tarefa" checked /><span><strong>Só esta tarefa</strong><small id="cancelar-tarefa-so"></small></span></label>
+        <label><input type="radio" name="escopo-do-cancelamento" value="fluxo" /><span><strong>O workflow inteiro</strong><small id="cancelar-tarefa-fluxo"></small></span></label>
+      </div>
+      <div class="acoes">
+        <button id="cancelar-tarefa-voltar">Voltar</button>
+        <button id="cancelar-tarefa-sim" class="perigo">Cancelar a tarefa</button>
       </div>
     </div>
   </div>
