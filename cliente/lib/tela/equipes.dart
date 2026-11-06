@@ -472,6 +472,19 @@ class _Topo extends StatelessWidget {
     if (nome != null) estado.novaEquipe(nome);
   }
 
+  Future<void> _renomearEquipe(BuildContext context, EquipeResumo equipe) async {
+    final nome = await pedirTexto(
+      context,
+      titulo: 'Renomear equipe',
+      rotulo: 'Nome da equipe',
+      explicacao: 'O nome novo vale para todo o app depois de Salvar.',
+      inicial: equipe.nome,
+      erroSeVazio: 'Dê um nome à equipe.',
+      acao: 'Renomear',
+    );
+    if (nome != null) estado.renomear(nome);
+  }
+
   Future<void> _excluirEquipe(BuildContext context, EquipeResumo equipe) async {
     final ok = await confirmar(
       context,
@@ -534,6 +547,12 @@ class _Topo extends StatelessWidget {
             onPressed: () => exportarEquipeComoModelo(context, sala, equipe, alterada: estado.alterada),
             icon: const Icon(Symbols.ios_share),
           ),
+        if (equipe != null)
+          IconButton(
+            tooltip: 'Renomear equipe',
+            onPressed: () => _renomearEquipe(context, equipe),
+            icon: const Icon(Symbols.edit),
+          ),
         if (equipe != null && equipe.id != 'casa')
           IconButton(
             tooltip: 'Excluir equipe',
@@ -556,7 +575,11 @@ class _Topo extends StatelessWidget {
     ];
 
     final opcoes = [
-      for (final e in estado.equipes) DropdownMenuItem(value: e.id, child: Text(e.nome, overflow: TextOverflow.ellipsis)),
+      for (final e in estado.equipes)
+        DropdownMenuItem(
+          value: e.id,
+          child: Text(e.id == equipe?.id ? equipe!.nome : e.nome, overflow: TextOverflow.ellipsis),
+        ),
       if (equipe != null && !ids.contains(equipe.id))
         DropdownMenuItem(value: equipe.id, child: Text('${equipe.nome} (nova)', overflow: TextOverflow.ellipsis)),
     ];
@@ -1723,6 +1746,7 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         anexaveis: anexaveis(widget.skills.lista, p.skills),
         aoAnexar: (id) => widget.estado.aplicar((e) => anexarSkillNaPosicao(e, p.id, id)),
         aoTirar: (id) => widget.estado.aplicar((e) => tirarSkillDaPosicao(e, p.id, id)),
+        casa: widget.skills.nomeDaCasa,
       ),
       if (comandos) ...[
         const SizedBox(height: Espacos.esp3),
@@ -1935,6 +1959,8 @@ Future<String?> pedirTexto(
   String? explicacao,
   String? ajuda,
   String acao = 'Ok',
+  String inicial = '',
+  String? erroSeVazio,
   bool vazioVale = false,
   bool multilinha = false,
   bool destrutivo = false,
@@ -1947,6 +1973,8 @@ Future<String?> pedirTexto(
         explicacao: explicacao,
         ajuda: ajuda,
         acao: acao,
+        inicial: inicial,
+        erroSeVazio: erroSeVazio,
         vazioVale: vazioVale,
         multilinha: multilinha,
         destrutivo: destrutivo,
@@ -1960,6 +1988,8 @@ class _DialogoDeTexto extends StatefulWidget {
     this.explicacao,
     this.ajuda,
     required this.acao,
+    this.inicial = '',
+    this.erroSeVazio,
     this.vazioVale = false,
     this.multilinha = false,
     this.destrutivo = false,
@@ -1970,6 +2000,8 @@ class _DialogoDeTexto extends StatefulWidget {
   final String? explicacao;
   final String? ajuda;
   final String acao;
+  final String inicial;
+  final String? erroSeVazio;
   final bool vazioVale;
   final bool multilinha;
   final bool destrutivo;
@@ -1979,7 +2011,9 @@ class _DialogoDeTexto extends StatefulWidget {
 }
 
 class _DialogoDeTextoState extends State<_DialogoDeTexto> {
-  final _controle = TextEditingController();
+  late final _controle = TextEditingController(text: widget.inicial)
+    ..selection = TextSelection(baseOffset: 0, extentOffset: widget.inicial.length);
+  String? _erro;
 
   @override
   void dispose() {
@@ -1987,7 +2021,11 @@ class _DialogoDeTextoState extends State<_DialogoDeTexto> {
     super.dispose();
   }
 
-  void _confirmar() => Navigator.pop(context, _controle.text.trim().isEmpty && !widget.vazioVale ? null : _controle.text);
+  void _confirmar() {
+    final vazio = _controle.text.trim().isEmpty && !widget.vazioVale;
+    if (vazio && widget.erroSeVazio != null) return setState(() => _erro = widget.erroSeVazio);
+    Navigator.pop(context, vazio ? null : _controle.text);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2002,7 +2040,8 @@ class _DialogoDeTextoState extends State<_DialogoDeTexto> {
           autofocus: true,
           minLines: widget.multilinha ? 3 : 1,
           maxLines: widget.multilinha ? 8 : 1,
-          decoration: InputDecoration(labelText: widget.rotulo, helperText: widget.ajuda),
+          decoration: InputDecoration(labelText: widget.rotulo, helperText: widget.ajuda, errorText: _erro),
+          onChanged: _erro == null ? null : (_) => setState(() => _erro = null),
           onSubmitted: widget.destrutivo ? null : (_) => _confirmar(),
         ),
       ]),

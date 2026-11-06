@@ -139,7 +139,7 @@ class _Cabecalho extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Personas', style: tema.textTheme.titleLarge),
                 Text(
-                  comBotao ? 'Quem trabalha na casa e em cada equipe' : 'Toque numa persona para ver e editar',
+                  comBotao ? 'Quem trabalha na ${sala.equipes.nomeDaCasa} e em cada equipe' : 'Toque numa persona para ver e editar',
                   style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.onSurfaceVariant),
                 ),
               ]),
@@ -739,6 +739,7 @@ class _CartaoDeSkills extends StatelessWidget {
         anexaveis: anexaveis(skills.lista, p.skills),
         aoAnexar: (id) => skills.anexarNaPersona(p.chave, id),
         aoTirar: (id) => skills.tirarDaPersona(p.chave, id),
+        casa: skills.nomeDaCasa,
       ),
     );
   }

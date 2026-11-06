@@ -54,6 +54,8 @@ class EstadoEquipes extends ChangeNotifier {
 
   Set<String> get idsDePersonas => {for (final p in Perfil.todos) p.chave};
 
+  String get nomeDaCasa => nomeDaCasaEm(equipes);
+
   void carregar() {
     _enviar(const PedirEquipes());
     _enviar(const PedirPersonas());
@@ -119,6 +121,12 @@ class EstadoEquipes extends ChangeNotifier {
       erro = e.mensagem;
     }
     notifyListeners();
+  }
+
+  void renomear(String nome) {
+    final limpo = nome.trim();
+    if (limpo.isEmpty || limpo == atual?.nome) return;
+    aplicar((e) => e.copiar(nome: limpo));
   }
 
   void novaEquipe(String nome) {

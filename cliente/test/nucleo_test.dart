@@ -2066,4 +2066,20 @@ void main() {
       expect(erroDeId('a' * 64, maximo: 64), isNull);
     });
   });
+
+  test('o nome da Casa vem da equipe casa, com Casa como reserva, e chega aos rótulos das skills', () {
+    expect(nomeDaCasaEm(const []), 'Casa');
+    expect(nomeDaCasaEm(const [EquipeResumo(id: 'casa', nome: ' ', posicoes: [])]), 'Casa');
+    const sala = [EquipeResumo(id: 'codigo', nome: 'Código', posicoes: []), EquipeResumo(id: 'casa', nome: 'Sala', posicoes: [])];
+    expect(nomeDaCasaEm(sala), 'Sala');
+    expect(rotuloDoDono('casa', casa: nomeDaCasaEm(sala)), 'Sala');
+    expect(
+      errosDosCamposDaSkill(
+        const RascunhoDeSkill(dono: 'casa', id: 'relatorio', descricao: 'd', corpo: 'c'),
+        existentes: const [Skill(dono: 'casa', id: 'relatorio')],
+        casa: 'Sala',
+      )[CampoDaSkill.id],
+      'já existe a skill relatorio em Sala',
+    );
+  });
 }
