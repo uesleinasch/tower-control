@@ -728,6 +728,24 @@ void main() {
     test('tarefa traz criadaPor', () {
       expect(Tarefa.deJson({..._tarefa, 'criadaPor': 'rotina:casa/plano-do-dia'}).criadaPor, 'rotina:casa/plano-do-dia');
     });
+
+    test('erros presos ao campo e prévia do cron', () {
+      expect(errosDosCamposDaRotina(plano, casa), isEmpty);
+      expect(errosDosCamposDaRotina(plano.copiar(nome: '', titulo: ' ', posicao: 'sumiu', cron: '*/5 * * * *'), casa), {
+        CampoDaRotina.nome: 'nome obrigatório',
+        CampoDaRotina.titulo: 'título da tarefa obrigatório',
+        CampoDaRotina.posicao: 'posição inexistente (sumiu)',
+        CampoDaRotina.cron: 'o cron dispara com menos de 15 minutos de intervalo',
+      });
+      expect(errosDosCamposDaRotina(plano.copiar(id: 'X'), casa), {CampoDaRotina.id: 'id inválido (X)'});
+      expect(erroDoCronDaRotina(''), isNull);
+      expect(erroDoCronDaRotina('0 9 * * 1'), isNull);
+      expect(erroDoCronDaRotina('0 9 * *'), 'cron inválido (use 5 campos: minuto hora dia-do-mês mês dia-da-semana)');
+      final sabado = DateTime(2026, 11, 7, 10);
+      expect(previaDoCron('30 8 * * 1-5', sabado), 'Próximas: seg 09/11 08:30 · ter 10/11 08:30 · qua 11/11 08:30');
+      expect(previaDoCron('', sabado), '');
+      expect(previaDoCron('0 9 * *', sabado), '');
+    });
   });
 
   group('codec', () {
@@ -1701,6 +1719,18 @@ void main() {
       const posicao = PosicaoResumo(id: 'executor', titulo: 'executor', skills: ['a']);
       expect(skillsDaPosicao(biblioteca, posicao).map((s) => (s.id, s.descricao, s.propria)), [('a', 'da casa', false)]);
     });
+
+    test('erros do rascunho presos ao campo, um por campo', () {
+      const ok = RascunhoDeSkill(dono: 'casa', id: 'relatorio', descricao: 'quando pedir', corpo: '# passos');
+      expect(errosDosCamposDaSkill(ok), isEmpty);
+      expect(errosDosCamposDaSkill(ok.copiar(id: 'Relatorio', descricao: ' ', corpo: '')), {
+        CampoDaSkill.id: 'id inválido (letras minúsculas, números e hífen, começando por letra)',
+        CampoDaSkill.descricao: 'a descrição é obrigatória',
+        CampoDaSkill.corpo: 'o corpo da skill está vazio',
+      });
+      expect(errosDosCamposDaSkill(ok, existentes: const [Skill(dono: 'casa', id: 'relatorio')]),
+          {CampoDaSkill.id: 'já existe a skill relatorio em Casa'});
+    });
   });
   group('espelho', () {
     test('espelho decodifica a config e o estado, com a volta em hora local', () {
@@ -1915,6 +1945,51 @@ void main() {
       final r = ResumoDoModelo(tipo: 'equipe', nome: 'Work', exportadoEm: DateTime(2026, 11, 5, 9, 7));
       expect(r.exportado(agora: DateTime(2026, 11, 5, 15)), 'exportado hoje, às 09:07');
       expect(r.exportado(agora: DateTime(2026, 11, 8)), 'exportado 5/nov, às 09:07');
+    });
+
+    test('erros da prévia ficam presos ao campo pelo prefixo, e o resto fica solto', () {
+      final p = PreviaDoModelo.deJson({
+        'resumo': {'tipo': 'equipe', 'nome': 'Work'},
+        'personasDoModelo': [
+          {'id': 'nati', 'nome': 'Nati', 'traz': true},
+        ],
+        'posicoesDoModelo': [
+          {'id': 'executor', 'titulo': 'executor'},
+        ],
+        'escolhas': {
+          'skills': {
+            'relatorio': {'acao': 'usar'},
+          },
+        },
+        'erros': [
+          'equipe: já existe uma equipe com o id casa',
+          'persona Nati: já existe uma persona com o id nati; use a daqui ou escolha outro nome',
+          'skill relatorio: o id relatorio já está em uso',
+          'skill outra: é usada pela equipe, mas não veio no modelo e não existe aqui',
+          'posição executor: escolha uma posição da equipe Casa para ela',
+          'persona Nati, skill x: sem descrição',
+        ],
+      });
+      expect(errosDoCampo(p.erros, [prefixoDaEquipe]), ['já existe uma equipe com o id casa']);
+      expect(errosDoCampo(p.erros, prefixosDaPersona(p.personas.first)),
+          ['já existe uma persona com o id nati; use a daqui ou escolha outro nome']);
+      expect(errosDoCampo(p.erros, [prefixoDaSkill('relatorio')]), ['o id relatorio já está em uso']);
+      expect(p.errosSoltos, [
+        'skill outra: é usada pela equipe, mas não veio no modelo e não existe aqui',
+        'posição executor: escolha uma posição da equipe Casa para ela',
+        'persona Nati, skill x: sem descrição',
+      ]);
+    });
+
+    test('id do modelo validado na hora', () {
+      expect(erroDeId('casa-2'), isNull);
+      expect(erroDeId(''), 'o id é obrigatório');
+      for (final id in ['Casa', '2casa', 'casa 2', 'cása']) {
+        expect(erroDeId(id), startsWith('id inválido'), reason: id);
+      }
+      expect(erroDeId('a' * 48), isNull);
+      expect(erroDeId('a' * 49), 'id longo demais: no máximo 48 caracteres');
+      expect(erroDeId('a' * 64, maximo: 64), isNull);
     });
   });
 }
