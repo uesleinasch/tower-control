@@ -8,6 +8,7 @@ import '../nucleo/formato.dart';
 import '../nucleo/rotinas.dart';
 import '../nucleo/tarefas.dart';
 import 'comum.dart' show copiar;
+import 'tema.dart';
 
 const _larguraDoEditor = 420.0;
 
@@ -99,12 +100,6 @@ class _ListaDeRotinas extends StatelessWidget {
   }
 }
 
-Color _corDoResultado(String resultado, ColorScheme cores) => switch (resultado) {
-      'criada' => const Color(0xFF4FAE7C),
-      'pulada' => cores.onSurfaceVariant,
-      _ => cores.error,
-    };
-
 class _CartaoDaRotina extends StatelessWidget {
   const _CartaoDaRotina({
     required this.sala,
@@ -165,7 +160,7 @@ class _CartaoDaRotina extends StatelessWidget {
             if (ultimo != null)
               Text(
                 'último: ${quando(ultimo.em)} · ${ultimo.resumo}',
-                style: TextStyle(color: _corDoResultado(ultimo.resultado, cores), fontSize: 12),
+                style: TextStyle(color: corDoEstado(context, ultimo.resultado), fontSize: 12),
               )
             else
               Text('nunca disparou', style: pequeno),
@@ -199,7 +194,7 @@ class _CartaoDaRotina extends StatelessWidget {
                         contentPadding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
                         title: Text('${horarioCurto(d.em)} · ${d.resumo}',
-                            style: TextStyle(color: _corDoResultado(d.resultado, cores), fontSize: 12)),
+                            style: TextStyle(color: corDoEstado(context, d.resultado), fontSize: 12)),
                         onTap: d.tarefa == null ? null : () => _abrirTarefa(d.tarefa!),
                       ),
                   ],
@@ -305,7 +300,7 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(rotulo, style: pequeno),
-              SelectableText(valor, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              SelectableText(valor, style: const TextStyle(fontFamily: familiaMono, fontSize: 12)),
             ]),
           ),
           IconButton(tooltip: 'Copiar', icon: const Icon(Icons.copy, size: 18), onPressed: () => copiar(context, valor)),
@@ -461,7 +456,7 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
       const SizedBox(height: 8),
       TextField(
         controller: _cron,
-        style: const TextStyle(fontFamily: 'monospace'),
+        style: const TextStyle(fontFamily: familiaMono),
         decoration: const InputDecoration(
           labelText: 'Cron (minuto hora dia mês dia-da-semana)',
           helperText: 'vazio: sem horário (só webhook ou manual)',

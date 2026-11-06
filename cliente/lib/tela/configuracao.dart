@@ -16,6 +16,7 @@ import '../sistema/desktop.dart';
 import '../sistema/executor.dart';
 import '../sistema/servico_avisos.dart';
 import 'comum.dart';
+import 'tema.dart';
 
 class TelaConfiguracao extends StatelessWidget {
   const TelaConfiguracao({super.key, required this.sala, required this.servidor, required this.autostart});
@@ -195,7 +196,7 @@ class _Saida extends StatelessWidget {
         child: SelectableText(
           texto,
           style: TextStyle(
-            fontFamily: 'monospace',
+            fontFamily: familiaMono,
             fontSize: 12,
             color: erro ? Theme.of(context).colorScheme.error : null,
           ),
@@ -838,7 +839,7 @@ class _BlocoLogsState extends State<_BlocoLogs> {
             itemCount: visiveis.length,
             itemBuilder: (context, i) => SelectableText(
               visiveis[visiveis.length - 1 - i],
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              style: const TextStyle(fontFamily: familiaMono, fontSize: 12),
             ),
           ),
         ),

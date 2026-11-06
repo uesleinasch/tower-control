@@ -21,6 +21,7 @@ import 'tela/tema.dart';
 
 Future<void> main(List<String> argumentos) async {
   WidgetsFlutterBinding.ensureInitialized();
+  registrarLicencasDasFontes();
   final prefs = await SharedPreferences.getInstance();
   if (Platform.isAndroid) {
     final servidor = ServidorRemoto(prefs);

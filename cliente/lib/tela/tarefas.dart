@@ -10,6 +10,7 @@ import '../nucleo/workflows.dart';
 import 'chat.dart';
 import 'comum.dart';
 import 'equipes.dart';
+import 'tema.dart';
 
 class TelaTarefas extends StatelessWidget {
   const TelaTarefas({super.key, required this.sala});
@@ -28,15 +29,6 @@ class TelaTarefas extends StatelessWidget {
       );
 }
 
-Color corDoStatus(String status) => switch (status) {
-      'a_fazer' => const Color(0xFF5B8DEF),
-      'em_andamento' => const Color(0xFFE0A458),
-      'em_revisao' => const Color(0xFF9A6EE8),
-      'bloqueada' => const Color(0xFFE05A5A),
-      'concluida' => const Color(0xFF4FAE7C),
-      _ => const Color(0xFF8B93A7),
-    };
-
 class _Status extends StatelessWidget {
   const _Status(this.status);
 
@@ -44,7 +36,7 @@ class _Status extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cor = corDoStatus(status);
+    final cor = corDoEstado(context, status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: cor.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)),
@@ -334,13 +326,13 @@ class _DetalheState extends State<_Detalhe> {
                               ? RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   side: BorderSide(
-                                    color: switch (r.tipo) {
-                                      'entrega' => corDoStatus('concluida'),
-                                      'plano' => corDoStatus('em_revisao'),
-                                      'aprovado' => corDoStatus('concluida'),
-                                      'mudanca' => corDoStatus('em_andamento'),
-                                      _ => corDoStatus('bloqueada'),
-                                    },
+                                    color: corDoEstado(
+                                      context,
+                                      switch (r.tipo) {
+                                        'entrega' || 'plano' || 'aprovado' || 'mudanca' => r.tipo,
+                                        _ => 'bloqueada',
+                                      },
+                                    ),
                                   ),
                                 )
                               : null,
@@ -403,7 +395,7 @@ class _DetalheState extends State<_Detalhe> {
                       '${quando(ev.em)}  ${ev.conteudo}',
                       style: TextStyle(
                         fontSize: 13,
-                        fontFamily: ev.tipo == 'texto' ? null : 'monospace',
+                        fontFamily: ev.tipo == 'texto' ? null : familiaMono,
                         color: switch (ev.tipo) {
                           'texto' => cores.onSurface,
                           'erro' => cores.error,
@@ -453,7 +445,7 @@ class _PedidoDeComando extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Comando pedindo aprovação'),
             const SizedBox(height: 6),
-            SelectableText(pedido.comando, style: const TextStyle(fontFamily: 'monospace')),
+            SelectableText(pedido.comando, style: const TextStyle(fontFamily: familiaMono)),
             const SizedBox(height: 8),
             Wrap(spacing: 8, children: [
               FilledButton(onPressed: () => estado.responder(pedido.id, permitido: true), child: const Text('Permitir')),
@@ -472,7 +464,7 @@ class _Trilha extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
-    final destaque = corDoStatus('em_revisao');
+    final destaque = corDoEstado(context, 'em_revisao');
     return Text.rich(
       TextSpan(children: [
         for (final (i, passo) in trilha.indexed) ...[

@@ -8,8 +8,8 @@ import '../nucleo/tarefas.dart';
 import '../nucleo/workflows.dart' show nomesDeCaixa;
 import 'comum.dart';
 import 'equipes.dart' show BarraDePausa, pedirTexto, quandoCurto;
-import 'tarefas.dart' show corDoStatus;
-import 'workflows.dart' show cancelarFluxo, corDoFluxo;
+import 'workflows.dart' show cancelarFluxo;
+import 'tema.dart';
 
 class TelaPainel extends StatelessWidget {
   const TelaPainel({super.key, required this.sala});
@@ -151,7 +151,7 @@ class _PrecisaDeVoce extends StatelessWidget {
                     const SizedBox(height: 6),
                     SelectableText(
                       item.detalhe,
-                      style: TextStyle(fontSize: 13, fontFamily: item.tipo == 'comando' ? 'monospace' : null),
+                      style: TextStyle(fontSize: 13, fontFamily: item.tipo == 'comando' ? familiaMono : null),
                     ),
                   ],
                   if (item.tipo == 'decisao')
@@ -271,7 +271,7 @@ class _Workflows extends StatelessWidget {
                   Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: corDoFluxo(f.ativas.isEmpty ? 'esperando' : 'rodando', cores),
+                        backgroundColor: corDoEstado(context, f.ativas.isEmpty ? 'esperando' : 'rodando'),
                         radius: 6,
                       ),
                       const SizedBox(width: 8),
@@ -329,7 +329,7 @@ class _Agora extends StatelessWidget {
         for (final e in retrato.rodando)
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            leading: Icon(Icons.play_circle_outline, color: corDoStatus('em_andamento')),
+            leading: Icon(Icons.play_circle_outline, color: corDoEstado(context, 'em_andamento')),
             title: Text('#${e.tarefaId} ${e.titulo}'),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,7 +343,7 @@ class _Agora extends StatelessWidget {
                     _juntar([ev.tipo == 'texto' ? null : ev.tipo, ev.conteudo]),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: secundario.copyWith(fontFamily: ev.tipo == 'texto' ? null : 'monospace'),
+                    style: secundario.copyWith(fontFamily: ev.tipo == 'texto' ? null : familiaMono),
                   ),
               ],
             ),
@@ -362,12 +362,6 @@ class _Agora extends StatelessWidget {
   }
 }
 
-Color _corDoEstado(String estado, ColorScheme cores) => switch (estado) {
-  'rodando' => corDoStatus('em_andamento'),
-  'na_fila' => corDoStatus('a_fazer'),
-  'pausada' || 'sem_orcamento' => cores.error,
-  _ => cores.onSurfaceVariant,
-};
 
 class _Personas extends StatelessWidget {
   const _Personas({required this.sala, required this.retrato});
@@ -422,7 +416,7 @@ class _Personas extends StatelessWidget {
                                 ),
                                 Text(
                                   rotulosDeEstado[p.estado] ?? p.estado,
-                                  style: TextStyle(color: _corDoEstado(p.estado, cores), fontSize: 12),
+                                  style: TextStyle(color: corDoEstado(context, p.estado), fontSize: 12),
                                 ),
                               ],
                             ),
@@ -453,7 +447,7 @@ class _Personas extends StatelessWidget {
                                 color: proporcao >= 1
                                     ? cores.error
                                     : proporcao >= 0.8
-                                    ? corDoStatus('em_andamento')
+                                    ? corDoEstado(context, 'em_andamento')
                                     : null,
                               ),
                             ],
@@ -503,7 +497,7 @@ class _Tarefas extends StatelessWidget {
             children: [
               for (final c in contagem)
                 ActionChip(
-                  avatar: CircleAvatar(backgroundColor: corDoStatus(c.status), radius: 6),
+                  avatar: CircleAvatar(backgroundColor: corDoEstado(context, c.status), radius: 6),
                   label: Text('${nomesDeStatus[c.status] ?? c.status} · ${c.quantas}'),
                   onPressed: () => sala.abrirTarefasDaEquipe(equipe),
                 ),
