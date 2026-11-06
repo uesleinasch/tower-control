@@ -37,7 +37,7 @@ final _retrato = Retrato(
   ],
   tarefas: const {'casa': {'em_andamento': 2, 'bloqueada': 1, 'concluida': 31}},
   gasto: const GastoDoMes(mes: '2026-11', tarefasUSD: 12.5, totalUSD: 40.25, tokensTarefas: 1200000, tokensTotal: 5400000),
-  workflows: const [FluxoNoPainel(fluxo: 5, equipe: 'casa', nome: 'Triagem de pedidos', ativas: [(ficha: 1, no: 'a', titulo: 'Classificar', tipo: 'executar', tarefaId: 3)])],
+  workflows: const [FluxoNoPainel(fluxo: 5, equipe: 'casa', nome: 'Triagem de pedidos', ativas: [(ficha: 1, no: 'a', titulo: 'Classificar', tipo: 'executar', tarefaId: 3, parada: false)])],
 );
 
 void main() {

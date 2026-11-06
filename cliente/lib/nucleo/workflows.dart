@@ -36,6 +36,7 @@ const nomesDeStatusDoFluxo = {
 
 const nomesDeStatusDaFicha = {
   'esperando': 'esperando',
+  'parada': 'parada',
   'concluida': 'concluída',
   'cancelada': 'cancelada',
 };
@@ -202,6 +203,8 @@ class Ficha {
   final DateTime? concluidaEm;
 
   bool get esperando => status == 'esperando';
+  bool get parada => status == 'parada';
+  bool get viva => esperando || parada;
 
   factory Ficha.deJson(Map<String, dynamic> j) => Ficha(
         id: _inteiro(j['id']),
@@ -427,7 +430,7 @@ Vista vistaComCaixa(Vista v, Map<String, Ponto> layout, String id, double largur
 Map<String, String> estadoDasCaixas(Fluxo f) {
   final estado = <String, String>{};
   for (final ficha in [...f.fichas]..sort((a, b) => a.id.compareTo(b.id))) {
-    if (estado[ficha.no] == 'esperando') continue;
+    if (estado[ficha.no] == 'esperando' || estado[ficha.no] == 'parada') continue;
     estado[ficha.no] = ficha.status;
   }
   return estado;
@@ -478,7 +481,7 @@ class PassoDoCaminho {
   final String resumo;
   final int? tarefa;
 
-  bool get destacado => status == 'esperando';
+  bool get destacado => status == 'esperando' || status == 'parada';
 }
 
 List<PassoDoCaminho> ordemDoCaminho(Fluxo f) {
@@ -498,9 +501,9 @@ List<PassoDoCaminho> ordemDoCaminho(Fluxo f) {
 
   return [
     for (final ficha in fichas)
-      if (ficha.esperando) passo(ficha),
+      if (ficha.viva) passo(ficha),
     for (final ficha in fichas)
-      if (!ficha.esperando) passo(ficha),
+      if (!ficha.viva) passo(ficha),
   ];
 }
 
@@ -536,6 +539,27 @@ EntradaConvertida converterEntrada(Map<String, TipoDeValor> entrada, Map<String,
   }
   return (valores: valores, erros: erros);
 }
+
+typedef CaixaDaTarefa = ({Fluxo fluxo, Ficha ficha});
+
+CaixaDaTarefa? _caixaDaTarefa(Tarefa t, List<Fluxo> fluxos, bool Function(Ficha) aceita) {
+  final fluxo = t.fluxo == null ? null : fluxos.where((f) => f.id == t.fluxo).firstOrNull;
+  final ficha = t.ficha == null ? null : fluxo?.ficha(t.ficha!);
+  if (fluxo == null || ficha == null || fluxo.status != 'rodando' || !aceita(ficha)) return null;
+  return (fluxo: fluxo, ficha: ficha);
+}
+
+CaixaDaTarefa? caixaVivaDaTarefa(Tarefa t, List<Fluxo> fluxos) => _caixaDaTarefa(t, fluxos, (f) => f.esperando);
+
+CaixaDaTarefa? caixaParadaDaTarefa(Tarefa t, List<Fluxo> fluxos) => _caixaDaTarefa(t, fluxos, (f) => f.parada);
+
+List<Ficha> caixasParadas(Fluxo f) => f.status == 'rodando' ? [for (final ficha in f.fichas) if (ficha.parada) ficha] : const [];
+
+String rotuloDaFicha(Fluxo f, Ficha ficha) => f.definicao.caixa(ficha.no)?.rotulo ?? ficha.no;
+
+String textoDaCaixaParada(Fluxo f, Ficha ficha) =>
+    'A tarefa #${ficha.tarefa ?? '?'} da caixa "${rotuloDaFicha(f, ficha)}" foi cancelada. '
+    'O workflow "${f.nome}" está esperando você decidir.';
 
 String descricaoDaCaixaDaTarefa(Tarefa t, List<Fluxo> fluxos) {
   final id = t.fluxo;

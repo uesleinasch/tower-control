@@ -467,15 +467,18 @@ class PedirExecucao extends Saida {
   Map<String, Object?> get campos => {'id': id};
 }
 
+enum EscopoDoCancelamento { tarefa, fluxo }
+
 class MudarStatusTarefa extends Saida {
-  const MudarStatusTarefa(this.id, this.status);
+  const MudarStatusTarefa(this.id, this.status, {this.escopo});
   final int id;
   final String status;
+  final EscopoDoCancelamento? escopo;
 
   @override
   String get tipo => 'tarefa-status';
   @override
-  Map<String, Object?> get campos => {'id': id, 'status': status};
+  Map<String, Object?> get campos => {'id': id, 'status': status, 'escopo': escopo?.name};
 }
 
 class ComentarTarefa extends Saida {
@@ -730,6 +733,17 @@ class SinalizarWorkflow extends Saida {
 
   @override
   String get tipo => 'workflow-sinal';
+  @override
+  Map<String, Object?> get campos => {'execucao': execucao, 'ficha': ficha};
+}
+
+class RecriarCaixa extends Saida {
+  const RecriarCaixa(this.execucao, this.ficha);
+  final int execucao;
+  final int ficha;
+
+  @override
+  String get tipo => 'workflow-recriar';
   @override
   Map<String, Object?> get campos => {'execucao': execucao, 'ficha': ficha};
 }

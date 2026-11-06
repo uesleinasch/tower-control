@@ -72,7 +72,7 @@ class ItemDeAtencao {
   );
 }
 
-typedef CaixaAtiva = ({int ficha, String no, String titulo, String tipo, int? tarefaId});
+typedef CaixaAtiva = ({int ficha, String no, String titulo, String tipo, int? tarefaId, bool parada});
 
 class FluxoNoPainel {
   const FluxoNoPainel({
@@ -107,6 +107,7 @@ class FluxoNoPainel {
           titulo: _textoOuNulo(a['titulo']) ?? _texto(a['no']),
           tipo: _texto(a['tipo']),
           tarefaId: _inteiroOuNulo(a['tarefaId']),
+          parada: a['parada'] == true,
         ),
       ),
     );
@@ -341,6 +342,7 @@ const rotulosDeAtencao = {
   'plano': 'plano',
   'entrega': 'entrega',
   'sinal': 'sinal',
+  'parada': 'caixa parada',
   'bloqueada': 'bloqueada',
   'atrasada': 'atrasada',
   'backlog': 'backlog',
@@ -359,6 +361,8 @@ const rotulosDeAcao = {
   'abrir': 'Abrir',
   'decidir': 'Decidir',
   'sinalizar': 'Sinalizar',
+  'recriar': 'Recriar a tarefa',
+  'cancelar-fluxo': 'Cancelar o workflow',
 };
 
 const rotulosDeEstado = {
@@ -422,6 +426,8 @@ EfeitoDaAcao? efeitoDaAcao(ItemDeAtencao item, String acao, {String? texto, Stri
       DecidirWorkflow(fluxo, ficha, opcao, comentario: comentario.isEmpty ? null : comentario),
     ),
     'sinalizar' when fluxo != null && ficha != null => MandarSaida(SinalizarWorkflow(fluxo, ficha)),
+    'recriar' when fluxo != null && ficha != null => MandarSaida(RecriarCaixa(fluxo, ficha)),
+    'cancelar-fluxo' when fluxo != null => MandarSaida(CancelarWorkflow(fluxo)),
     'aprovar' when item.tipo == 'comando' && permissao != null => MandarSaida(
       RespostaDePermissao(permissao, permitido: true),
     ),
