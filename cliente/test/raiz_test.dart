@@ -5,21 +5,28 @@ import 'package:control_tower/tela/tema.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _SemServidor implements Servidor {
   @override
   Future<String?> resolver() async => null;
 }
 
-Future<Sala> montar(WidgetTester t, double largura, Tela tela) async {
+Future<Sala> montar(WidgetTester t, double largura, Tela tela, {Map<String, Object> prefs = const {}}) async {
+  SharedPreferences.setMockInitialValues(prefs);
   t.view.physicalSize = Size(largura, 900);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
   final sala = Sala(_SemServidor())..ir(tela);
-  await t.pumpWidget(MaterialApp(theme: temaEscuro, home: Raiz(sala: sala)));
+  await t.pumpWidget(MaterialApp(
+    theme: temaEscuro,
+    home: Raiz(sala: sala, configuracao: (_) => const Text('tela de configuração')),
+  ));
   await t.pump();
   return sala;
 }
+
+bool estendido(WidgetTester t) => t.widget<NavigationRail>(find.byType(NavigationRail)).extended;
 
 void main() {
   testWidgets('no celular a barra tem os 3 destinos principais e o menu leva aos outros', (t) async {
@@ -70,5 +77,33 @@ void main() {
     await t.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await t.pump();
     expect(sala.tela, Tela.tarefas);
+  });
+
+  testWidgets('o botão do trilho recolhe e expande, e a escolha fica salva', (t) async {
+    await montar(t, 1300, Tela.painel);
+    expect(estendido(t), isTrue);
+    await t.tap(find.byTooltip('Recolher menu'));
+    await t.pump();
+    expect(estendido(t), isFalse);
+    expect((await SharedPreferences.getInstance()).getBool(chaveTrilhoEstendido), isFalse);
+
+    await montar(t, 1300, Tela.painel, prefs: {chaveTrilhoEstendido: false});
+    await t.pump();
+    expect(estendido(t), isFalse);
+    await t.tap(find.byTooltip('Expandir menu'));
+    await t.pump();
+    expect(estendido(t), isTrue);
+  });
+
+  testWidgets('a configuração no trilho mostra o nome, recolhido ou expandido', (t) async {
+    final sala = await montar(t, 1300, Tela.painel);
+    final noTrilho = find.descendant(of: find.byType(NavigationRail), matching: find.text('Configuração'));
+    expect(noTrilho, findsOneWidget);
+    await t.tap(find.byTooltip('Recolher menu'));
+    await t.pump();
+    expect(noTrilho, findsOneWidget);
+    await t.tap(noTrilho);
+    await t.pump();
+    expect(sala.tela, Tela.configuracao);
   });
 }

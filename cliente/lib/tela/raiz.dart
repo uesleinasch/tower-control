@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../estado/sala.dart';
 import '../nucleo/design.dart';
@@ -29,6 +30,7 @@ class Raiz extends StatefulWidget {
 class _RaizState extends State<Raiz> {
   late final StreamSubscription<String> _avisos;
   final _mensageiro = GlobalKey<ScaffoldMessengerState>();
+  bool? _trilhoEstendido;
 
   Sala get sala => widget.sala;
 
@@ -37,6 +39,15 @@ class _RaizState extends State<Raiz> {
     super.initState();
     _avisos = sala.avisos.listen((texto) => _mensageiro.currentState?.showSnackBar(SnackBar(content: Text(texto))));
     sala.pedidosDeNova.addListener(_abrirNova);
+    SharedPreferences.getInstance().then((prefs) {
+      final salvo = prefs.getBool(chaveTrilhoEstendido);
+      if (mounted && salvo != null) setState(() => _trilhoEstendido = salvo);
+    });
+  }
+
+  void _alternarTrilho(bool estendido) {
+    setState(() => _trilhoEstendido = !estendido);
+    SharedPreferences.getInstance().then((prefs) => prefs.setBool(chaveTrilhoEstendido, !estendido));
   }
 
   void _abrirNova() {
@@ -125,8 +136,9 @@ class _RaizState extends State<Raiz> {
         _Trilho(
           sala: sala,
           selecionado: _indice(sala.tela),
-          estendido: classe.index >= ClasseDeJanela.large.index,
+          estendido: _trilhoEstendido ?? classe.index >= ClasseDeJanela.large.index,
           configuracao: widget.configuracao != null,
+          alternar: _alternarTrilho,
         ),
         const VerticalDivider(width: 1),
         Expanded(child: conteudo),
@@ -191,6 +203,8 @@ const _destinos = [
 ];
 
 const _naBarra = 3;
+
+const chaveTrilhoEstendido = 'trilhoEstendido';
 
 const _teclasDosDestinos = [
   LogicalKeyboardKey.digit1,
@@ -268,12 +282,19 @@ class _Gaveta extends StatelessWidget {
 }
 
 class _Trilho extends StatelessWidget {
-  const _Trilho({required this.sala, required this.selecionado, required this.estendido, required this.configuracao});
+  const _Trilho({
+    required this.sala,
+    required this.selecionado,
+    required this.estendido,
+    required this.configuracao,
+    required this.alternar,
+  });
 
   final Sala sala;
   final int? selecionado;
   final bool estendido;
   final bool configuracao;
+  final void Function(bool estendido) alternar;
 
   @override
   Widget build(BuildContext context) => NavigationRail(
@@ -282,8 +303,25 @@ class _Trilho extends StatelessWidget {
         labelType: estendido ? NavigationRailLabelType.none : NavigationRailLabelType.all,
         onDestinationSelected: (i) => sala.ir(_destinos[i].tela),
         leading: Padding(
-          padding: const EdgeInsets.symmetric(vertical: Espacos.esp3),
-          child: Tooltip(message: 'Conexão com o servidor', child: PontoConexao(sala.canal.estado)),
+          padding: const EdgeInsets.symmetric(vertical: Espacos.esp2),
+          child: Flex(
+            direction: estendido ? Axis.horizontal : Axis.vertical,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(estendido ? Symbols.menu_open : Symbols.menu),
+                tooltip: estendido ? 'Recolher menu' : 'Expandir menu',
+                onPressed: () => alternar(estendido),
+              ),
+              if (estendido) ...[
+                const SizedBox(width: Espacos.esp2),
+                Text('Control Tower', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(width: Espacos.esp3),
+              ] else
+                const SizedBox(height: Espacos.esp1),
+              Tooltip(message: 'Conexão com o servidor', child: PontoConexao(sala.canal.estado)),
+            ],
+          ),
         ),
         trailing: configuracao
             ? Expanded(
@@ -291,12 +329,7 @@ class _Trilho extends StatelessWidget {
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: Espacos.esp4),
-                    child: IconButton(
-                      icon: Icon(Symbols.settings, fill: sala.tela == Tela.configuracao ? 1 : 0),
-                      isSelected: sala.tela == Tela.configuracao,
-                      tooltip: 'Configuração',
-                      onPressed: () => sala.ir(Tela.configuracao),
-                    ),
+                    child: _BotaoDeConfiguracao(sala: sala, estendido: estendido),
                   ),
                 ),
               )
@@ -310,6 +343,70 @@ class _Trilho extends StatelessWidget {
             ),
         ],
       );
+}
+
+class _BotaoDeConfiguracao extends StatelessWidget {
+  const _BotaoDeConfiguracao({required this.sala, required this.estendido});
+
+  final Sala sala;
+  final bool estendido;
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final cores = tema.colorScheme;
+    final selecionada = sala.tela == Tela.configuracao;
+    final cor = selecionada ? cores.onSecondaryContainer : cores.onSurfaceVariant;
+    final icone = Icon(Symbols.settings, fill: selecionada ? 1 : 0, color: cor);
+    final rotulo = Text('Configuração', style: tema.textTheme.labelLarge?.copyWith(color: cor));
+    void abrir() => sala.ir(Tela.configuracao);
+    final forma = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Raios.xl));
+    if (estendido) {
+      return SizedBox(
+        width: 224,
+        child: TextButton.icon(
+          onPressed: abrir,
+          icon: icone,
+          label: rotulo,
+          style: TextButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: Espacos.esp4, vertical: Espacos.esp4),
+            backgroundColor: selecionada ? cores.secondaryContainer : null,
+            shape: forma,
+          ),
+        ),
+      );
+    }
+    return Semantics(
+      button: true,
+      selected: selecionada,
+      child: InkWell(
+        onTap: abrir,
+        customBorder: forma,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Espacos.esp1, vertical: Espacos.esp2),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: Espacos.esp4, vertical: Espacos.esp1),
+              decoration: BoxDecoration(
+                color: selecionada ? cores.secondaryContainer : null,
+                borderRadius: BorderRadius.circular(Raios.lg),
+              ),
+              child: icone,
+            ),
+            const SizedBox(height: Espacos.esp1),
+            SizedBox(
+              width: 72,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('Configuração', style: tema.textTheme.labelMedium?.copyWith(color: cor)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class _PainelDeConversas extends StatelessWidget {
