@@ -101,8 +101,14 @@ Finder botao(String texto) =>
 Future<void> verAba(WidgetTester t, AbaDaEquipe aba) async {
   final equipes = salaDe(t).equipes;
   if (equipes.aba == aba) return;
-  const rotulos = {AbaDaEquipe.rotinas: 'Rotinas', AbaDaEquipe.workflows: 'Workflows', AbaDaEquipe.skills: 'Skills'};
-  await tocar(t, botao(rotulos[aba == AbaDaEquipe.organograma ? equipes.aba : aba]!));
+  const rotulos = {
+    AbaDaEquipe.organograma: 'Organograma',
+    AbaDaEquipe.rotinas: 'Rotinas',
+    AbaDaEquipe.workflows: 'Workflows',
+    AbaDaEquipe.skills: 'Skills',
+  };
+  final seletor = find.byWidgetPredicate((w) => w is SegmentedButton<AbaDaEquipe>);
+  await tocar(t, find.descendant(of: seletor, matching: botao(rotulos[aba]!)));
   await esperarAte(t, () => equipes.aba == aba, descricao: 'a aba $aba');
 }
 
