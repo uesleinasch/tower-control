@@ -17,6 +17,7 @@ import 'decisoes.dart';
 import 'equipes.dart';
 import 'paineis.dart';
 import 'painel.dart';
+import 'personas.dart';
 import 'tarefas.dart';
 
 class Raiz extends StatefulWidget {
@@ -80,6 +81,8 @@ class _RaizState extends State<Raiz> {
         sala.tarefas.fecharDetalhe();
       case Tela.decisoes when sala.decisoes.aberta != null:
         sala.decisoes.fecharDetalhe();
+      case Tela.personas when sala.personas.aberta != null:
+        sala.personas.fecharDetalhe();
       case Tela.equipes when sala.editorDeWorkflow.aberto:
         if (sala.editorDeWorkflow.selecionada == null) return false;
         sala.editorDeWorkflow.selecionar(null);
@@ -114,7 +117,7 @@ class _RaizState extends State<Raiz> {
   Widget build(BuildContext context) => ScaffoldMessenger(
         key: _mensageiro,
         child: ListenableBuilder(
-          listenable: Listenable.merge([sala, sala.canal]),
+          listenable: Listenable.merge([sala, sala.canal, sala.personas]),
           builder: (context, _) {
             final bloqueio = widget.bloqueio?.call(context);
             if (bloqueio != null) return Scaffold(body: bloqueio);
@@ -155,6 +158,7 @@ class _RaizState extends State<Raiz> {
         Tela.painel => TelaPainel(sala: sala),
         Tela.tarefas => TelaTarefas(sala: sala),
         Tela.equipes => TelaEquipes(sala: sala),
+        Tela.personas => TelaPersonas(sala: sala),
         Tela.configuracao when widget.configuracao != null => widget.configuracao!(context),
         Tela.conversas when compacto => ListaConversas(sala: sala),
         _ => TelaChat(sala: sala, compacto: compacto),
@@ -232,13 +236,19 @@ class _RaizState extends State<Raiz> {
       ),
       drawer: _Gaveta(sala: sala, selecionado: indice),
       body: _principal(context, compacto: true),
-      floatingActionButton: sala.tela == Tela.conversas
-          ? FloatingActionButton.extended(
-              onPressed: () => abrirNovaConversa(context, sala),
-              icon: const Icon(Symbols.add),
-              label: const Text('Nova'),
-            )
-          : null,
+      floatingActionButton: switch (sala.tela) {
+        Tela.conversas => FloatingActionButton.extended(
+            onPressed: () => abrirNovaConversa(context, sala),
+            icon: const Icon(Symbols.add),
+            label: const Text('Nova'),
+          ),
+        Tela.personas when sala.personas.aberta == null => FloatingActionButton.extended(
+            onPressed: () => criarNovaPersona(context, sala),
+            icon: const Icon(Symbols.person_add),
+            label: const Text('Nova persona'),
+          ),
+        _ => null,
+      },
       bottomNavigationBar: _Barra(sala: sala, selecionado: indice != null && indice < _naBarra ? indice : null),
     );
   }
@@ -257,6 +267,7 @@ const _destinos = [
   _Destino(Tela.painel, Symbols.dashboard, 'Painel'),
   _Destino(Tela.tarefas, Symbols.task_alt, 'Tarefas'),
   _Destino(Tela.equipes, Symbols.account_tree, 'Equipes'),
+  _Destino(Tela.personas, Symbols.person, 'Personas'),
   _Destino(Tela.board, Symbols.gavel, 'Board'),
   _Destino(Tela.decisoes, Symbols.fact_check, 'Decisões'),
 ];
@@ -270,6 +281,7 @@ const _teclasDosDestinos = [
   LogicalKeyboardKey.digit2,
   LogicalKeyboardKey.digit3,
   LogicalKeyboardKey.digit4,
+  LogicalKeyboardKey.digit7,
   LogicalKeyboardKey.digit5,
   LogicalKeyboardKey.digit6,
 ];

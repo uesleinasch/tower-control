@@ -427,6 +427,7 @@ final _saidas = <Saida>[
   const SalvarEquipe(EquipeResumo(id: 'codigo', nome: 'Código', posicoes: [])),
   const ExcluirEquipe('codigo'),
   const SalvarOrcamento('alfred', usd: 5, tokens: 2000000),
+  const SalvarDadosDaPersona('alfred', nome: 'Alfred', modelo: 'sonnet'),
   const Pausar('*'),
   const Retomar('alfred'),
   const AprovarPlano(3),
@@ -998,6 +999,64 @@ void main() {
       final depois = personasDaEquipe(r.equipe, ['poe', 'nati']);
       expect(depois.naEquipe, {'nati': ['conselheira']});
       expect(depois.disponiveis, ['poe']);
+    });
+
+    test('remover persona tira todas as posições dela e religa as subordinadas', () {
+      final dupla = adicionarPersona(codigo(), 'nati', 'revisora técnica').equipe;
+      final sem = removerPersona(dupla, 'nati');
+      expect(sem.posicoes.where((p) => p.persona == 'nati'), isEmpty);
+      expect(sem.posicao('executor')!.respondeA, isNull);
+      expect(sem.posicao('revisora')!.respondeA, 'executor');
+      expect(removerPersona(codigo(), 'poe').posicoes.length, 3);
+    });
+
+    test('equipes da persona juntam as posições de todas as equipes', () {
+      final pesquisa = adicionarPersona(const EquipeResumo(id: 'pesquisa', nome: 'Pesquisa', posicoes: []), 'nati', 'revisora').equipe;
+      final equipes = [adicionarPersona(codigo(), 'nati', 'arquiteta').equipe, pesquisa];
+      final daNati = equipesDaPersona(equipes, 'nati');
+      expect([for (final x in daNati) x.equipe.id], ['codigo', 'pesquisa']);
+      expect(daNati.first.posicoes, ['tech lead', 'arquiteta']);
+      expect(contarPosicoes(equipes, 'nati'), 3);
+      expect(contarPosicoes(equipes, 'poe'), 0);
+      expect(equipesDaPersona(equipes, 'poe'), isEmpty);
+    });
+
+    test('rodando vem da tarefa rodando: executora fora de etapa, revisora na etapa', () {
+      Tarefa tarefa(String posicao, {bool rodando = true, int? etapa, String status = 'em_andamento'}) => Tarefa(
+            id: 1,
+            equipe: 'codigo',
+            posicao: posicao,
+            titulo: 't',
+            status: status,
+            atualizadaEm: DateTime(2026),
+            rodando: rodando,
+            etapa: etapa,
+            politica: const [EtapaDePolitica.revisaoPor('tech-lead')],
+          );
+      expect(personasRodando([tarefa('executor')], [codigo()]), {'alfred'});
+      expect(personasRodando([tarefa('executor', rodando: false)], [codigo()]), isEmpty);
+      expect(personasRodando([tarefa('executor', etapa: 0, status: 'em_revisao')], [codigo()]), {'nati'});
+      expect(personasRodando([tarefa('revisora')], [codigo()]), isEmpty);
+      expect(personasRodando([tarefa('executor')], const []), isEmpty);
+    });
+
+    test('título ao entrar usa o papel ou o nome, e a lista de nomes junta com "e"', () {
+      expect(tituloAoEntrar(const Perfil('vera', 'Vera', 'V', 0, '  auditora ')), 'auditora');
+      expect(tituloAoEntrar(const Perfil('vera', 'Vera', 'V', 0, '')), 'Vera');
+      expect(juntarComE(const []), '');
+      expect(juntarComE(const ['Nati']), 'Nati');
+      expect(juntarComE(const ['Nati', 'Alfred']), 'Nati e Alfred');
+      expect(juntarComE(const ['Poe', 'Nati', 'Alfred']), 'Poe, Nati e Alfred');
+    });
+
+    test('salvar dados da persona manda nome e modelo, e a cor só quando muda', () {
+      final semCor = jsonDecode(const SalvarDadosDaPersona('poe', nome: 'Poe', modelo: null).codificar()) as Map;
+      expect(semCor['tipo'], 'persona-salvar');
+      expect(semCor['persona'], {'id': 'poe', 'nome': 'Poe', 'modelo': null});
+      final comCor = jsonDecode(
+        const SalvarDadosDaPersona('poe', nome: 'Poe', modelo: 'opus', cor: '#4fae7c', mudarCor: true).codificar(),
+      ) as Map;
+      expect(comCor['persona'], {'id': 'poe', 'nome': 'Poe', 'modelo': 'opus', 'cor': '#4fae7c'});
     });
 
     test('mover não deixa coordenada negativa', () {

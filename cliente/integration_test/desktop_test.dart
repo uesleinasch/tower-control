@@ -122,10 +122,9 @@ void main() {
       await c.fechar();
     });
     await subirDesktop(t, ambiente);
-    await escolherEquipe(t, 'casa', 'Casa');
-    await verAba(t, AbaDaEquipe.organograma);
+    await irPara(t, 'Personas');
 
-    await tocar(t, botao('Nova'));
+    await tocar(t, botao('Nova persona'));
     await digitar(t, campoRotulado('Nome'), 'Vera');
     await digitar(t, campoRotulado('Papel curto (aparece na lista)'), 'auditora');
     await digitar(
@@ -207,18 +206,18 @@ void main() {
     }, descricao: 'o commit da equipe Teste no git dos dados');
 
     await esperarAte(t, () => !salaDe(t).equipes.alterada, descricao: 'a equipe salva');
-    Finder painelDePersonas() => find.text('Clique num cartão para editar a posição.');
-    await rolarAte(t, find.byTooltip('Excluir Vera'), dentroDe: painelDePersonas());
-    await tocar(t, find.byTooltip('Excluir Vera'));
+    await irPara(t, 'Personas');
+    await tocar(t, find.widgetWithText(ListTile, 'Vera'), descricao: 'a Vera na lista de personas');
+    Finder confirmarExclusao() => find.descendant(of: find.byType(AlertDialog), matching: botao('Excluir persona'));
+    await tocar(t, botao('Excluir persona'), descricao: 'o botão Excluir persona no detalhe da Vera');
     await digitar(t, campoRotulado('Digite Vera para confirmar'), 'Vero');
-    await tocar(t, botao('Excluir persona'));
+    await tocar(t, confirmarExclusao());
     await aparecer(t, find.textContaining('digite o nome exato da persona'), descricao: 'a recusa do nome errado');
     expect(Directory(dados('profiles/vera')).existsSync(), isTrue);
 
-    await rolarAte(t, find.byTooltip('Excluir Vera'), dentroDe: painelDePersonas());
-    await tocar(t, find.byTooltip('Excluir Vera'));
+    await tocar(t, botao('Excluir persona'), descricao: 'o botão Excluir persona no detalhe da Vera');
     await digitar(t, campoRotulado('Digite Vera para confirmar'), 'Vera');
-    await tocar(t, botao('Excluir persona'));
+    await tocar(t, confirmarExclusao());
     await esperarSumir(dados('profiles/vera'));
     await esperarAte(t, () => !Perfil.todos.any((p) => p.chave == 'vera'), descricao: 'a Vera sair do elenco');
 
@@ -419,9 +418,10 @@ void main() {
     await tocar(t, botao('Salvar').last);
     await esperarArquivo(dados('skills/checklist/SKILL.md'), contendo: '- conferir o diff antes de entregar');
 
-    await verAba(t, AbaDaEquipe.organograma);
-    final linhaDaNati = find.ancestor(of: find.byTooltip('Pausar Nati'), matching: find.byType(Row)).first;
-    await tocar(t, find.descendant(of: linhaDaNati, matching: find.byTooltip('Anexar skill da Casa')));
+    await irPara(t, 'Personas');
+    await tocar(t, find.widgetWithText(ListTile, 'Nati'), descricao: 'a Nati na lista de personas');
+    await aparecer(t, find.text('Pausar Nati'), descricao: 'o detalhe da Nati');
+    await tocar(t, find.byTooltip('Anexar skill da Casa'));
     await tocar(t, find.widgetWithText(MenuItemButton, 'checklist'));
     await esperarArquivo(dados('profiles/nati/persona.json'), contendo: 'checklist');
 
