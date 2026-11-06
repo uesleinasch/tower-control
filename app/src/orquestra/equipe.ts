@@ -409,7 +409,6 @@ export function exigirMudancaDeEquipe(
 ): void {
   if (!antes) return
   const erros: string[] = []
-  if (antes.id === CASA && depois.nome !== antes.nome) erros.push("a Casa não pode ser renomeada")
   for (const velha of antes.posicoes) {
     const nova = depois.posicoes.find((p) => p.id === velha.id)
     const { abertas, emAndamento, citadas = 0, rotinas = 0, workflows = 0 } = tarefas(velha.id)

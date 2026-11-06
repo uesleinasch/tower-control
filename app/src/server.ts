@@ -363,7 +363,7 @@ function exigirDono(bruto: unknown): string {
 }
 
 function ondeDaSkill(dono: string): string {
-  return dono === DONO_CASA ? "na Casa" : `de ${elenco().nome(dono)}`
+  return dono === DONO_CASA ? `na ${elenco().casa.nome}` : `de ${elenco().nome(dono)}`
 }
 
 async function salvarSkill(donoBruto: unknown, bruto: unknown, nova: boolean): Promise<void> {

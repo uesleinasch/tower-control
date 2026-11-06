@@ -69,6 +69,7 @@ import {
 } from "./orquestra/modelos"
 import { lerElenco as lerElencoDoDisco, lerRotinas as lerRotinasDoDisco, lerWorkflows as lerWorkflowsDoDisco } from "./orquestra/elenco"
 import {
+  CASA,
   Elenco,
   casaInicial,
   completarLayout,
@@ -782,9 +783,18 @@ describe("organograma de personas", () => {
     const trocada = { ...antes, posicoes: antes.posicoes.map((p) => (p.id === "executor" ? { ...p, persona: null } : p)) }
     expect(() => exigirMudancaDeEquipe(antes, trocada, tarefas(1, 1))).toThrow("trocar de persona")
     const casa = casaInicial(["alfred"])
-    expect(() => exigirMudancaDeEquipe(casa, { ...casa, nome: "Outra" }, tarefas(0, 0))).toThrow("não pode ser renomeada")
     expect(resumoDaMudanca(antes, trocada)).toBe("equipe Código: executor com vaga")
     expect(resumoDaMudanca(undefined, antes)).toBe("equipe Código criada")
+  })
+
+  test("a Casa pode ser renomeada e continua com o id casa", () => {
+    const casa = casaInicial(["alfred"])
+    const renomeada = { ...casa, nome: "Sala" }
+    expect(() => exigirMudancaDeEquipe(casa, renomeada, () => ({ abertas: 0, emAndamento: 0 }))).not.toThrow()
+    const salva = validarEquipe(renomeada, new Set(["alfred"]))
+    expect(salva.id).toBe(CASA)
+    expect(salva.nome).toBe("Sala")
+    expect(resumoDaMudanca(casa, salva)).toBe("equipe Sala: renomeada para Sala")
   })
 
   test("criar persona grava o perfil provisório e a posição na Casa; excluir deixa as posições vagas e reserva o id", async () => {

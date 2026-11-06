@@ -2,8 +2,10 @@ import 'package:control_tower/estado/equipes.dart';
 import 'package:control_tower/estado/sala.dart';
 import 'package:control_tower/estado/servidor.dart';
 import 'package:control_tower/nucleo/organograma.dart';
+import 'package:control_tower/nucleo/protocolo.dart';
 import 'package:control_tower/nucleo/tarefas.dart';
 import 'package:control_tower/tela/equipes.dart';
+import 'package:control_tower/tela/skills.dart';
 import 'package:control_tower/tela/tema.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -185,5 +187,53 @@ void main() {
     await t.pumpAndSettle();
     expect(find.widgetWithText(ListTile, 'Nati'), findsOneWidget);
     expect(find.text('Remover'), findsNothing);
+  });
+
+  testWidgets('renomear a Casa muda o seletor, e os textos da biblioteca passam a usar o nome novo', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    t.view.physicalSize = const Size(1300, 900);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    const casa = EquipeResumo(id: 'casa', nome: 'Casa', posicoes: [PosicaoResumo(id: 'executor', titulo: 'executor', persona: 'alfred')]);
+    final sala = Sala(_SemServidor());
+    sala.equipes
+      ..equipes = [casa, _codigo()]
+      ..vista = 'casa'
+      ..carregada = true;
+    await t.pumpWidget(MaterialApp(theme: temaEscuro, home: Scaffold(body: TelaEquipes(sala: sala, edicao: true))));
+    await t.pump();
+    final seletor = find.byType(DropdownButton<String>);
+
+    await t.tap(find.byTooltip('Renomear equipe'));
+    await t.pumpAndSettle();
+    final campo = find.widgetWithText(TextField, 'Nome da equipe');
+    expect(t.widget<TextField>(campo).controller!.text, 'Casa');
+    await t.enterText(campo, '  ');
+    await t.tap(find.widgetWithText(FilledButton, 'Renomear'));
+    await t.pump();
+    expect(find.text('Dê um nome à equipe.'), findsOneWidget);
+    await t.enterText(campo, 'Sala');
+    await t.tap(find.widgetWithText(FilledButton, 'Renomear'));
+    await t.pumpAndSettle();
+
+    expect(sala.equipes.rascunho?.id, 'casa');
+    expect(sala.equipes.rascunho?.nome, 'Sala');
+    expect(find.descendant(of: seletor, matching: find.text('Sala')), findsOneWidget);
+    expect(find.descendant(of: seletor, matching: find.text('Casa')), findsNothing);
+    expect(sala.equipes.nomeDaCasa, 'Casa');
+
+    sala.equipes.salvar();
+    sala.equipes.tratar(EquipesRecebidas([casa.copiar(nome: 'Sala'), _codigo()]));
+    await t.pump();
+    expect(sala.equipes.rascunho, isNull);
+    expect(sala.equipes.atual?.id, 'casa');
+    expect(sala.equipes.nomeDaCasa, 'Sala');
+
+    sala.skills.tratar(const SkillsRecebidas([]));
+    await t.pumpWidget(MaterialApp(theme: temaEscuro, home: Scaffold(body: TelaSkills(sala: sala))));
+    await t.pump();
+    expect(find.text('A biblioteca da Sala e as skills de cada persona'), findsOneWidget);
+    expect(find.text('Nenhuma skill na biblioteca da Sala.'), findsOneWidget);
+    expect(find.textContaining('da Casa'), findsNothing);
   });
 }

@@ -188,6 +188,13 @@ List<String> listaDeTextos(Object? bruto) => [for (final x in bruto is List ? br
 
 typedef Ponto = ({double x, double y});
 
+const nomePadraoDaCasa = 'Casa';
+
+String nomeDaCasaEm(Iterable<EquipeResumo> equipes) {
+  final nome = equipes.where((e) => e.id == 'casa').firstOrNull?.nome.trim() ?? '';
+  return nome.isEmpty ? nomePadraoDaCasa : nome;
+}
+
 class EquipeResumo {
   const EquipeResumo({required this.id, required this.nome, required this.posicoes, this.layout = const {}});
 
