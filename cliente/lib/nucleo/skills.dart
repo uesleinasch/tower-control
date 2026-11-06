@@ -94,19 +94,29 @@ class RascunhoDeSkill {
 
 String rotuloDoDono(String dono) => dono == donoCasa ? 'Casa' : Perfil.porChave(dono).nome;
 
-List<String> errosDoRascunho(RascunhoDeSkill r, {Iterable<Skill> existentes = const []}) {
+enum CampoDaSkill { id, descricao, corpo }
+
+Map<CampoDaSkill, String> errosDosCamposDaSkill(RascunhoDeSkill r, {Iterable<Skill> existentes = const []}) {
   final id = r.id.trim();
   final descricao = r.descricao.trim();
-  return [
-    if (!skillIdValido(id)) 'id inválido (letras minúsculas, números e hífen, começando por letra)',
-    if (r.nova && existentes.any((s) => s.dono == r.dono && s.id == id))
-      'já existe a skill $id em ${rotuloDoDono(r.dono)}',
-    if (descricao.isEmpty) 'a descrição é obrigatória',
-    if (descricao.length > limiteDaDescricao) 'a descrição passa de $limiteDaDescricao caracteres',
-    if (r.corpo.trim().isEmpty) 'o corpo da skill está vazio',
-    if (r.corpo.length > limiteDoCorpo) 'o corpo da skill passa de 100 mil caracteres',
-  ];
+  return {
+    if (!skillIdValido(id))
+      CampoDaSkill.id: 'id inválido (letras minúsculas, números e hífen, começando por letra)'
+    else if (r.nova && existentes.any((s) => s.dono == r.dono && s.id == id))
+      CampoDaSkill.id: 'já existe a skill $id em ${rotuloDoDono(r.dono)}',
+    if (descricao.isEmpty)
+      CampoDaSkill.descricao: 'a descrição é obrigatória'
+    else if (descricao.length > limiteDaDescricao)
+      CampoDaSkill.descricao: 'a descrição passa de $limiteDaDescricao caracteres',
+    if (r.corpo.trim().isEmpty)
+      CampoDaSkill.corpo: 'o corpo da skill está vazio'
+    else if (r.corpo.length > limiteDoCorpo)
+      CampoDaSkill.corpo: 'o corpo da skill passa de 100 mil caracteres',
+  };
 }
+
+List<String> errosDoRascunho(RascunhoDeSkill r, {Iterable<Skill> existentes = const []}) =>
+    errosDosCamposDaSkill(r, existentes: existentes).values.toList();
 
 typedef GrupoDeSkills = ({String dono, List<Skill> skills});
 
