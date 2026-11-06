@@ -127,7 +127,7 @@ void main() {
     final sala = await montar(t, 1300, Tela.conversas);
     await comCtrl(t, LogicalKeyboardKey.digit8);
     expect(sala.tela, Tela.skills);
-    expect(find.text('A biblioteca da Casa e as skills de cada persona'), findsOneWidget);
+    expect(find.text('A biblioteca de skills e as próprias de cada persona'), findsOneWidget);
   });
 
   testWidgets('no celular Skills fica no menu, depois de Personas', (t) async {

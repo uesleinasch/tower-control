@@ -94,7 +94,7 @@ function lerSkills(bruto: unknown, onde: string, existentes?: ReadonlySet<string
   }
   const ids = [...new Set(bruto as string[])]
   const faltando = existentes ? ids.filter((s) => !existentes.has(s)) : []
-  if (faltando.length) throw new Error(`${onde}: skill inexistente na biblioteca da Casa (${faltando.join(", ")})`)
+  if (faltando.length) throw new Error(`${onde}: skill inexistente na biblioteca de skills (${faltando.join(", ")})`)
   return ids.length ? ids : undefined
 }
 

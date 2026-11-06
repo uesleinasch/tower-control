@@ -92,14 +92,15 @@ class RascunhoDeSkill {
       s.dono == dono && s.id == id.trim() && s.descricao == descricao.trim() && s.corpo.trim() == corpo.trim();
 }
 
-String rotuloDoDono(String dono, {String casa = nomePadraoDaCasa}) => dono == donoCasa ? casa : Perfil.porChave(dono).nome;
+const nomeDaBiblioteca = 'Biblioteca';
+
+String rotuloDoDono(String dono) => dono == donoCasa ? nomeDaBiblioteca : Perfil.porChave(dono).nome;
 
 enum CampoDaSkill { id, descricao, corpo }
 
 Map<CampoDaSkill, String> errosDosCamposDaSkill(
   RascunhoDeSkill r, {
   Iterable<Skill> existentes = const [],
-  String casa = nomePadraoDaCasa,
 }) {
   final id = r.id.trim();
   final descricao = r.descricao.trim();
@@ -107,7 +108,7 @@ Map<CampoDaSkill, String> errosDosCamposDaSkill(
     if (!skillIdValido(id))
       CampoDaSkill.id: 'id inválido (letras minúsculas, números e hífen, começando por letra)'
     else if (r.nova && existentes.any((s) => s.dono == r.dono && s.id == id))
-      CampoDaSkill.id: 'já existe a skill $id em ${rotuloDoDono(r.dono, casa: casa)}',
+      CampoDaSkill.id: 'já existe a skill $id ${r.dono == donoCasa ? 'na biblioteca' : 'de ${rotuloDoDono(r.dono)}'}',
     if (descricao.isEmpty)
       CampoDaSkill.descricao: 'a descrição é obrigatória'
     else if (descricao.length > limiteDaDescricao)
@@ -119,8 +120,8 @@ Map<CampoDaSkill, String> errosDosCamposDaSkill(
   };
 }
 
-List<String> errosDoRascunho(RascunhoDeSkill r, {Iterable<Skill> existentes = const [], String casa = nomePadraoDaCasa}) =>
-    errosDosCamposDaSkill(r, existentes: existentes, casa: casa).values.toList();
+List<String> errosDoRascunho(RascunhoDeSkill r, {Iterable<Skill> existentes = const []}) =>
+    errosDosCamposDaSkill(r, existentes: existentes).values.toList();
 
 typedef GrupoDeSkills = ({String dono, List<Skill> skills});
 

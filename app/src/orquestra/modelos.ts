@@ -624,11 +624,10 @@ function planejarEquipe(modelo: ModeloDeEquipe, atual: EstadoAtual, pedidas: Esc
     else entra.push(`a posição de ${doModelo.get(id)?.persona.nome ?? id} fica com ${daqui}, daqui`)
   }
   if (mesmas.length) entra.push(`${mesmas.length === 1 ? "persona daqui" : "personas daqui"} nas posições: ${mesmas.join(", ")}`)
-  const nomeDaCasa = atual.equipes.find((e) => e.id === CASA)?.nome ?? "Casa"
   for (const { skill, id } of importadas) {
     escritas.push(...escritasDaSkill("skills", skill, id, erros, `skill ${skill.id}`))
     novos.push(`skills/${id}`)
-    entra.push(id === skill.id ? `skill ${id} na ${nomeDaCasa}` : `skill ${skill.id} na ${nomeDaCasa} como ${id}`)
+    entra.push(id === skill.id ? `skill ${id} na biblioteca` : `skill ${skill.id} na biblioteca como ${id}`)
     const extras = scripts(skill)
     if (extras.length) avisos.push(`a skill ${id} traz arquivos que as personas podem rodar: ${extras.join(", ")}`)
   }

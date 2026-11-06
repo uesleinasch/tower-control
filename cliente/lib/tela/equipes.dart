@@ -1746,7 +1746,6 @@ class _PainelDaPosicaoState extends State<_PainelDaPosicao> {
         anexaveis: anexaveis(widget.skills.lista, p.skills),
         aoAnexar: (id) => widget.estado.aplicar((e) => anexarSkillNaPosicao(e, p.id, id)),
         aoTirar: (id) => widget.estado.aplicar((e) => tirarSkillDaPosicao(e, p.id, id)),
-        casa: widget.skills.nomeDaCasa,
       ),
       if (comandos) ...[
         const SizedBox(height: Espacos.esp3),

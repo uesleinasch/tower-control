@@ -112,7 +112,7 @@ try {
   if (await migrarParaPersonas(RAIZ)) await registrarNoGit(RAIZ, "personas como dados e equipe Casa")
   await carregarElenco(RAIZ)
   await garantirIgnorado(RAIZ, "orquestra/")
-  if (await garantirManifesto(RAIZ, DONO_CASA)) await registrarNoGit(RAIZ, "skills: biblioteca da Casa")
+  if (await garantirManifesto(RAIZ, DONO_CASA)) await registrarNoGit(RAIZ, "skills: biblioteca de skills")
 } catch (erro) {
   console.error(`não consegui preparar a pasta de dados ${RAIZ}: ${(erro as Error).message}`)
   process.exit(1)

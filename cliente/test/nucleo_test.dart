@@ -1843,7 +1843,7 @@ void main() {
         CampoDaSkill.corpo: 'o corpo da skill está vazio',
       });
       expect(errosDosCamposDaSkill(ok, existentes: const [Skill(dono: 'casa', id: 'relatorio')]),
-          {CampoDaSkill.id: 'já existe a skill relatorio em Casa'});
+          {CampoDaSkill.id: 'já existe a skill relatorio na biblioteca'});
     });
   });
   group('espelho', () {
@@ -2107,19 +2107,21 @@ void main() {
     });
   });
 
-  test('o nome da Casa vem da equipe casa, com Casa como reserva, e chega aos rótulos das skills', () {
+  test('o nome da Casa vem da equipe casa, com Casa como reserva', () {
     expect(nomeDaCasaEm(const []), 'Casa');
     expect(nomeDaCasaEm(const [EquipeResumo(id: 'casa', nome: ' ', posicoes: [])]), 'Casa');
     const sala = [EquipeResumo(id: 'codigo', nome: 'Código', posicoes: []), EquipeResumo(id: 'casa', nome: 'Sala', posicoes: [])];
     expect(nomeDaCasaEm(sala), 'Sala');
-    expect(rotuloDoDono('casa', casa: nomeDaCasaEm(sala)), 'Sala');
+  });
+
+  test('a biblioteca de skills não leva o nome de equipe nenhuma', () {
+    expect(rotuloDoDono('casa'), 'Biblioteca');
     expect(
       errosDosCamposDaSkill(
         const RascunhoDeSkill(dono: 'casa', id: 'relatorio', descricao: 'd', corpo: 'c'),
         existentes: const [Skill(dono: 'casa', id: 'relatorio')],
-        casa: 'Sala',
       )[CampoDaSkill.id],
-      'já existe a skill relatorio em Sala',
+      'já existe a skill relatorio na biblioteca',
     );
   });
 }

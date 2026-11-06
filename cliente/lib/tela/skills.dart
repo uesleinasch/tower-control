@@ -9,7 +9,6 @@ import '../estado/skills.dart';
 import '../nucleo/design.dart';
 import '../nucleo/modelos.dart';
 import '../nucleo/skills.dart';
-import '../nucleo/tarefas.dart';
 import 'comum.dart';
 import 'paineis.dart';
 import 'tema.dart';
@@ -94,13 +93,13 @@ class _Cabecalho extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Skills', style: tema.textTheme.titleLarge),
                 Text(
-                  'A biblioteca da ${estado.nomeDaCasa} e as skills de cada persona',
+                  'A biblioteca de skills e as próprias de cada persona',
                   style: tema.textTheme.bodyMedium?.copyWith(color: tema.colorScheme.onSurfaceVariant),
                 ),
               ]),
             ),
             const SizedBox(width: Espacos.esp3),
-            _MenuDeDono(casa: estado.nomeDaCasa, aoEscolher: estado.nova),
+            _MenuDeDono(aoEscolher: estado.nova),
           ]),
         ),
       ),
@@ -158,9 +157,8 @@ class _BannerDeErro extends StatelessWidget {
 }
 
 class _MenuDeDono extends StatelessWidget {
-  const _MenuDeDono({required this.casa, required this.aoEscolher});
+  const _MenuDeDono({required this.aoEscolher});
 
-  final String casa;
   final void Function(String dono) aoEscolher;
 
   @override
@@ -169,7 +167,7 @@ class _MenuDeDono extends StatelessWidget {
           MenuItemButton(
             leadingIcon: const Icon(Symbols.home),
             onPressed: () => aoEscolher(donoCasa),
-            child: Text('Na biblioteca da $casa'),
+            child: const Text('Na biblioteca'),
           ),
           for (final p in Perfil.todos)
             MenuItemButton(
@@ -198,7 +196,7 @@ class _ListaDeSkills extends StatelessWidget {
       context,
       'Excluir a skill ${s.id}?',
       s.daCasa
-          ? 'A pasta da skill sai da biblioteca da ${estado.nomeDaCasa}. Skill anexada a alguém não pode ser excluída.'
+          ? 'A pasta da skill sai da biblioteca. Skill anexada a alguém não pode ser excluída.'
           : 'A pasta da skill sai das skills próprias de ${rotuloDoDono(s.dono)}.',
       acao: 'Excluir skill',
     );
@@ -211,13 +209,12 @@ class _ListaDeSkills extends StatelessWidget {
     final cores = tema.colorScheme;
     final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final aberta = estado.rascunho;
-    final casa = estado.nomeDaCasa;
     return ListView(padding: EdgeInsets.fromLTRB(margem, Espacos.esp3, margem, Espacos.esp5), children: [
       ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: larguraDeLeitura),
         child: Text(
           'A persona vê só o nome e a descrição e abre a skill quando o pedido casa com ela. '
-          'As da $casa valem para quem as tiver anexadas; as próprias valem sempre para a persona.',
+          'As da biblioteca valem para quem as tiver anexadas; as próprias valem sempre para a persona.',
           style: secundario,
         ),
       ),
@@ -237,7 +234,7 @@ class _ListaDeSkills extends StatelessWidget {
             else
               Avatar.doPerfil(grupo.dono, tamanho: 20),
             const SizedBox(width: Espacos.esp2),
-            Text(rotuloDoDono(grupo.dono, casa: casa), style: tema.textTheme.titleSmall),
+            Text(rotuloDoDono(grupo.dono), style: tema.textTheme.titleSmall),
           ]),
           const SizedBox(height: Espacos.esp2),
           if (grupo.skills.isEmpty)
@@ -246,7 +243,7 @@ class _ListaDeSkills extends StatelessWidget {
               child: Row(children: [
                 Icon(Symbols.extension, size: 20, color: cores.onSurfaceVariant),
                 const SizedBox(width: Espacos.esp2),
-                Expanded(child: Text('Nenhuma skill na biblioteca da $casa.', style: secundario)),
+                Expanded(child: Text('Nenhuma skill na biblioteca.', style: secundario)),
               ]),
             ),
           for (final s in grupo.skills)
@@ -425,14 +422,14 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
     final cores = tema.colorScheme;
     final secundario = tema.textTheme.bodySmall?.copyWith(color: cores.onSurfaceVariant);
     final mono = tema.textTheme.bodyMedium?.copyWith(fontFamily: familiaMono);
-    final casa = estado.nomeDaCasa;
-    final erros = errosDosCamposDaSkill(r, existentes: estado.lista, casa: casa);
+    final erros = errosDosCamposDaSkill(r, existentes: estado.lista);
     String? erroDe(CampoDaSkill campo) => _mostrarTudo || _tocados.contains(campo) ? erros[campo] : null;
     final erroDoId = r.id.isNotEmpty ? erros[CampoDaSkill.id] : erroDe(CampoDaSkill.id);
     final descricaoLonga = r.descricao.trim().length > limiteDaDescricao;
     final corpoLongo = r.corpo.length > limiteDoCorpo;
-    final dono = rotuloDoDono(r.dono, casa: casa);
-    final titulo = r.nova ? 'Nova skill em $dono' : 'Skill ${r.id} ($dono)';
+    final daBiblioteca = r.dono == donoCasa;
+    final dono = daBiblioteca ? 'biblioteca' : rotuloDoDono(r.dono);
+    final titulo = r.nova ? (daBiblioteca ? 'Nova skill na biblioteca' : 'Nova skill de $dono') : 'Skill ${r.id} ($dono)';
     final descartar = estado.salvando ? null : _descartar;
     final conteudo = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
@@ -570,7 +567,6 @@ class SecaoDeSkills extends StatelessWidget {
     this.aoAnexar,
     this.aoTirar,
     this.titulo = 'Skills',
-    this.casa = nomePadraoDaCasa,
   });
 
   final List<SkillDescrita> itens;
@@ -578,7 +574,6 @@ class SecaoDeSkills extends StatelessWidget {
   final void Function(String id)? aoAnexar;
   final void Function(String id)? aoTirar;
   final String titulo;
-  final String casa;
 
   bool get _edita => aoAnexar != null && aoTirar != null;
 
@@ -593,7 +588,7 @@ class SecaoDeSkills extends StatelessWidget {
         if (_edita)
           MenuAnchor(
             menuChildren: [
-              if (anexaveis.isEmpty) MenuItemButton(child: Text('nenhuma skill da $casa para anexar')),
+              if (anexaveis.isEmpty) MenuItemButton(child: const Text('nenhuma skill da biblioteca para anexar')),
               for (final s in anexaveis)
                 MenuItemButton(
                   leadingIcon: const Icon(Symbols.extension),
@@ -608,7 +603,7 @@ class SecaoDeSkills extends StatelessWidget {
                 ),
             ],
             builder: (context, controle, _) => IconButton(
-              tooltip: 'Anexar skill da $casa',
+              tooltip: 'Anexar skill da biblioteca',
               icon: const Icon(Symbols.add),
               onPressed: () => controle.isOpen ? controle.close() : controle.open(),
             ),

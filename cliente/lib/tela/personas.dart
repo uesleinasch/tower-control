@@ -739,7 +739,6 @@ class _CartaoDeSkills extends StatelessWidget {
         anexaveis: anexaveis(skills.lista, p.skills),
         aoAnexar: (id) => skills.anexarNaPersona(p.chave, id),
         aoTirar: (id) => skills.tirarDaPersona(p.chave, id),
-        casa: skills.nomeDaCasa,
       ),
     );
   }
