@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 
 import '../estado/sala.dart';
@@ -53,7 +54,7 @@ class _MenuDeDono extends StatelessWidget {
         ],
         builder: (context, controle, _) => FilledButton.icon(
           onPressed: () => controle.isOpen ? controle.close() : controle.open(),
-          icon: const Icon(Icons.add),
+          icon: const Icon(Symbols.add),
           label: const Text('Nova skill'),
         ),
       );
@@ -107,7 +108,7 @@ class _ListaDeSkills extends StatelessWidget {
           const SizedBox(height: 20),
           Row(children: [
             if (grupo.dono == donoCasa)
-              const Icon(Icons.home_outlined, size: 20)
+              const Icon(Symbols.home, size: 20)
             else
               Avatar.doPerfil(grupo.dono, tamanho: 20),
             const SizedBox(width: 8),
@@ -151,8 +152,8 @@ class _CartaoDeSkill extends StatelessWidget {
               if (s.erro != null) Text('inválida: ${s.erro}', style: TextStyle(color: cores.error, fontSize: 12)),
             ]),
           ),
-          IconButton(tooltip: 'Editar', icon: const Icon(Icons.edit_outlined), onPressed: () => sala.skills.editar(s)),
-          IconButton(tooltip: 'Excluir', icon: const Icon(Icons.delete_outline), onPressed: aoExcluir),
+          IconButton(tooltip: 'Editar', icon: const Icon(Symbols.edit), onPressed: () => sala.skills.editar(s)),
+          IconButton(tooltip: 'Excluir', icon: const Icon(Symbols.delete), onPressed: aoExcluir),
         ]),
       ),
     );
@@ -202,15 +203,15 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
       Padding(
         padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
         child: Row(children: [
-          IconButton(tooltip: 'Voltar às skills', icon: const Icon(Icons.arrow_back), onPressed: _descartar),
+          IconButton(tooltip: 'Voltar às skills', icon: const Icon(Symbols.arrow_back), onPressed: _descartar),
           const SizedBox(width: 4),
           Expanded(child: Text(titulo, style: textos.titleMedium, overflow: TextOverflow.ellipsis)),
           if (estado.salvando) const Padding(padding: EdgeInsets.only(right: 12), child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))),
-          OutlinedButton.icon(onPressed: estado.salvando ? null : _descartar, icon: const Icon(Icons.undo), label: const Text('Descartar')),
+          OutlinedButton.icon(onPressed: estado.salvando ? null : _descartar, icon: const Icon(Symbols.undo), label: const Text('Descartar')),
           const SizedBox(width: 8),
           FilledButton.icon(
             onPressed: estado.podeSalvar ? estado.salvar : null,
-            icon: const Icon(Icons.save_outlined),
+            icon: const Icon(Symbols.save),
             label: const Text('Salvar'),
           ),
         ]),
@@ -277,7 +278,7 @@ class _EditorDeSkillState extends State<_EditorDeSkill> {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(children: [
-                  const Icon(Icons.description_outlined, size: 16),
+                  const Icon(Symbols.description, size: 16),
                   const SizedBox(width: 6),
                   Expanded(child: Text(a, style: const TextStyle(fontFamily: familiaMono, fontSize: 13))),
                 ]),
@@ -338,7 +339,7 @@ class SecaoDeSkills extends StatelessWidget {
             builder: (context, controle, _) => IconButton(
               tooltip: 'Anexar skill da Casa',
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.add, size: 18),
+              icon: const Icon(Symbols.add, size: 18),
               onPressed: () => controle.isOpen ? controle.close() : controle.open(),
             ),
           ),
@@ -359,7 +360,7 @@ class SecaoDeSkills extends StatelessWidget {
               IconButton(
                 tooltip: 'Tirar ${s.id}',
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.close, size: 18),
+                icon: const Icon(Symbols.close, size: 18),
                 onPressed: () => aoTirar!(s.id),
               ),
           ]),

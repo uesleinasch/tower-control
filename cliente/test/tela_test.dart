@@ -1,5 +1,6 @@
 import 'package:control_tower/tela/configuracao.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -7,7 +8,7 @@ void main() {
     var ligado = false;
     await t.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: BlocoDeConfiguracao(titulo: 'Espelho no TickTask', icone: Icons.sync_alt, filhos: [
+        body: BlocoDeConfiguracao(titulo: 'Espelho no TickTask', icone: Symbols.sync_alt, filhos: [
           StatefulBuilder(
             builder: (context, mudar) => SwitchListTile(
               value: ligado,

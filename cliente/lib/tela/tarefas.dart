@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/sala.dart';
 import '../estado/tarefas.dart';
@@ -64,7 +65,7 @@ class _Lista extends StatelessWidget {
             leading: const Avatar(cor: Color(Perfil.corTarefas), inicial: 'T', tamanho: 32),
             title: Text('Tarefas — ${estado.nomeDaEquipe}'),
             subtitle: Text('o que as personas têm a fazer', style: TextStyle(color: cores.onSurfaceVariant)),
-            trailing: IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: estado.carregar),
+            trailing: IconButton(tooltip: 'Recarregar', icon: const Icon(Symbols.refresh), onPressed: estado.carregar),
           ),
         ),
       ),
@@ -258,7 +259,7 @@ class _DetalheState extends State<_Detalhe> {
           child: SafeArea(
             bottom: false,
             child: Row(children: [
-              IconButton(icon: const Icon(Icons.arrow_back), onPressed: estado.fecharDetalhe),
+              IconButton(icon: const Icon(Symbols.arrow_back), onPressed: estado.fecharDetalhe),
               Expanded(child: Text('#${t.id}', overflow: TextOverflow.ellipsis)),
               Padding(padding: const EdgeInsets.only(right: 12), child: _Status(t.status)),
             ]),
@@ -275,7 +276,7 @@ class _DetalheState extends State<_Detalhe> {
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
                     onPressed: () => widget.sala.abrirFluxo(fluxo, equipe: t.equipe),
-                    icon: const Icon(Icons.alt_route, size: 18),
+                    icon: const Icon(Symbols.alt_route, size: 18),
                     label: const Text('Ver o workflow'),
                   ),
                 ),
@@ -294,19 +295,19 @@ class _DetalheState extends State<_Detalhe> {
                 if (t.esperaDecisaoDoUeslei) ...[
                   FilledButton.icon(
                     onPressed: () => estado.aprovarEtapa(t.id),
-                    icon: const Icon(Icons.check),
+                    icon: const Icon(Symbols.check),
                     label: const Text('Aprovar'),
                   ),
                   OutlinedButton.icon(
                     onPressed: _pedirMudanca,
-                    icon: const Icon(Icons.undo),
+                    icon: const Icon(Symbols.undo),
                     label: const Text('Pedir mudança'),
                   ),
                 ],
                 if (t.status == 'em_revisao' && planoPendente(widget.registros))
                   FilledButton.icon(
                     onPressed: () => estado.aprovarPlano(t.id),
-                    icon: const Icon(Icons.check),
+                    icon: const Icon(Symbols.check),
                     label: const Text('Aprovar plano'),
                   ),
                 for (final para in t.proximosStatus)
@@ -422,7 +423,7 @@ class _DetalheState extends State<_Detalhe> {
                   onSubmitted: (_) => _comentar(),
                 ),
               ),
-              IconButton(tooltip: 'Comentar', icon: const Icon(Icons.send), onPressed: _comentar),
+              IconButton(tooltip: 'Comentar', icon: const Icon(Symbols.send), onPressed: _comentar),
             ]),
           ),
         ),

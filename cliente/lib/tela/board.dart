@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/areas.dart';
 import '../estado/sala.dart';
@@ -93,7 +94,7 @@ class _TelaBoardState extends State<TelaBoard> {
                   Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     IconButton(
                       tooltip: _comContexto ? 'Sem contexto' : 'Adicionar contexto',
-                      icon: Icon(_comContexto ? Icons.notes : Icons.note_add_outlined),
+                      icon: Icon(_comContexto ? Symbols.notes : Symbols.note_add),
                       onPressed: () => setState(() => _comContexto = !_comContexto),
                     ),
                     Expanded(
@@ -108,7 +109,7 @@ class _TelaBoardState extends State<TelaBoard> {
                     const SizedBox(width: 4),
                     IconButton.filled(
                       tooltip: 'Convocar',
-                      icon: const Icon(Icons.gavel),
+                      icon: const Icon(Symbols.gavel),
                       onPressed: podeConvocar ? _convocar : null,
                     ),
                   ]),

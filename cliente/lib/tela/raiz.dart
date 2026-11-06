@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/sala.dart';
 import '../nucleo/modelos.dart';
@@ -107,7 +108,7 @@ class _RaizState extends State<Raiz> {
               actions: [
                 if (widget.configuracao != null)
                   IconButton(
-                    icon: const Icon(Icons.settings_outlined),
+                    icon: const Icon(Symbols.settings),
                     tooltip: 'Configuração',
                     onPressed: () => sala.ir(Tela.configuracao),
                   ),
@@ -119,7 +120,7 @@ class _RaizState extends State<Raiz> {
       floatingActionButton: sala.tela == Tela.conversas
           ? FloatingActionButton.extended(
               onPressed: () => abrirNovaConversa(context, sala),
-              icon: const Icon(Icons.add),
+              icon: const Icon(Symbols.add),
               label: const Text('Nova'),
             )
           : null,
@@ -127,13 +128,13 @@ class _RaizState extends State<Raiz> {
         selectedIndex: abas.indexOf(sala.tela).clamp(0, abas.length - 1),
         onDestinationSelected: (i) => sala.ir(abas[i]),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'Conversas'),
-          NavigationDestination(icon: Icon(Icons.gavel_outlined), selectedIcon: Icon(Icons.gavel), label: 'Board'),
+          NavigationDestination(icon: Icon(Symbols.forum), selectedIcon: Icon(Symbols.forum, fill: 1), label: 'Conversas'),
+          NavigationDestination(icon: Icon(Symbols.gavel), selectedIcon: Icon(Symbols.gavel, fill: 1), label: 'Board'),
           NavigationDestination(
-              icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Decisões'),
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Painel'),
-          NavigationDestination(icon: Icon(Icons.task_alt_outlined), selectedIcon: Icon(Icons.task_alt), label: 'Tarefas'),
-          NavigationDestination(icon: Icon(Icons.account_tree_outlined), selectedIcon: Icon(Icons.account_tree), label: 'Equipes'),
+              icon: Icon(Symbols.fact_check), selectedIcon: Icon(Symbols.fact_check, fill: 1), label: 'Decisões'),
+          NavigationDestination(icon: Icon(Symbols.dashboard), selectedIcon: Icon(Symbols.dashboard, fill: 1), label: 'Painel'),
+          NavigationDestination(icon: Icon(Symbols.task_alt), selectedIcon: Icon(Symbols.task_alt, fill: 1), label: 'Tarefas'),
+          NavigationDestination(icon: Icon(Symbols.account_tree), selectedIcon: Icon(Symbols.account_tree, fill: 1), label: 'Equipes'),
         ],
       ),
     );
@@ -176,7 +177,7 @@ class _Lateral extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: FilledButton.icon(
             onPressed: () => abrirNovaConversa(context, sala),
-            icon: const Icon(Icons.add),
+            icon: const Icon(Symbols.add),
             label: const Text('Nova conversa'),
           ),
         ),
@@ -197,7 +198,7 @@ class _Lateral extends StatelessWidget {
           ListTile(
             dense: true,
             selected: sala.tela == Tela.configuracao,
-            leading: const Icon(Icons.settings_outlined),
+            leading: const Icon(Symbols.settings),
             title: const Text('Configuração'),
             onTap: () => sala.ir(Tela.configuracao),
           ),

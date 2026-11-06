@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../conexao/http.dart';
 import '../estado/rotinas.dart';
@@ -61,11 +62,11 @@ class _ListaDeRotinas extends StatelessWidget {
     return ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 24), children: [
       Row(children: [
         Expanded(child: Text('ROTINAS · ${equipe.nome.toUpperCase()}', style: rotulo)),
-        IconButton(tooltip: 'Recarregar', icon: const Icon(Icons.refresh), onPressed: estado.carregar),
+        IconButton(tooltip: 'Recarregar', icon: const Icon(Symbols.refresh), onPressed: estado.carregar),
         if (editar)
           FilledButton.tonalIcon(
             onPressed: equipeSalva && !estado.salvando ? () => estado.novaRotina(equipe) : null,
-            icon: const Icon(Icons.add),
+            icon: const Icon(Symbols.add),
             label: const Text('Nova rotina'),
           ),
       ]),
@@ -170,12 +171,12 @@ class _CartaoDaRotina extends StatelessWidget {
                 child: Wrap(spacing: 8, runSpacing: 4, children: [
                   OutlinedButton.icon(
                     onPressed: () => estado.disparar(r),
-                    icon: const Icon(Icons.play_arrow, size: 18),
+                    icon: const Icon(Symbols.play_arrow, size: 18),
                     label: const Text('Disparar agora'),
                   ),
                   TextButton.icon(
                     onPressed: () => estado.alternarAtiva(r),
-                    icon: Icon(r.ativa ? Icons.pause_circle_outline : Icons.play_circle_outline, size: 18),
+                    icon: Icon(r.ativa ? Symbols.pause_circle : Symbols.play_circle, size: 18),
                     label: Text(r.ativa ? 'Desativar' : 'Ativar'),
                   ),
                 ]),
@@ -303,7 +304,7 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
               SelectableText(valor, style: const TextStyle(fontFamily: familiaMono, fontSize: 12)),
             ]),
           ),
-          IconButton(tooltip: 'Copiar', icon: const Icon(Icons.copy, size: 18), onPressed: () => copiar(context, valor)),
+          IconButton(tooltip: 'Copiar', icon: const Icon(Symbols.content_copy, size: 18), onPressed: () => copiar(context, valor)),
         ]);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       linha('URL (POST)', url),
@@ -311,7 +312,7 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
       linha('Exemplo', curlDoWebhook(url, token)),
       Align(
         alignment: Alignment.centerLeft,
-        child: TextButton.icon(onPressed: estado.trocarToken, icon: const Icon(Icons.autorenew), label: const Text('Trocar token')),
+        child: TextButton.icon(onPressed: estado.trocarToken, icon: const Icon(Symbols.autorenew), label: const Text('Trocar token')),
       ),
     ]);
   }
@@ -339,7 +340,7 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
         Expanded(
           child: Text(estado.nova ? 'Nova rotina' : 'Rotina ${rotina.id}', style: Theme.of(context).textTheme.titleSmall),
         ),
-        IconButton(tooltip: 'Fechar', icon: const Icon(Icons.close), onPressed: estado.fecharEditor),
+        IconButton(tooltip: 'Fechar', icon: const Icon(Symbols.close), onPressed: estado.fecharEditor),
       ]),
       TextField(
         controller: _nome,
@@ -349,11 +350,11 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
       secao('Destino'),
       SegmentedButton<bool>(
         segments: [
-          const ButtonSegment(value: false, label: Text('Criar tarefa'), icon: Icon(Icons.task_alt)),
+          const ButtonSegment(value: false, label: Text('Criar tarefa'), icon: Icon(Symbols.task_alt)),
           ButtonSegment(
             value: true,
             label: const Text('Iniciar workflow'),
-            icon: const Icon(Icons.alt_route),
+            icon: const Icon(Symbols.alt_route),
             enabled: porWorkflow || possiveis.isNotEmpty,
           ),
         ],
@@ -524,14 +525,14 @@ class _EditorDeRotinaState extends State<_EditorDeRotina> {
       Wrap(spacing: 8, runSpacing: 8, children: [
         FilledButton.icon(
           onPressed: erros.isEmpty && !estado.salvando ? () => estado.salvar(equipe, workflows: definicoes) : null,
-          icon: const Icon(Icons.save_outlined),
+          icon: const Icon(Symbols.save),
           label: Text(estado.salvando ? 'Salvando…' : 'Salvar'),
         ),
         if (!estado.nova)
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(foregroundColor: cores.error),
             onPressed: estado.salvando ? null : _excluir,
-            icon: const Icon(Icons.delete_outline),
+            icon: const Icon(Symbols.delete),
             label: const Text('Excluir'),
           ),
       ]),

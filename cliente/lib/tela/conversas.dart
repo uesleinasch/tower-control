@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/sala.dart';
 import '../nucleo/formato.dart';
@@ -38,7 +39,7 @@ class ListaConversas extends StatelessWidget {
               final meta = estado.lista[i];
               final nome = Perfil.porChave(meta.perfil).nome;
               return MenuDeToque(
-                itens: () => [(Icons.delete_outline, 'Excluir', () => _excluir(context, meta))],
+                itens: () => [(Symbols.delete, 'Excluir', () => _excluir(context, meta))],
                 child: ListTile(
                   selected: sala.chat.conversaId == meta.id,
                   selectedTileColor: cores.surfaceContainerHighest,

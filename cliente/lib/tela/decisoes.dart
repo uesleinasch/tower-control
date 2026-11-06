@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/sala.dart';
 import '../nucleo/modelos.dart';
@@ -42,7 +43,7 @@ class _Lista extends StatelessWidget {
               subtitle: Text('registro e consulta', style: TextStyle(color: cores.onSurfaceVariant)),
               trailing: IconButton(
                 tooltip: 'Recarregar',
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Symbols.refresh),
                 onPressed: estado.carregar,
               ),
             ),
@@ -50,7 +51,7 @@ class _Lista extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
               child: TextField(
                 onChanged: estado.filtrar,
-                decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Filtrar por título, tag ou projeto'),
+                decoration: const InputDecoration(prefixIcon: Icon(Symbols.search), hintText: 'Filtrar por título, tag ou projeto'),
               ),
             ),
           ]),
@@ -123,12 +124,12 @@ class _Detalhe extends StatelessWidget {
             child: SafeArea(
               bottom: false,
               child: Row(children: [
-                IconButton(icon: const Icon(Icons.arrow_back), onPressed: sala.decisoes.fecharDetalhe),
+                IconButton(icon: const Icon(Symbols.arrow_back), onPressed: sala.decisoes.fecharDetalhe),
                 const Text('Decisão'),
                 const Spacer(),
                 IconButton(
                   tooltip: 'Copiar',
-                  icon: const Icon(Icons.copy),
+                  icon: const Icon(Symbols.content_copy),
                   onPressed: () => copiar(context, conteudo),
                 ),
               ]),

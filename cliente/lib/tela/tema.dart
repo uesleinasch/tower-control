@@ -114,6 +114,7 @@ ThemeData tema(Brightness brilho) {
   final base = ThemeData(colorScheme: cores, fontFamily: familiaTexto, useMaterial3: true);
   return base.copyWith(
     textTheme: _texto(base.textTheme),
+    iconTheme: base.iconTheme.copyWith(grade: brilho == Brightness.dark ? -25 : 0),
     visualDensity: VisualDensity.adaptivePlatformDensity,
     scaffoldBackgroundColor: cores.surface,
     canvasColor: cores.surface,

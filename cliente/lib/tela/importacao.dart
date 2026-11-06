@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../estado/importacao.dart';
 import '../estado/sala.dart';
@@ -222,7 +223,7 @@ class _Rodape extends StatelessWidget {
             const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: estado.podeImportar ? estado.importar : null,
-              icon: const Icon(Icons.download_done),
+              icon: const Icon(Symbols.download_done),
               label: const Text('Importar'),
             ),
           ]),
@@ -301,7 +302,7 @@ class _Previa extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.add, size: 16, color: cores.primary),
+              Icon(Symbols.add, size: 16, color: cores.primary),
               const SizedBox(width: 6),
               Expanded(child: Text(linha)),
             ]),
@@ -309,15 +310,15 @@ class _Previa extends StatelessWidget {
       ],
       if (previa.avisos.isNotEmpty) ...[
         const _Titulo('Avisos'),
-        _Caixa(cor: _corDoAviso, icone: Icons.warning_amber_rounded, linhas: previa.avisos),
+        _Caixa(cor: _corDoAviso, icone: Symbols.warning_amber, linhas: previa.avisos),
       ],
       if (previa.erros.isNotEmpty) ...[
         const _Titulo('Erros'),
-        _Caixa(cor: cores.error, icone: Icons.error_outline, linhas: previa.erros),
+        _Caixa(cor: cores.error, icone: Symbols.error, linhas: previa.erros),
       ],
       if (_e.erro != null) ...[
         const SizedBox(height: 12),
-        _Caixa(cor: cores.error, icone: Icons.error_outline, linhas: [_e.erro!]),
+        _Caixa(cor: cores.error, icone: Symbols.error, linhas: [_e.erro!]),
       ],
     ]);
   }
@@ -541,7 +542,7 @@ class _LinhaDaPosicao extends StatelessWidget {
             Text(posicao.id, style: TextStyle(color: cores.onSurfaceVariant, fontSize: 12)),
           ]),
         ),
-        const Icon(Icons.arrow_forward, size: 18),
+        const Icon(Symbols.arrow_forward, size: 18),
         DropdownButton<String?>(
           value: alvo,
           onChanged: !habilitado

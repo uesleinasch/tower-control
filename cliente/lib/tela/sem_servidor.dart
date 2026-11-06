@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../conexao/canal.dart';
 import '../estado/sala.dart';
@@ -51,7 +52,7 @@ class _TelaSemServidorState extends State<TelaSemServidor> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Icon(pareado ? Icons.wifi_off : Icons.link, size: 48, color: cores.onSurfaceVariant),
+              Icon(pareado ? Symbols.wifi_off : Symbols.link, size: 48, color: cores.onSurfaceVariant),
               const SizedBox(height: 16),
               Text(
                 pareado ? 'Servidor não encontrado' : 'Celular ainda não conectado',
@@ -74,7 +75,7 @@ class _TelaSemServidorState extends State<TelaSemServidor> {
                   onPressed: tentando ? null : widget.sala.canal.reconectarJa,
                   icon: tentando
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.refresh),
+                      : const Icon(Symbols.refresh),
                   label: Text(tentando ? 'Procurando…' : 'Tentar de novo'),
                 ),
               const SizedBox(height: 28),
